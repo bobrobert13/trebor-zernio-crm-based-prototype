@@ -61,9 +61,14 @@ async function main() {
   if (hasBinary('cloudflared')) {
     console.log(`[tunnel] cloudflared quick tunnel → http://localhost:${PORT}`);
     const child = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${PORT}`]);
+    let buffer = '';
+    let persisted = false;
     child.stdout.on('data', async (chunk) => {
-      const url = cloudflaredUrl(chunk.toString());
+      buffer += chunk.toString();
+      if (persisted) return;
+      const url = cloudflaredUrl(buffer);
       if (url) {
+        persisted = true;
         console.log(`[tunnel] URL HTTPS: ${url}`);
         await persist(url);
       }

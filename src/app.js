@@ -69,7 +69,8 @@
 
   /**
    * Polling de eventos del servidor local (server.mjs). Cada 15 s consulta
-   * /webhooks/events y encola solo los nuevos en store.webhookEvents.
+   * /webhooks/events, deduplica por id de evento (at-least-once) y refleja
+   * los mensajes entrantes en la bandeja.
    */
   function startWebhookPolling() {
     setInterval(async () => {
@@ -78,10 +79,12 @@
         const res = await fetch('/webhooks/events', { cache: 'no-store' });
         const data = await res.json();
         (data.events || []).forEach((entry) => {
-          if (seenWebhooks.has(entry.receivedAt)) return;
-          seenWebhooks.add(entry.receivedAt);
+          const key = entry.id || entry.receivedAt;
+          if (seenWebhooks.has(key)) return;
+          seenWebhooks.add(key);
           if (seenWebhooks.size > 500) seenWebhooks.delete(seenWebhooks.values().next().value);
           ZernioCrm.pushWebhookEvent(entry.event);
+          ZernioCrm.reflectIncomingMessage(entry.event);
         });
       } catch {
         // servidor caído: se ignora hasta el próximo tick

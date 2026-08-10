@@ -44,6 +44,64 @@
   }
 
   /**
+   * Refleja un mensaje entrante (webhook message.received) en la bandeja:
+   * crea/actualiza la conversación del workspace y agrega el mensaje.
+   * @param {object} event — payload del webhook (shape defensivo).
+   */
+  function reflectIncomingMessage(event) {
+    const ws = store.workspace;
+    if (!ws || !event || event.event !== 'message.received') return;
+    const msg = event.message || {};
+    const text = msg.text || '';
+    if (!text) return;
+    const platform = msg.platform || 'whatsapp';
+    const conversationId = msg.conversationId || event.conversationId || null;
+    const sender = msg.sender || {};
+    const channel = (ws.channels || []).find((c) => c.platform === platform);
+    const accountId = channel ? channel.accountId : platform === 'whatsapp' ? (ws.zernio && ws.zernio.accountId) || '' : '';
+
+    let conv = conversationId ? ws.conversations.find((c) => c.id === conversationId) : null;
+    if (!conv) {
+      const digits = String(sender.identifier || '').replace(/\D/g, '');
+      let contact = ws.contacts.find((c) => String(c.phone || '').replace(/\D/g, '') === digits);
+      if (!contact) {
+        contact = {
+          id: ZernioCrm.uid('ct'),
+          name: sender.name || sender.username || 'Cliente nuevo',
+          phone: sender.identifier || '',
+          platform,
+          tags: ['cliente'],
+          customFields: {},
+          createdAt: Date.now(),
+        };
+        ws.contacts.unshift(contact);
+      }
+      conv = {
+        id: conversationId || ZernioCrm.uid('conv'),
+        contactId: contact.id,
+        platform,
+        status: 'active',
+        unread: 0,
+        tags: contact.tags.slice(0, 1),
+        messages: [],
+        lastTs: Date.now(),
+        accountId,
+      };
+      ws.conversations.unshift(conv);
+    }
+
+    conv.messages.push({
+      id: msg.id || ZernioCrm.uid('msg'),
+      from: 'in',
+      text,
+      ts: Date.parse(msg.timestamp || event.timestamp) || Date.now(),
+      status: 'delivered',
+    });
+    conv.lastTs = Date.now();
+    if (store.route !== 'inbox') conv.unread += 1;
+  }
+
+  /**
    * Detecta el servidor local (server.mjs): si responde /api/health,
    * el modo live usa el proxy local en vez de llamadas directas a Zernio.
    * @returns {Promise<boolean>} true si el servidor está disponible.
@@ -113,5 +171,5 @@
   }
 
   window.ZernioCrm = window.ZernioCrm || {};
-  Object.assign(window.ZernioCrm, { store, toast, applyAccent, navigate, flagCorsBlocked, canEdit, detectServer, pushWebhookEvent });
+  Object.assign(window.ZernioCrm, { store, toast, applyAccent, navigate, flagCorsBlocked, canEdit, detectServer, pushWebhookEvent, reflectIncomingMessage });
 })();

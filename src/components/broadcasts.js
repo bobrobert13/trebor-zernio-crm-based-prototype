@@ -121,10 +121,19 @@
       const sequences = Vue.ref([]);
       const flows = Vue.ref([]);
 
-      /** Carga datos: live real o seeds demo. */
+      /** Carga datos: live real o seeds demo (nunca llama al API con params vacíos). */
       async function load() {
         loading.value = true;
         if (isLive.value) {
+          if (!profileId.value || !accountId.value) {
+            broadcasts.value = (workspace.value.broadcasts || []).slice();
+            templates.value = (workspace.value.templates || []).slice();
+            sequences.value = demoSequences(niche.value);
+            flows.value = demoFlows();
+            timers.push(setTimeout(() => { loading.value = false; }, 300));
+            toast('Conexión Zernio incompleta: se muestran datos demo. Revisa Configuración → Canal WhatsApp', 'error', 6000);
+            return;
+          }
           try {
             const [b, t, s, f] = await Promise.all([
               api.listBroadcasts(profileId.value),

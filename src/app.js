@@ -56,6 +56,14 @@
           workspace.users.find((u) => u.id === session.userId) || workspace.users[0] || null;
       }
     }
+    // Saneamiento: modo live con conexión Zernio incompleta → degradar a demo con aviso
+    if (store.mode === 'live' && store.workspace) {
+      const z = store.workspace.zernio;
+      if (!z || !z.profileId || !z.accountId) {
+        store.mode = 'demo';
+        ZernioCrm.toast('Conexión Zernio incompleta: se cambió a modo demo. Revisa Configuración → Canal WhatsApp', 'error', 6000);
+      }
+    }
     ZernioCrm.applyAccent(store.workspace);
     window.addEventListener('hashchange', syncRoute);
     // Espera la detección del servidor para que las primeras llamadas live usen el proxy

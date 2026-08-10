@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trebor CRM — Atención al cliente por WhatsApp</title>
+
+  <!-- Tipografía: Inter (UI) + IBM Plex Mono (datos/claves, toque brutalista) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- Tailwind Play CDN (prototipo, sin build) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+          },
+          boxShadow: {
+            brutal: '4px 4px 0 0 rgba(0,0,0,1)',
+            'brutal-sm': '2px 2px 0 0 rgba(0,0,0,1)',
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    /* Acento de marca por workspace: lo setea la app via style="" en #app */
+    :root {
+      --accent: #18181b;
+      --accent-soft: #f4f4f5;
+    }
+    html {
+      scrollbar-width: thin;
+    }
+    body {
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    ::selection {
+      background: var(--accent);
+      color: #fff;
+    }
+    .scrollbar-none::-webkit-scrollbar {
+      display: none;
+    }
+    .scrollbar-none {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+  </style>
+</head>
+
+<body class="bg-stone-100 text-neutral-900 font-sans">
+  <!-- Root de la aplicación Vue (montado en src/app.js) -->
+  <div id="app"></div>
+
+  <!--
+    Orden de carga estricto (scripts clásicos, compatibles con file://):
+    1. Vue 3 global build
+    2. constantes (nichos, RBAC, roadmap) → store → storage → demo-data
+    3. servicio Zernio API
+    4. componentes (ui → dominio)
+    5. bootstrap de la app
+  -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
+  <script src="src/constants.js"></script>
+  <script src="src/store.js"></script>
+  <script src="src/data/storage.js"></script>
+  <script src="src/data/demo-data.js"></script>
+  <script src="src/services/zernio-api.js"></script>
+
+  <script src="src/components/ui.js"></script>
+  <script src="src/components/onboarding.js"></script>
+  <script src="src/components/dashboard.js"></script>
+  <script src="src/components/inbox.js"></script>
+  <script src="src/components/contacts.js"></script>
+  <script src="src/components/team.js"></script>
+  <script src="src/components/broadcasts.js"></script>
+  <script src="src/components/settings.js"></script>
+
+  <script src="src/app.js"></script>
+</body>
+</html>

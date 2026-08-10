@@ -111,6 +111,7 @@
 
   window.ZernioCrm = window.ZernioCrm || {};
   Object.assign(window.ZernioCrm, {
-    storage: { loadWorkspaces, upsertWorkspace, deleteWorkspace, loadSession, saveSession, clearSession, resetAll, initPersistence, uid },
+    uid,
+    storage: { loadWorkspaces, upsertWorkspace, deleteWorkspace, loadSession, saveSession, clearSession, resetAll, initPersistence },
   });
 })();

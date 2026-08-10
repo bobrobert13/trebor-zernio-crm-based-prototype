@@ -110,8 +110,9 @@
           </button>
         </header>
 
-        <!-- Usuarios -->
-        <section class="overflow-x-auto border-2 border-neutral-900 bg-white">
+        <div class="grid items-start gap-6 xl:grid-cols-[1fr_400px]">
+          <!-- Usuarios -->
+          <section class="overflow-x-auto border-2 border-neutral-900 bg-white">
           <table class="w-full min-w-[640px] text-left text-sm">
             <thead class="border-b-2 border-neutral-900 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
               <tr>
@@ -155,7 +156,7 @@
         </section>
 
         <!-- Matriz de permisos -->
-        <section class="border-2 border-neutral-900 bg-white p-5">
+        <section class="border-2 border-neutral-900 bg-white p-5 xl:sticky xl:top-8">
           <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Matriz de permisos (RBAC)</h3>
           <div class="mt-4 overflow-x-auto">
             <table class="w-full min-w-[560px] text-left text-sm">
@@ -184,6 +185,7 @@
             <ui-icon name="x" class="mx-1 inline h-3.5 w-3.5 text-neutral-300"></ui-icon> sin acceso
           </p>
         </section>
+        </div>
 
         <!-- Modal de invitación -->
         <ui-modal :open="inviteOpen" title="Invitar miembro" @close="closeInvite">

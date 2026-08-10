@@ -77,7 +77,7 @@
           <div v-if="broadcasts.length === 0" class="border-2 border-dashed border-neutral-300 bg-white">
             <ui-empty icon="megaphone" title="Sin campañas" desc="Crea tu primera campaña masiva por WhatsApp."></ui-empty>
           </div>
-          <div v-else class="grid gap-3 sm:grid-cols-2">
+          <div v-else class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <article v-for="b in broadcasts" :key="b.id" class="border-2 border-neutral-900 bg-white p-4">
               <div class="flex items-start justify-between gap-2">
                 <h4 class="font-semibold">{{ b.name }}</h4>

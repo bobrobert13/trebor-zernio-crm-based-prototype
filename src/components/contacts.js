@@ -122,7 +122,7 @@
 
         <!-- Búsqueda y filtros -->
         <div class="flex flex-wrap items-center gap-3">
-          <div class="flex min-w-56 flex-1 items-center gap-2 border-2 border-neutral-300 bg-white px-3 py-2 focus-within:border-neutral-900">
+          <div class="flex min-w-72 flex-1 items-center gap-2 border-2 border-neutral-300 bg-white px-3 py-2.5 focus-within:border-neutral-900">
             <ui-icon name="search" class="h-4 w-4 text-neutral-400"></ui-icon>
             <input v-model.trim="search" type="search" placeholder="Buscar por nombre o teléfono…"
               class="w-full bg-transparent text-sm outline-none" />
@@ -156,9 +156,9 @@
               <ui-empty v-if="filtered.length === 0" icon="users" title="Sin contactos"
                 desc="Crea tu primer contacto o cambia los filtros." class="p-8"></ui-empty>
               <tr v-for="c in filtered" :key="c.id" class="hover:bg-stone-50">
-                <td class="px-4 py-3">
+                <td class="px-4 py-3.5">
                   <div class="flex items-center gap-3">
-                    <ui-avatar :name="c.name" size="h-9 w-9 text-xs"></ui-avatar>
+                    <ui-avatar :name="c.name" size="h-10 w-10 text-sm"></ui-avatar>
                     <div class="min-w-0">
                       <p class="font-semibold">{{ c.name }}</p>
                       <p class="font-mono text-[11px] text-neutral-400">{{ c.phone }}</p>
@@ -190,7 +190,7 @@
         </div>
 
         <!-- Modal crear/editar -->
-        <ui-modal :open="modalOpen" :title="form.id ? 'Editar contacto' : 'Nuevo contacto'" @close="modalOpen = false">
+        <ui-modal :open="modalOpen" :title="form.id ? 'Editar contacto' : 'Nuevo contacto'" width="max-w-2xl" @close="modalOpen = false">
           <div class="space-y-4">
             <div class="grid gap-4 sm:grid-cols-2">
               <ui-field label="Nombre">

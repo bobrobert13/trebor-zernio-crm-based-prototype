@@ -112,8 +112,8 @@
     },
 
     template: `
-      <div class="max-w-3xl space-y-6">
-        <header>
+      <div class="grid items-start gap-6 xl:grid-cols-2">
+        <header class="xl:col-span-2">
           <h2 class="text-2xl font-bold">Configuración</h2>
           <p class="mt-1 text-sm text-neutral-500">Branding, integración con Zernio y datos del espacio de trabajo.</p>
         </header>

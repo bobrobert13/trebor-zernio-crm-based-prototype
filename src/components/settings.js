@@ -26,6 +26,8 @@
       const whSaving = Vue.ref(false);
       const whLogs = Vue.ref([]);
       const whLogsOpen = Vue.ref(false);
+      const tunnelUrl = Vue.ref(null);
+      const tunnelBusy = Vue.ref(false);
       const health = Vue.ref(null);
       const healthBusy = Vue.ref(false);
       const reconnectOpen = Vue.ref(false);
@@ -254,6 +256,31 @@
         else whForm.events.push(event);
       }
 
+      /**
+       * Obtiene la URL pública del túnel (server.mjs /api/tunnel → cloudflared/ngrok)
+       * y la aplica a la URL del receptor con el secret actual.
+       */
+      async function fetchTunnelUrl() {
+        if (tunnelBusy.value) return;
+        tunnelBusy.value = true;
+        try {
+          const res = await fetch('/api/tunnel', { cache: 'no-store' });
+          const data = await res.json();
+          if (data && data.url) {
+            tunnelUrl.value = data.url;
+            if (!whForm.secret) whForm.secret = randomSecret();
+            whForm.url = `${data.url}/webhooks/zernio?secret=${encodeURIComponent(whForm.secret)}`;
+            toast('URL pública aplicada — guarda para suscribir en Zernio', 'success');
+          } else {
+            toast('No hay túnel activo. Ejecuta: node tunnel.mjs', 'error', 6000);
+          }
+        } catch {
+          toast('Servidor local no disponible (node server.mjs)', 'error');
+        } finally {
+          tunnelBusy.value = false;
+        }
+      }
+
       /** Health check de la cuenta WhatsApp vinculada a Zernio. */
       async function checkHealth() {
         const accountId = workspace.value.zernio && workspace.value.zernio.accountId;
@@ -307,11 +334,11 @@
         apiKeyInput, testing, testResult, confirmReset, confirmDelete,
         workspace, modality, referrer, ACCENTS, store,
         EVENTS, whForm, whExists, whSaving, whLogs, whLogsOpen,
-        health, healthBusy, reconnectOpen,
+        health, healthBusy, reconnectOpen, tunnelUrl, tunnelBusy,
         canEdit, saveBranding, saveApiKey, testConnection,
         disconnectWhatsApp, reconnectWhatsApp, exportData, resetDemo, deleteWorkspace,
         saveWebhooks, deleteWebhooks, testWebhook, openLogs, simulateWebhook, toggleWhEvent,
-        buildWebhookUrl, checkHealth, disconnectLive, onLiveConnected,
+        buildWebhookUrl, fetchTunnelUrl, checkHealth, disconnectLive, onLiveConnected,
       };
     },
 
@@ -471,14 +498,22 @@
                 <input v-model.trim="whForm.name" type="text"
                   class="w-full border-2 border-neutral-300 px-3 py-2.5 outline-none focus:border-neutral-900" />
               </ui-field>
-              <ui-field label="URL del receptor" hint="Local: node server.mjs · Producción: URL pública (ngrok) + secret en query.">
+              <ui-field label="URL del receptor" hint="Local: node server.mjs · Producción: URL pública (túnel https) + secret en query.">
                 <div class="flex items-center gap-2">
                   <input v-model.trim="whForm.url" type="text" readonly
                     class="w-full border-2 border-neutral-300 bg-stone-50 px-3 py-2.5 font-mono text-xs outline-none" />
                   <button @click="whForm.url = buildWebhookUrl()" class="shrink-0 border-2 border-neutral-900 bg-white px-2.5 py-2 text-xs font-medium transition hover:shadow-brutal-sm" aria-label="Regenerar URL">
                     <ui-icon name="refresh" class="h-4 w-4"></ui-icon>
                   </button>
+                  <button @click="fetchTunnelUrl" :disabled="tunnelBusy"
+                    class="flex shrink-0 items-center gap-1.5 border-2 border-neutral-900 bg-white px-2.5 py-2 text-xs font-medium transition hover:shadow-brutal-sm disabled:opacity-40"
+                    aria-label="Obtener URL pública">
+                    <ui-spinner v-if="tunnelBusy" size="h-3.5 w-3.5"></ui-spinner>
+                    <ui-icon v-else name="link" class="h-3.5 w-3.5"></ui-icon>
+                    URL pública
+                  </button>
                 </div>
+                <span v-if="tunnelUrl" class="mt-1 block font-mono text-[10px] text-emerald-700">Túnel activo: {{ tunnelUrl }}</span>
               </ui-field>
               <ui-field label="Eventos suscritos">
                 <div class="flex flex-wrap gap-1.5">

@@ -42,8 +42,8 @@
     store.route = target;
   }
 
-  /** Restaura sesión persistida y enruta. */
-  function bootstrap() {
+  /** Restaura sesión persistida, detecta el servidor y enruta. */
+  async function bootstrap() {
     storage.initPersistence(store);
     const session = storage.loadSession();
     if (session) {
@@ -58,7 +58,9 @@
     }
     ZernioCrm.applyAccent(store.workspace);
     window.addEventListener('hashchange', syncRoute);
-    ZernioCrm.detectServer().then((ok) => { if (ok) startWebhookPolling(); });
+    // Espera la detección del servidor para que las primeras llamadas live usen el proxy
+    await ZernioCrm.detectServer();
+    if (store.serverMode) startWebhookPolling();
     syncRoute();
   }
 
@@ -215,9 +217,9 @@
     `,
   };
 
-  bootstrap();
-
-  const app = Vue.createApp(App);
-  Object.entries(ZernioCrm.components).forEach(([name, def]) => app.component(name, def));
-  app.mount('#app');
+  bootstrap().then(() => {
+    const app = Vue.createApp(App);
+    Object.entries(ZernioCrm.components).forEach(([name, def]) => app.component(name, def));
+    app.mount('#app');
+  });
 })();

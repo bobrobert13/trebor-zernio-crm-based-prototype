@@ -115,9 +115,14 @@
 
       /** Vincula un número provisionado (Zernio/Telnyx). */
       async function connectWithPhone(phone) {
+        const accountId = phone.accountId || phone.ownerAccountId || '';
+        if (!accountId) {
+          toast('El número no tiene cuenta vinculada: elige una cuenta existente o conéctalo por credenciales', 'error');
+          return;
+        }
         result.value = {
           profileId: selectedProfileId.value,
-          accountId: phone.accountId || phone.ownerAccountId || '',
+          accountId,
           phone: phone.phoneNumber || phone.displayName || 'Número Zernio',
         };
         step.value = 'done';

@@ -27,6 +27,20 @@
     }
   }
 
+  /**
+   * Elimina recursivamente propiedades con valor null/undefined de un body
+   * (el API rechaza campos string que llegan como null).
+   * @param {*} value — valor a sanitizar.
+   * @returns {*} Valor sin null/undefined.
+   */
+  function sanitizeBody(value) {
+    if (Array.isArray(value)) return value.map(sanitizeBody);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).filter(([, v]) => v != null).map(([k, v]) => [k, sanitizeBody(v)]));
+    }
+    return value;
+  }
+
   /** Cliente HTTP del API de Zernio. */
   class ZernioApiClient {
     /**
@@ -54,10 +68,10 @@
         ? { 'X-Zernio-Key': ZernioCrm.store.apiKey }
         : { Authorization: `Bearer ${ZernioCrm.store.apiKey}` };
       if (body) headers['Content-Type'] = 'application/json';
-    
+      
       let response;
       try {
-        response = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+        response = await fetch(url, { method, headers, body: body ? JSON.stringify(sanitizeBody(body)) : undefined });
       } catch {
         if (serverMode) {
           throw new ApiError('No se pudo conectar con el servidor local. Ejecuta: node server.mjs', 'server_unreachable', 'SERVER_UNREACHABLE');
@@ -145,10 +159,14 @@
     /**
      * Mensajes de una conversación.
      * @param {string} conversationId — id de la conversación.
-     * @param {string} accountId — cuenta WhatsApp (requerida por el API).
+     * @param {string} accountId — cuenta WhatsApp (REQUERIDA por el API como query).
      * @returns {Promise<Array<object>>} Mensajes.
+     * @throws {ApiError} Si falta accountId (guard claro antes de llamar).
      */
     listMessages(conversationId, accountId) {
+      if (!accountId) {
+        throw new ApiError('No hay cuenta WhatsApp vinculada: reconecta en Configuración → Canal WhatsApp', 'missing_required_field', 'ACCOUNT_REQUIRED');
+      }
       return this.request(`/inbox/conversations/${conversationId}/messages`, { query: { accountId } });
     }
 

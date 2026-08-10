@@ -47,33 +47,31 @@
     ];
   }
 
-  /** JSON de pantallas para un flow de captura de leads (versión Meta 6.0). */
+  /** JSON de pantallas para un flow de captura de leads (versión Meta 6.0, screens a nivel raíz). */
   function leadFlowJson(nicheName) {
     return {
       version: '6.0',
-      data: {
-        theme_name: 'ZernioCRM',
-        screens: [
-          {
-            id: 'LEAD_FORM',
-            title: `Hablemos de ${nicheName}`,
-            terminal: true,
-            layout: { type: 'SingleColumnLayout', children: [{ type: 'FormScreen', name: 'form' }] },
-            data: {
-              form: {
-                title: 'Cuéntanos qué necesitas',
-                body: 'Completa tus datos y un asesor te contactará.',
-                fields: [
-                  { type: 'text_input', name: 'nombre', label: 'Nombre', required: true },
-                  { type: 'phone_input', name: 'telefono', label: 'Teléfono' },
-                  { type: 'text_input', name: 'mensaje', label: 'Mensaje' },
-                ],
-                footer: 'Respuestas de la encuesta: trebor',
-              },
+      data: { theme_name: 'ZernioCRM' },
+      screens: [
+        {
+          id: 'LEAD_FORM',
+          title: `Hablemos de ${nicheName}`,
+          terminal: true,
+          layout: { type: 'SingleColumnLayout', children: [{ type: 'FormScreen', name: 'form' }] },
+          data: {
+            form: {
+              title: 'Cuéntanos qué necesitas',
+              body: 'Completa tus datos y un asesor te contactará.',
+              fields: [
+                { type: 'text_input', name: 'nombre', label: 'Nombre', required: true },
+                { type: 'phone_input', name: 'telefono', label: 'Teléfono' },
+                { type: 'text_input', name: 'mensaje', label: 'Mensaje' },
+              ],
+              footer: 'Respuestas de la encuesta: trebor',
             },
           },
-        ],
-      },
+        },
+      ],
     };
   }
 
@@ -96,7 +94,7 @@
 
       const seqOpen = Vue.ref(false);
       const seqSaving = Vue.ref(false);
-      const seqForm = Vue.reactive({ name: '', steps: [{ delayMinutes: 0, message: '' }] });
+      const seqForm = Vue.reactive({ name: '', templateId: null, steps: [{ delayMinutes: 0, message: '' }] });
       const seqEnrollOpen = Vue.ref(false);
       const seqEnrollTarget = Vue.ref(null);
       const enrolling = Vue.ref(false);
@@ -152,13 +150,17 @@
 
       Vue.onMounted(load);
 
-      /** Crea y envía un broadcast (live: draft → segmento → send). */
+      /** Crea un broadcast (live: draft → segmento → send). */
       async function createBroadcast() {
         if (!form.name.trim() || !form.templateId || sending.value) return;
+        const tpl = templates.value.find((t) => tplId(t) === form.templateId);
+        if (!tpl || !tpl.name) {
+          toast('Selecciona una plantilla válida (la plantilla creada aún no tiene nombre en el API)', 'error');
+          return;
+        }
         sending.value = true;
         try {
           if (isLive.value) {
-            const tpl = templates.value.find((t) => (t.id || t.name) === form.templateId);
             const draft = await api.createBroadcast({
               profileId: profileId.value,
               accountId: accountId.value,
@@ -217,7 +219,8 @@
                   library_template_name: tplForm.libraryName.trim(),
                 };
             const created = await api.createTemplate(payload);
-            templates.value.unshift(created);
+            const createdTpl = asArray(created)[0] || created.template || created;
+            templates.value.unshift(createdTpl);
             toast('Plantilla creada (en revisión de Meta)', 'success');
           } else {
             templates.value.unshift({
@@ -274,12 +277,28 @@
         if (seqForm.steps.length > 1) seqForm.steps.splice(index, 1);
       }
 
+      /** Plantillas APPROVED disponibles para secuencias (WhatsApp las exige). */
+      const approvedTemplates = Vue.computed(() => templates.value.filter((t) => t.status === 'APPROVED'));
+
       /** Crea una secuencia (live: /sequences; demo: local). */
       async function createSequence() {
         if (!seqForm.name.trim() || seqSaving.value) return;
+        if (isLive.value) {
+          const tpl = templates.value.find((t) => tplId(t) === seqForm.templateId);
+          if (!tpl || tpl.status !== 'APPROVED') {
+            toast('WhatsApp exige una plantilla APROBADA para cada paso de la secuencia', 'error');
+            return;
+          }
+        }
         const steps = seqForm.steps
           .filter((s) => s.message.trim())
-          .map((s, i) => ({ order: i + 1, delayMinutes: Number(s.delayMinutes) || 0, message: { text: s.message.trim() } }));
+          .map((s, i) => ({
+            order: i + 1,
+            delayMinutes: Number(s.delayMinutes) || 0,
+            ...(isLive.value
+              ? { template: { name: templates.value.find((t) => tplId(t) === seqForm.templateId).name, language: 'es' } }
+              : { message: { text: s.message.trim() } }),
+          }));
         if (steps.length === 0) return;
         seqSaving.value = true;
         try {
@@ -422,6 +441,7 @@
         seqOpen, seqSaving, seqForm, seqEnrollOpen, seqEnrollTarget, enrolling,
         flowOpen, flowSaving, flowForm, flowSendOpen, flowSendTarget, flowPhone,
         workspace, niche, isLive, broadcasts, templates, sequences, flows, TEMPLATE_TONES,
+        approvedTemplates,
         canEdit, createBroadcast, createTemplate, openRecipients, tplId,
         addSeqStep, removeSeqStep, createSequence, toggleSequence, enrollSequence,
         createFlow, sendFlow, seqStatusTone, formatDate, formatTime,
@@ -678,9 +698,15 @@
         <!-- Modal: nueva secuencia -->
         <ui-modal :open="seqOpen" title="Nueva secuencia" width="max-w-2xl" @close="seqOpen = false">
           <div class="space-y-4">
-            <ui-field label="Nombre de la secuencia">
+          <ui-field label="Nombre de la secuencia">
               <input v-model.trim="seqForm.name" type="text" placeholder="Ej: Seguimiento post-venta"
                 class="w-full border-2 border-neutral-300 px-3 py-2.5 outline-none focus:border-neutral-900" />
+            </ui-field>
+            <ui-field v-if="isLive" label="Plantilla de WhatsApp (aprobada)" hint="En WhatsApp cada paso usa una plantilla; el texto libre del paso no aplica.">
+              <select v-model="seqForm.templateId" class="w-full border-2 border-neutral-300 bg-white px-3 py-2.5 outline-none focus:border-neutral-900">
+                <option :value="null" disabled>Elige una plantilla aprobada…</option>
+                <option v-for="t in approvedTemplates" :key="tplId(t)" :value="tplId(t)">{{ t.name }} ({{ t.language }})</option>
+              </select>
             </ui-field>
             <div class="space-y-3">
               <div v-for="(step, i) in seqForm.steps" :key="i" class="border-2 border-neutral-200 p-3">
@@ -707,7 +733,7 @@
             <button @click="addSeqStep" class="flex items-center gap-1.5 text-sm font-medium text-[var(--accent)]">
               <ui-icon name="plus" class="h-4 w-4"></ui-icon> Añadir paso
             </button>
-            <button @click="createSequence" :disabled="seqSaving || !seqForm.name.trim()"
+            <button @click="createSequence" :disabled="seqSaving || !seqForm.name.trim() || (isLive && !seqForm.templateId)"
               class="flex w-full items-center justify-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
               <ui-spinner v-if="seqSaving" size="h-4 w-4"></ui-spinner>
               {{ seqSaving ? 'Creando…' : 'Crear secuencia' }}

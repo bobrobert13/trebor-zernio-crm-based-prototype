@@ -70,12 +70,12 @@
     },
 
     template: `
-      <div v-if="workspace" class="space-y-6">
+      <div v-if="workspace" class="space-y-8">
         <!-- Encabezado -->
         <header class="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 class="text-2xl font-bold capitalize">{{ today }}</h2>
-            <p class="mt-1 text-neutral-500">
+            <h2 class="text-3xl font-bold capitalize">{{ today }}</h2>
+            <p class="mt-1.5 text-neutral-500">
               Hola, <span class="font-semibold text-neutral-900">{{ user.name }}</span> — esto está pasando en
               <span class="font-semibold text-neutral-900">{{ workspace.name }}</span>
             </p>
@@ -86,83 +86,84 @@
           </div>
         </header>
 
-        <!-- KPIs del nicho -->
-        <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div v-for="k in kpis" :key="k.id" class="border-2 border-neutral-900 bg-white p-5">
+        <!-- KPIs del nicho (banda completa) -->
+        <section class="grid grid-cols-2 gap-5 lg:grid-cols-4">
+          <div v-for="k in kpis" :key="k.id"
+            class="flex h-36 flex-col justify-between border-2 border-neutral-900 bg-white p-6">
             <div class="flex items-center justify-between">
               <span class="font-mono text-[11px] uppercase tracking-widest text-neutral-400">{{ k.label }}</span>
-              <ui-icon :name="k.icon" class="h-4 w-4 text-neutral-300"></ui-icon>
+              <ui-icon :name="k.icon" class="h-5 w-5 text-neutral-300"></ui-icon>
             </div>
-            <p class="mt-3 text-3xl font-bold tabular-nums">{{ k.value }}<span v-if="k.unit" class="ml-1 text-base font-medium text-neutral-400">{{ k.unit }}</span></p>
+            <p class="text-4xl font-bold tabular-nums">
+              {{ k.value }}<span v-if="k.unit" class="ml-1.5 text-lg font-medium text-neutral-400">{{ k.unit }}</span>
+            </p>
           </div>
         </section>
 
-        <div class="grid gap-6 lg:grid-cols-3">
-          <!-- Columna principal -->
-          <div class="space-y-6 lg:col-span-2">
-            <!-- Canal WhatsApp -->
-            <section class="border-2 border-neutral-900 bg-white p-5">
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <div class="flex items-center gap-3">
-                  <span class="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
-                    <ui-icon name="whatsapp" class="h-6 w-6"></ui-icon>
-                  </span>
-                  <div>
-                    <p class="font-semibold">{{ workspace.whatsapp.phone }}</p>
-                    <p class="text-xs text-neutral-500">{{ workspace.whatsapp.about }}</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2">
-                  <ui-badge variant="success" dot>Conectado</ui-badge>
-                  <button v-if="can(user.role, 'settings')" @click="navigate('settings')"
-                    class="border-2 border-neutral-900 px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
-                    Gestionar
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <!-- Acciones rápidas -->
-            <section>
-              <h3 class="mb-3 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Acciones rápidas</h3>
-              <div class="grid gap-3 sm:grid-cols-2">
-                <button v-for="a in quickActions" :key="a.route" @click="navigate(a.route)"
-                  class="flex items-center gap-3 border-2 border-neutral-900 bg-white p-4 text-left shadow-brutal-sm transition hover:-translate-y-0.5">
-                  <span class="flex h-9 w-9 items-center justify-center bg-[var(--accent)] text-white">
-                    <ui-icon :name="a.icon" class="h-5 w-5"></ui-icon>
-                  </span>
-                  <span class="font-medium">{{ a.label }}</span>
-                  <ui-icon name="arrow-right" class="ml-auto h-4 w-4 text-neutral-300"></ui-icon>
-                </button>
-              </div>
-            </section>
-
-            <!-- Estado del roadmap del nicho -->
-            <section class="border-2 border-neutral-900 bg-white p-5">
-              <div class="flex items-center justify-between">
-                <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Roadmap del negocio</h3>
-                <span class="font-mono text-xs tabular-nums text-neutral-500">{{ roadmapDone }}/{{ roadmapTotal }} configurados</span>
-              </div>
-              <div class="mt-3 h-2 border border-neutral-900 bg-neutral-100">
-                <div class="h-full bg-[var(--accent)]" :style="{ width: (roadmapDone / roadmapTotal * 100) + '%' }"></div>
-              </div>
-              <p class="mt-3 text-xs text-neutral-500">
-                {{ niche.roadmap.filter(r => !r.optional).map(r => r.title).join(' · ') }}
-              </p>
-            </section>
+        <!-- Strip del canal WhatsApp -->
+        <section class="flex flex-wrap items-center justify-between gap-4 border-2 border-neutral-900 bg-white p-5">
+          <div class="flex items-center gap-4">
+            <span class="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
+              <ui-icon name="whatsapp" class="h-6 w-6"></ui-icon>
+            </span>
+            <div>
+              <p class="text-lg font-semibold leading-tight">{{ workspace.whatsapp.phone }}</p>
+              <p class="text-sm text-neutral-500">{{ workspace.whatsapp.about }}</p>
+            </div>
           </div>
+          <div class="flex items-center gap-3">
+            <ui-badge variant="success" dot>Conectado</ui-badge>
+            <button v-if="can(user.role, 'settings')" @click="navigate('settings')"
+              class="border-2 border-neutral-900 bg-white px-4 py-2 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
+              Gestionar canal
+            </button>
+          </div>
+        </section>
+
+        <!-- Acciones rápidas (fila completa) -->
+        <section>
+          <h3 class="mb-3 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Acciones rápidas</h3>
+          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <button v-for="a in quickActions" :key="a.route" @click="navigate(a.route)"
+              class="flex items-center gap-4 border-2 border-neutral-900 bg-white p-5 text-left shadow-brutal-sm transition hover:-translate-y-0.5">
+              <span class="flex h-11 w-11 shrink-0 items-center justify-center bg-[var(--accent)] text-white">
+                <ui-icon :name="a.icon" class="h-5 w-5"></ui-icon>
+              </span>
+              <span class="text-base font-medium">{{ a.label }}</span>
+              <ui-icon name="arrow-right" class="ml-auto h-5 w-5 text-neutral-300"></ui-icon>
+            </button>
+          </div>
+        </section>
+
+        <div class="grid gap-6 xl:grid-cols-12">
+          <!-- Roadmap del nicho -->
+          <section class="border-2 border-neutral-900 bg-white p-6 xl:col-span-7">
+            <div class="flex items-center justify-between">
+              <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Roadmap del negocio</h3>
+              <span class="font-mono text-xs tabular-nums text-neutral-500">{{ roadmapDone }}/{{ roadmapTotal }} configurados</span>
+            </div>
+            <div class="mt-4 h-3 border-2 border-neutral-900 bg-neutral-100">
+              <div class="h-full bg-[var(--accent)] transition-all" :style="{ width: (roadmapDone / roadmapTotal * 100) + '%' }"></div>
+            </div>
+            <div class="mt-5 grid gap-2.5 sm:grid-cols-2">
+              <div v-for="r in niche.roadmap.filter(x => !x.optional)" :key="r.id" class="flex items-center gap-2.5 text-sm">
+                <ui-icon name="check-circle" class="h-4 w-4 shrink-0 text-emerald-700"></ui-icon>
+                <span class="truncate">{{ r.title }}</span>
+              </div>
+            </div>
+          </section>
 
           <!-- Actividad reciente -->
-          <section class="border-2 border-neutral-900 bg-white p-5">
-            <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Actividad reciente</h3>
-            <ul class="space-y-4">
-              <li v-for="act in activity" :key="act.id" class="flex items-start gap-3">
-                <span class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-500">
-                  <ui-icon :name="ACT_ICONS[act.type] || 'zap'" class="h-3.5 w-3.5"></ui-icon>
+          <section class="border-2 border-neutral-900 bg-white p-6 xl:col-span-5">
+            <h3 class="mb-5 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Actividad reciente</h3>
+            <ul class="space-y-5">
+              <li v-for="act in activity" :key="act.id" class="flex items-start gap-3.5">
+                <span class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-500">
+                  <ui-icon :name="ACT_ICONS[act.type] || 'zap'" class="h-4 w-4"></ui-icon>
                 </span>
                 <div class="min-w-0">
                   <p class="text-sm leading-snug">{{ act.text }}</p>
-                  <p class="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-neutral-400">{{ timeAgo(act.ts) }}</p>
+                  <p class="mt-1 font-mono text-[10px] uppercase tracking-wider text-neutral-400">{{ timeAgo(act.ts) }}</p>
                 </div>
               </li>
             </ul>

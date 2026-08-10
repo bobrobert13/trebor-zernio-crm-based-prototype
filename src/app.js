@@ -171,7 +171,7 @@
             Modo demo activo: Zernio bloqueó peticiones del navegador (CORS). Revisa Configuración.
           </div>
 
-          <main class="flex-1 p-4 lg:p-6">
+          <main class="flex-1 p-5 lg:p-8">
             <component :is="viewComponent"></component>
           </main>
         </div>

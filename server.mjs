@@ -43,10 +43,12 @@ const MIME = {
 /** Cola de eventos de webhook recibidos (para polling del frontend). */
 const webhookEvents = [];
 
-/** Headers CORS (permite abrir el HTML desde otro origen, p.ej. file://). */
-function corsHeaders() {
+/** Headers CORS restringidos: solo refleja origen si es localhost (protege el feed de webhooks). */
+function corsHeaders(req) {
+  const origin = req.headers.origin || '';
+  const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
   return {
-    'Access-Control-Allow-Origin': '*',
+    ...(local ? { 'Access-Control-Allow-Origin': origin } : {}),
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, X-Zernio-Key, X-Zernio-Secret',
   };
@@ -85,7 +87,7 @@ function verifySignature(body, signature, secret) {
 /** Proxy: reenvía la petición al API de Zernio inyectando la key. */
 function proxyZernio(req, res, apiPath, apiKey) {
   if (!apiKey) {
-    res.writeHead(401, { ...corsHeaders(), 'Content-Type': 'application/json' });
+    res.writeHead(401, { ...corsHeaders(req), 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Falta X-Zernio-Key en la petición' }));
     return;
   }
@@ -101,17 +103,28 @@ function proxyZernio(req, res, apiPath, apiKey) {
       },
     },
     (upRes) => {
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
       res.writeHead(upRes.statusCode || 502, {
-        ...corsHeaders(),
+        ...corsHeaders(req),
         ...pickHeaders(upRes.headers),
       });
       upRes.pipe(res);
     }
   );
+  upstream.setTimeout(15000, () => upstream.destroy(new Error('upstream timeout')));
   upstream.on('error', (err) => {
-    res.writeHead(502, { ...corsHeaders(), 'Content-Type': 'application/json' });
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    res.writeHead(502, { ...corsHeaders(req), 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: `Proxy: ${err.message}` }));
   });
+  req.on('error', () => {});
+  res.on('error', () => {});
   req.pipe(upstream);
 }
 
@@ -129,7 +142,7 @@ async function serveStatic(req, res, urlPath) {
   const rel = normalize(decodeURIComponent(urlPath)).replace(/^(\.\.(\/|\\|$))+/, '');
   const filePath = join(ROOT, rel);
   if (!filePath.startsWith(ROOT)) {
-    res.writeHead(403, corsHeaders());
+    res.writeHead(403, corsHeaders(req));
     res.end('Forbidden');
     return;
   }
@@ -137,10 +150,10 @@ async function serveStatic(req, res, urlPath) {
     const info = await stat(filePath);
     const target = info.isDirectory() ? join(filePath, 'index.html') : filePath;
     const body = await readFile(target);
-    res.writeHead(200, { ...corsHeaders(), 'Content-Type': MIME[extname(target)] || 'application/octet-stream' });
+    res.writeHead(200, { ...corsHeaders(req), 'Content-Type': MIME[extname(target)] || 'application/octet-stream' });
     res.end(body);
   } catch {
-    res.writeHead(404, { ...corsHeaders(), 'Content-Type': 'text/plain' });
+    res.writeHead(404, { ...corsHeaders(req), 'Content-Type': 'text/plain' });
     res.end('Not found');
   }
 }
@@ -151,7 +164,7 @@ async function handleWebhook(req, res, url) {
   const body = await readBody(req);
   const signature = req.headers['x-zernio-signature'];
   if (!verifySignature(body, signature, secret)) {
-    res.writeHead(401, { ...corsHeaders(), 'Content-Type': 'application/json' });
+    res.writeHead(401, { ...corsHeaders(req), 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Firma HMAC inválida (x-zernio-signature)' }));
     return;
   }
@@ -163,7 +176,7 @@ async function handleWebhook(req, res, url) {
   }
   webhookEvents.unshift({ receivedAt: new Date().toISOString(), event });
   if (webhookEvents.length > WEBHOOK_MAX) webhookEvents.length = WEBHOOK_MAX;
-  res.writeHead(200, { ...corsHeaders(), 'Content-Type': 'application/json' });
+  res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ ok: true, received: webhookEvents.length }));
 }
 
@@ -172,20 +185,20 @@ const server = createServer(async (req, res) => {
   const { pathname } = url;
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, corsHeaders());
+    res.writeHead(204, corsHeaders(req));
     res.end();
     return;
   }
 
   try {
     if (pathname === '/api/health') {
-      res.writeHead(200, { ...corsHeaders(), 'Content-Type': 'application/json' });
+      res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, server: 'zernio-mvp', proxy: true, webhooks: true, uptime: process.uptime() }));
       return;
     }
 
     if (pathname === '/webhooks/events') {
-      res.writeHead(200, { ...corsHeaders(), 'Content-Type': 'application/json' });
+      res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ events: webhookEvents }));
       return;
     }
@@ -196,13 +209,13 @@ const server = createServer(async (req, res) => {
     }
 
     if (pathname.startsWith('/zernio/')) {
-      proxyZernio(req, res, pathname.slice('/zernio'.length), req.headers['x-zernio-key']);
+      proxyZernio(req, res, pathname.slice('/zernio'.length) + url.search, req.headers['x-zernio-key']);
       return;
     }
 
     await serveStatic(req, res, pathname === '/' ? '/index.html' : pathname);
   } catch (err) {
-    res.writeHead(500, { ...corsHeaders(), 'Content-Type': 'application/json' });
+    res.writeHead(500, { ...corsHeaders(req), 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: err.message || 'Error interno' }));
   }
 });

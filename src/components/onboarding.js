@@ -70,7 +70,7 @@
           case 1: return Boolean(form.nicheId);
           case 3: return form.name.trim().length > 0;
           case 4: return Boolean(form.referrer);
-          case 6: return Boolean(waModality.value) && waSim.done;
+          case 6: return (Boolean(waModality.value) && waSim.done) || Boolean(liveResult.value);
           case 7: return !creating.value;
           default: return true;
         }

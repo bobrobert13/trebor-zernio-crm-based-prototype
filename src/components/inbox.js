@@ -77,9 +77,28 @@
       /** Pantalla de carga simulada al entrar a la bandeja. */
       later(() => { loading.value = false; }, 600);
 
-      function selectConversation(conv) {
+      /** Abre una conversación; en live carga sus mensajes si aún no están. */
+      async function selectConversation(conv) {
         selectedId.value = conv.id;
         if (conv.unread > 0) conv.unread = 0;
+        if (isLive.value && conv.messages.length === 0) {
+          const accountId = workspace.value.zernio && workspace.value.zernio.accountId;
+          if (!accountId) return;
+          try {
+            const data = await ZernioCrm.api.listMessages(conv.id, accountId);
+            const list = Array.isArray(data) ? data : data.messages || [];
+            conv.messages = list.map((m) => ({
+              id: m.id || m.messageId,
+              from: m.direction === 'outbound' || m.from === 'me' ? 'out' : 'in',
+              text: m.text || m.message || '',
+              ts: Date.parse(m.timestamp || m.createdAt) || Date.now(),
+              status: m.status || 'delivered',
+            }));
+            conv.lastTs = conv.messages.length ? conv.messages[conv.messages.length - 1].ts : conv.lastTs;
+          } catch (err) {
+            toast(err.message || 'No se pudieron cargar los mensajes', 'error');
+          }
+        }
       }
 
       function backToList() {

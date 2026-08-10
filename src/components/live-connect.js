@@ -76,13 +76,14 @@
       }
 
       /** Carga cuentas y números provisionados del perfil elegido. */
-      async function loadChannelOptions() {
-        const profileId = selectedProfileId.value;
-        if (!profileId) return;
+      async function loadChannelOptions(profileId) {
+        const id = profileId || selectedProfileId.value;
+        if (!id) return;
+        selectedProfileId.value = id;
         busy.value = true;
         try {
           const [accData, phoneData] = await Promise.all([
-            api.getAccounts(profileId),
+            api.getAccounts(id),
             api.listPhoneNumbers(),
           ]);
           accounts.value = Array.isArray(accData) ? accData : [];

@@ -158,7 +158,7 @@
 
       /** Guarda la configuración (POST o PUT según exista). */
       async function saveWebhooks() {
-        if (whSaving.value) return;
+        if (!canEdit('settings') || whSaving.value) return;
         whSaving.value = true;
         const payload = {
           name: whForm.name.trim() || 'CRM MVP Webhook',
@@ -183,6 +183,7 @@
 
       /** Elimina la suscripción de webhooks. */
       async function deleteWebhooks() {
+        if (!canEdit('settings')) return;
         try {
           if (store.mode === 'live') await ZernioCrm.api.deleteWebhookSettings();
           whExists.value = false;
@@ -195,6 +196,7 @@
 
       /** Envía un webhook de prueba. */
       async function testWebhook() {
+        if (!canEdit('settings')) return;
         try {
           if (store.mode === 'live') await ZernioCrm.api.testWebhook();
           toast('Webhook de prueba enviado', 'success');
@@ -206,8 +208,12 @@
       /** Abre los logs de entrega (live) o el feed local (demo). */
       async function openLogs() {
         try {
-          if (store.mode === 'live') whLogs.value = (await ZernioCrm.api.getWebhookLogs()) || [];
-          else whLogs.value = store.webhookEvents.slice(0, 20).map((e) => ({ event: e.event && e.event.event, createdAt: new Date(e.receivedAt).toISOString(), url: e.event && e.event.message ? 'local' : '—' }));
+          if (store.mode === 'live') {
+            const data = await ZernioCrm.api.getWebhookLogs();
+            whLogs.value = Array.isArray(data) ? data : (data && (data.logs || data.items)) || [];
+          } else {
+            whLogs.value = store.webhookEvents.slice(0, 20).map((e) => ({ event: e.event && e.event.event, createdAt: new Date(e.receivedAt).toISOString(), url: e.event && e.event.message ? 'local' : '—' }));
+          }
           whLogsOpen.value = true;
         } catch (err) {
           toast(err.message || 'No se pudieron cargar los logs', 'error');
@@ -449,7 +455,7 @@
             <div class="flex items-center gap-2">
               <ui-badge v-if="store.serverMode" variant="success" dot>Servidor local activo</ui-badge>
               <ui-badge v-else variant="neutral">Sin server.mjs</ui-badge>
-              <button @click="simulateWebhook"
+              <button v-if="canEdit('settings')" @click="simulateWebhook"
                 class="border-2 border-neutral-900 bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider shadow-brutal-sm transition hover:shadow-none">
                 Simular mensaje
               </button>
@@ -484,15 +490,15 @@
                 </div>
               </ui-field>
               <div class="flex flex-wrap gap-2">
-                <button @click="saveWebhooks" :disabled="whSaving"
+                <button v-if="canEdit('settings')" @click="saveWebhooks" :disabled="whSaving"
                   class="flex items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
                   <ui-spinner v-if="whSaving" size="h-4 w-4"></ui-spinner>
                   {{ whExists ? 'Actualizar suscripción' : 'Suscribir webhook' }}
                 </button>
-                <button @click="testWebhook" class="border-2 border-neutral-900 bg-white px-4 py-2 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
+                <button v-if="canEdit('settings')" @click="testWebhook" class="border-2 border-neutral-900 bg-white px-4 py-2 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
                   Enviar prueba
                 </button>
-                <button v-if="whExists" @click="deleteWebhooks"
+                <button v-if="whExists && canEdit('settings')" @click="deleteWebhooks"
                   class="border-2 border-red-800 bg-red-50 px-4 py-2 text-sm font-medium text-red-800 transition hover:shadow-brutal-sm">
                   Eliminar suscripción
                 </button>

@@ -195,15 +195,6 @@
     }
 
     /**
-     * Broadcasts (mensajes masivos).
-     * @param {string} [profileId] — filtra por perfil.
-     * @returns {Promise<Array<object>>} Broadcasts.
-     */
-    listBroadcasts(profileId) {
-      return this.request('/broadcasts', { query: { profileId } });
-    }
-
-    /**
      * Plantillas de mensaje de WhatsApp (vienen de Meta Cloud API).
      * @param {string} accountId — cuenta WhatsApp conectada.
      * @returns {Promise<Array<object>>} Plantillas.

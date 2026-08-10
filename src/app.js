@@ -62,7 +62,7 @@
     syncRoute();
   }
 
-  /** Eventos de webhook vistos (para no duplicar al hacer polling). */
+  /** Eventos de webhook vistos (para no duplicar al hacer polling, acotado). */
   const seenWebhooks = new Set();
 
   /**
@@ -78,6 +78,7 @@
         (data.events || []).forEach((entry) => {
           if (seenWebhooks.has(entry.receivedAt)) return;
           seenWebhooks.add(entry.receivedAt);
+          if (seenWebhooks.size > 500) seenWebhooks.delete(seenWebhooks.values().next().value);
           ZernioCrm.pushWebhookEvent(entry.event);
         });
       } catch {

@@ -113,13 +113,16 @@
       function mapLiveHeatmap(data) {
         const grid = data.bestTimes || data.bestTime || data.items || data.data;
         if (!grid || !Array.isArray(grid) || grid.length === 0) return null;
-        return WEEKDAYS.map((day, di) => ({
+        const rows = WEEKDAYS.map((day, di) => ({
           day,
           slots: SLOTS.map((slot, si) => {
             const hit = grid.find((g) => String(g.day || g.weekday || g.dayOfWeek) === String(di + 1) && String(g.hour || g.slot) === slot.id);
             return { ...slot, value: hit ? Number(hit.value ?? hit.score ?? 1) : 0, intensity: hit ? Math.min(4, 1 + Math.round(Number(hit.score ?? hit.value ?? 1) / 2)) : 0 };
           }),
         }));
+        // Si ningún campo coincide con el shape esperado, degrada a demo
+        const totalIntensity = rows.reduce((acc, r) => acc + r.slots.reduce((a, s) => a + s.intensity, 0), 0);
+        return totalIntensity === 0 ? null : rows;
       }
 
       /** Carga datos: live real o demo sintética. */

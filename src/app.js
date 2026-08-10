@@ -14,6 +14,7 @@
     analytics: 'analytics-view',
     inbox: 'inbox-view',
     contacts: 'contacts-view',
+    channels: 'channels-view',
     team: 'team-view',
     broadcasts: 'broadcasts-view',
     settings: 'settings-view',

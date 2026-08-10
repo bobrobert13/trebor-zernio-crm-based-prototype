@@ -140,6 +140,16 @@
     }
 
     /**
+     * Inicia el flujo OAuth de una plataforma (Instagram, TikTok, etc.).
+     * @param {string} platform — id de plataforma (ruta /connect/{platform}).
+     * @param {string} profileId — id del perfil.
+     * @returns {Promise<{url?:string, authUrl?:string}>} URL de autorización.
+     */
+    getConnectUrl(platform, profileId) {
+      return this.request(`/connect/${platform}`, { query: { profileId } });
+    }
+
+    /**
      * Conexión headless de WhatsApp con credenciales de Meta.
      * @param {string} profileId — id del perfil.
      * @param {{wabaId:string, phoneNumberId:string, token:string}} credentials — credenciales WABA.

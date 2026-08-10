@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trebor CRM — Atención al cliente por WhatsApp</title>
+  <link
+    rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%2318181b'/%3E%3Cpath fill='%23fff' d='M12 4a8 8 0 0 0-6.9 12l-1 3.6 3.7-1A8 8 0 1 0 12 4zm3.6 11.4c-.3.9-1.7 1.6-2.4 1.7-.6.1-1.4.1-2.2-.1-4.5-1.1-6.9-5.4-6.9-9.1 0-2 1.4-3.6 3.1-4.1 1.7-.5 3.3.3 4.2 1.9.2.4.4.7.3 1.1-.1.3-.5.6-.7.8l-1.5 1.3c.6 1.6 1.8 2.7 3.3 3.4l1.3-1.4c.2-.3.6-.5 1-.4.4.1.7.3 1 .5.7.4 1.2.9 1.4 1.5.2.8.1 1.6-.1 2.8z'/%3E%3C/svg%3E"
+  />
+
+  <!-- Tipografía: Inter (UI) + IBM Plex Mono (datos/claves, toque brutalista) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- Tailwind Play CDN (prototipo, sin build) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+          },
+          boxShadow: {
+            brutal: '4px 4px 0 0 rgba(0,0,0,1)',
+            'brutal-sm': '2px 2px 0 0 rgba(0,0,0,1)',
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    /* Acento de marca por workspace: lo setea la app via style="" en #app */
+    :root {
+      --accent: #18181b;
+      --accent-soft: #f4f4f5;
+    }
+    html {
+      scrollbar-width: thin;
+    }
+    body {
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    ::selection {
+      background: var(--accent);
+      color: #fff;
+    }
+    .scrollbar-none::-webkit-scrollbar {
+      display: none;
+    }
+    .scrollbar-none {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    /* Transiciones usadas por ui-modal y ui-toast */
+    .fade-enter-active,
+    .fade-leave-active {
+      transition: opacity 0.18s ease;
+    }
+    .fade-enter-from,
+    .fade-leave-to {
+      opacity: 0;
+    }
+  </style>
+</head>
+
+<body class="bg-stone-100 text-neutral-900 font-sans">
+  <!-- Root de la aplicación Vue (montado en src/app.js) -->
+  <div id="app"></div>
+
+  <!--
+    Orden de carga estricto (scripts clásicos, compatibles con file://):
+    1. Vue 3 global build
+    2. constantes (nichos, RBAC, roadmap) → store → storage → demo-data
+    3. servicio Zernio API
+    4. componentes (ui → dominio)
+    5. bootstrap de la app
+  -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
+  <script src="src/constants.js?v=9"></script>
+  <script src="src/store.js?v=9"></script>
+  <script src="src/data/storage.js?v=9"></script>
+  <script src="src/data/demo-data.js?v=9"></script>
+  <script src="src/services/zernio-api.js?v=9"></script>
+
+  <script src="src/components/ui.js?v=9"></script>
+  <script src="src/components/live-connect.js?v=9"></script>
+  <script src="src/components/onboarding.js?v=9"></script>
+  <script src="src/components/dashboard.js?v=9"></script>
+  <script src="src/components/inbox.js?v=9"></script>
+  <script src="src/components/contacts.js?v=9"></script>
+  <script src="src/components/team.js?v=9"></script>
+  <script src="src/components/broadcasts.js?v=9"></script>
+  <script src="src/components/settings.js?v=9"></script>
+  <script src="src/components/analytics.js?v=9"></script>
+
+  <script src="src/app.js?v=9"></script>
+</body>
+</html>

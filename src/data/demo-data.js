@@ -1,0 +1,246 @@
+/**
+ * @file demo-data.js — Generador de datos de demostración por nicho.
+ * Construye un workspace completo (contactos, conversaciones WhatsApp,
+ * usuarios, plantillas, broadcasts y actividad) para validar el MVP sin API key.
+ */
+(function () {
+  'use strict';
+
+  const { ZernioCrm } = window;
+  const { DEMO_PHONE, uid, getNiche } = ZernioCrm;
+
+  /** Muestras de contacto por nicho: [nombre, teléfono, valores de campos, tags]. */
+  const NICHE_SAMPLES = {
+    restaurante: [
+      ['María Pérez', '+58 412 555 0101', ['Delivery', '12', 'Sin cebolla'], ['pedido']],
+      ['José Rodríguez', '+58 416 555 0102', ['Local', '5', ''], ['vip']],
+      ['Ana González', '+58 424 555 0103', ['Para llevar', '', ''], ['reserva']],
+      ['Luis Martínez', '+58 414 555 0104', ['Delivery', '', 'Poco condimento'], ['pedido']],
+    ],
+    repuestos: [
+      ['Carlos Herrera', '+58 412 555 0111', ['Toyota Corolla 2016', 2016, 'Cotizando'], ['cotizacion']],
+      ['Rosa Mendoza', '+58 416 555 0112', ['Chevrolet Aveo 2012', 2012, 'Confirmado'], ['pedido']],
+      ['Jorge Díaz', '+58 424 555 0113', ['Ford F-150 2019', 2019, 'Entregado'], ['vip']],
+      ['Marta Suárez', '+58 414 555 0114', ['Hyundai Tucson 2018', 2018, 'En tránsito'], ['pedido']],
+    ],
+    farmacia: [
+      ['Carmen López', '+58 412 555 0121', ['Sí', 'Delivery', 'El Paraíso'], ['pedido', 'receta']],
+      ['Pedro García', '+58 416 555 0122', ['No', 'En mostrador', ''], ['pedido']],
+      ['Yusmary Contreras', '+58 424 555 0123', ['Sí', 'Delivery', 'La Candelaria'], ['receta']],
+      ['Andrés Silva', '+58 414 555 0124', ['No', 'En mostrador', ''], ['reclamo']],
+    ],
+    fibra: [
+      ['Nelson Rivas', '+58 412 555 0131', ['50 Mbps', 'El Valle', 'Cotizando'], ['cotizacion']],
+      ['Beatriz Campos', '+58 416 555 0132', ['100 Mbps', 'Petare', 'Agendada'], ['instalacion']],
+      ['Omar Quintero', '+58 424 555 0133', ['25 Mbps', 'Catia', 'Instalado'], ['falla']],
+      ['Julia Figueroa', '+58 414 555 0134', ['200 Mbps', 'Chacao', 'Instalado'], ['facturacion']],
+    ],
+    optica: [
+      ['Rafael Urdaneta', '+58 412 555 0141', ['Progresivo', '-1.50 / -1.75', '2026-11-10'], ['cita']],
+      ['Teresa Barrios', '+58 416 555 0142', ['Monofocal', '-2.25', ''], ['lentes']],
+      ['Alberto Núñez', '+58 424 555 0143', ['Anti-reflejo', '-0.75', '2026-12-01'], ['examen']],
+      ['Isabel Moreno', '+58 414 555 0144', ['Bifocal', '+1.25', ''], ['garantia']],
+    ],
+    celulares: [
+      ['Gabriel Acevedo', '+58 412 555 0151', ['iPhone 13', 'Usado', 6], ['cotizacion']],
+      ['Patricia Villalba', '+58 416 555 0152', ['Samsung A54', 'Nuevo', 12], ['preventa']],
+      ['Hugo Castillo', '+58 424 555 0153', ['Xiaomi Redmi 12', 'Nuevo', 12], ['garantia']],
+      ['Luisa Ferrer', '+58 414 555 0154', ['Motorola G84', 'Reacondicionado', 3], ['vip']],
+    ],
+    vendedor: [
+      ['Sandra Pacheco', '+58 412 555 0161', ['PED-1001', 'Zoom', 'TRA-88231'], ['pedido', 'pago']],
+      ['Miguel Ángel Rojas', '+58 416 555 0162', ['PED-1002', 'MRW', ''], ['pedido']],
+      ['Eliana Torres', '+58 424 555 0163', ['PED-1003', 'Propio', ''], ['entrega']],
+      ['Víctor Salazar', '+58 414 555 0164', ['PED-1004', 'Yummy', 'TRA-55219'], ['preventa']],
+    ],
+    personalizado: [
+      ['Marina Delgado', '+58 412 555 0171', ['Cliente desde 2024', 'Alto'], ['cliente']],
+      ['Francisco Rangel', '+58 416 555 0172', ['', 'Medio'], ['seguimiento']],
+    ],
+  };
+
+  /** Guiones de conversación demo: [mensaje entrante, respuesta saliente]. */
+  const SCRIPTS = [
+    ['Hola, ¿me pueden ayudar con una consulta? 🙏', '¡Claro! Con gusto. Cuéntame qué necesitas.'],
+    ['Buenas tardes, quiero hacer un pedido', '¡Perfecto! ¿Me indicas qué necesitas y tu zona de entrega?'],
+    ['¿Cuál es el horario de atención?', 'Atendemos de lunes a sábado de 8:00 am a 6:00 pm. ¿En qué te ayudo?'],
+    ['Hola, recibí el producto pero tiene un detalle', 'Lamento el inconveniente. Te paso con soporte para revisarlo de inmediato.'],
+    ['¿Tienen promociones esta semana?', '¡Sí! Esta semana tenemos 15% de descuento. Te envío el detalle.'],
+    ['Buen día, quiero cotizar un servicio', '¡Buen día! Cuéntame qué necesitas y te preparo la cotización.'],
+  ];
+
+  /** Minutos desde ahora para las últimas conversaciones. */
+  const RECENT_MINUTES = [4, 18, 45, 90, 240, 1500];
+
+  /** Genera un valor de ejemplo para un campo personalizado por su tipo. */
+  function sampleFieldValue(field) {
+    switch (field.type) {
+      case 'select':
+        return field.options[(Math.random() * field.options.length) | 0];
+      case 'number':
+        return 1 + ((Math.random() * 4) | 0);
+      case 'date': {
+        const d = new Date(Date.now() + ((20 + Math.random() * 300) | 0) * 864e5);
+        return d.toISOString().slice(0, 10);
+      }
+      default:
+        return '';
+    }
+  }
+
+  /** Construye los contactos demo: muestras del nicho + relleno genérico. */
+  function buildContacts(niche) {
+    const samples = NICHE_SAMPLES[niche.id] || NICHE_SAMPLES.personalizado;
+    const fields = niche.customFields;
+    const contacts = samples.map(([name, phone, values, tags], i) => ({
+      id: uid('ct'),
+      name,
+      phone,
+      platform: 'whatsapp',
+      tags,
+      customFields: Object.fromEntries(fields.map((f, j) => [f.slug, values[j] ?? ''])),
+      createdAt: Date.now() - (i + 3) * 864e5,
+    }));
+    for (let i = 0; i < 4; i += 1) {
+      const name = ['Carlos Hernández', 'Daniela Rojas', 'Oscar Pino', 'Natalia Briceño'][i];
+      contacts.push({
+        id: uid('ct'),
+        name,
+        phone: `+58 412 555 02${10 + i}`,
+        platform: 'whatsapp',
+        tags: ['cliente'],
+        customFields: Object.fromEntries(fields.map((f) => [f.slug, sampleFieldValue(f)])),
+        createdAt: Date.now() - (i + 9) * 864e5,
+      });
+    }
+    return contacts;
+  }
+
+  /** Construye las conversaciones demo a partir de los primeros contactos. */
+  function buildConversations(contacts) {
+    return contacts.slice(0, 6).map((contact, i) => {
+      const [incoming, outgoing] = SCRIPTS[i % SCRIPTS.length];
+      const ts = Date.now() - RECENT_MINUTES[i] * 60000;
+      const unread = i < 2 ? 1 + i : 0;
+      const messages = [
+        { id: uid('msg'), from: 'in', text: incoming, ts: ts - 400000, status: 'read' },
+        { id: uid('msg'), from: 'out', text: outgoing, ts: ts - 200000, status: 'read' },
+      ];
+      if (unread > 0) {
+        messages.push({
+          id: uid('msg'),
+          from: 'in',
+          text: '¿Me puedes confirmar? 😊',
+          ts,
+          status: 'delivered',
+        });
+      }
+      return {
+        id: uid('conv'),
+        contactId: contact.id,
+        platform: 'whatsapp',
+        status: 'active',
+        unread,
+        tags: contact.tags.slice(0, 1),
+        messages,
+        lastTs: ts,
+      };
+    });
+  }
+
+  /** Construye los usuarios demo (uno por rol para validar RBAC). */
+  function buildUsers(ownerName, ownerEmail) {
+    return [
+      { id: uid('usr'), name: ownerName || 'Propietario', email: ownerEmail || 'propietario@demo.com', role: 'owner', online: true },
+      { id: uid('usr'), name: 'Carlos Gómez', email: 'carlos@demo.com', role: 'admin', online: true },
+      { id: uid('usr'), name: 'María Fernández', email: 'maria@demo.com', role: 'agente', online: true },
+      { id: uid('usr'), name: 'José Pérez', email: 'jose@demo.com', role: 'vendedor', online: false },
+    ];
+  }
+
+  /** Construye plantillas WhatsApp demo según el roadmap del nicho. */
+  function buildTemplates(niche) {
+    const names = niche.roadmap.filter((r) => r.type === 'templates').slice(0, 2);
+    return names.map((step, i) => ({
+      id: uid('tpl'),
+      name: `${step.id}_${i + 1}`,
+      category: i === 0 ? 'UTILITY' : 'MARKETING',
+      language: 'es',
+      status: i === 0 ? 'APPROVED' : 'PENDING',
+    }));
+  }
+
+  /** Construye broadcasts demo. */
+  function buildBroadcasts(niche) {
+    return [
+      {
+        id: uid('bc'),
+        name: `Promoción de ${niche.nombre.toLowerCase()}`,
+        audience: `Contactos con tag "${niche.tags[0]}"`,
+        status: 'sent',
+        sentAt: Date.now() - 2 * 864e5,
+        stats: { total: 120, delivered: 114, failed: 6 },
+      },
+      {
+        id: uid('bc'),
+        name: 'Bienvenida de temporada',
+        audience: 'Todos los contactos activos',
+        status: 'scheduled',
+        sentAt: Date.now() + 864e5,
+        stats: null,
+      },
+    ];
+  }
+
+  /** Construye el feed de actividad demo. */
+  function buildActivity(contactNames) {
+    const [a, b] = contactNames;
+    return [
+      { id: uid('act'), type: 'whatsapp', text: `Número WhatsApp conectado (${DEMO_PHONE})`, ts: Date.now() - 3600e3 },
+      { id: uid('act'), type: 'message', text: `Nuevo mensaje de ${a}`, ts: Date.now() - 45 * 60000 },
+      { id: uid('act'), type: 'contact', text: `Contacto creado: ${b}`, ts: Date.now() - 120 * 60000 },
+      { id: uid('act'), type: 'broadcast', text: 'Campaña enviada a 120 contactos', ts: Date.now() - 2 * 864e5 },
+      { id: uid('act'), type: 'system', text: 'Espacio de trabajo creado con plantilla del nicho', ts: Date.now() - 3 * 864e5 },
+    ];
+  }
+
+  /**
+   * Construye un workspace demo completo a partir de la config del onboarding.
+   * @param {object} params — { name, slogan, accentId, nicheId, focus, referrer, referrerDetail, ownerName, ownerEmail }.
+   * @returns {object} Workspace con datos sembrados.
+   */
+  function buildWorkspace(params) {
+    const niche = getNiche(params.nicheId);
+    const contacts = buildContacts(niche);
+    const conversations = buildConversations(contacts);
+    return {
+      id: uid('ws'),
+      name: params.name,
+      slogan: params.slogan || '',
+      accentId: params.accentId,
+      nicheId: niche.id,
+      focus: params.focus,
+      referrer: params.referrer,
+      referrerDetail: params.referrerDetail || '',
+      createdAt: Date.now(),
+      whatsapp: {
+        connected: true,
+        modality: 'demo',
+        phone: DEMO_PHONE,
+        status: 'connected',
+        since: Date.now() - 3600e3,
+        about: 'Atención al cliente por WhatsApp',
+      },
+      users: buildUsers(params.ownerName, params.ownerEmail),
+      contacts,
+      conversations,
+      templates: buildTemplates(niche),
+      broadcasts: buildBroadcasts(niche),
+      activity: buildActivity([contacts[0].name, contacts[1].name]),
+      settings: { notifications: true, autoReply: false },
+    };
+  }
+
+  window.ZernioCrm = window.ZernioCrm || {};
+  Object.assign(window.ZernioCrm, { demo: { buildWorkspace } });
+})();

@@ -56,6 +56,15 @@
       scrollbar-width: none;
       -ms-overflow-style: none;
     }
+    /* Transiciones usadas por ui-modal y ui-toast */
+    .fade-enter-active,
+    .fade-leave-active {
+      transition: opacity 0.18s ease;
+    }
+    .fade-enter-from,
+    .fade-leave-to {
+      opacity: 0;
+    }
   </style>
 </head>
 

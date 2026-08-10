@@ -209,6 +209,9 @@
         <ui-spinner class="text-[var(--accent)]"></ui-spinner>
         <span class="font-mono text-xs uppercase tracking-widest">Cargando…</span>
       </div>
+
+      <!-- Notificaciones globales -->
+      <ui-toast></ui-toast>
     `,
   };
 

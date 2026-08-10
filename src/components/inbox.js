@@ -89,10 +89,10 @@
             const list = Array.isArray(data) ? data : data.messages || [];
             conv.messages = list.map((m) => ({
               id: m.id || m.messageId,
-              from: m.direction === 'outbound' || m.from === 'me' ? 'out' : 'in',
+              from: m.direction === 'outgoing' || m.from === 'me' ? 'out' : 'in',
               text: m.text || m.message || '',
               ts: Date.parse(m.timestamp || m.createdAt) || Date.now(),
-              status: m.status || 'delivered',
+              status: m.status || m.deliveryStatus || 'delivered',
             }));
             conv.lastTs = conv.messages.length ? conv.messages[conv.messages.length - 1].ts : conv.lastTs;
           } catch (err) {
@@ -167,11 +167,12 @@
        */
       async function sync() {
         const profileId = workspace.value.zernio && workspace.value.zernio.profileId;
-        if (!profileId || syncing.value) return;
+        const accountId = workspace.value.zernio && workspace.value.zernio.accountId;
+        if (!profileId || !accountId || syncing.value) return;
         syncing.value = true;
         try {
           const data = await ZernioCrm.api.listConversations({ profileId, platform: 'whatsapp' });
-          const list = ZernioCrm.asArray(data);
+          const list = ZernioCrm.asArray(data).filter((c) => c.accountId === accountId);
           let added = 0;
           list.forEach((conv) => {
             const existing = conversations.value.find((c) => c.id === conv.id);

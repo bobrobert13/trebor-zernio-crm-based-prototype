@@ -85,7 +85,7 @@
         try {
           const [accData, phoneData] = await Promise.all([
             api.getAccounts(id),
-            api.listPhoneNumbers(),
+            api.listPhoneNumbers(id),
           ]);
           accounts.value = asArray(accData);
           phones.value = asArray(phoneData);

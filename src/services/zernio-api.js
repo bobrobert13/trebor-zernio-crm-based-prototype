@@ -124,9 +124,13 @@
       return this.request('/connect/whatsapp/credentials', { method: 'POST', body: { profileId, ...credentials } });
     }
 
-    /** @returns {Promise<Array<object>>} Números WhatsApp (Zernio/Telnyx) del workspace. */
-    listPhoneNumbers() {
-      return this.request('/whatsapp/phone-numbers');
+    /**
+     * Números WhatsApp (Zernio/Telnyx) del workspace.
+     * @param {string} [profileId] — filtra por perfil (recomendado).
+     * @returns {Promise<Array<object>>} Números provisionados.
+     */
+    listPhoneNumbers(profileId) {
+      return this.request('/whatsapp/phone-numbers', { query: { profileId } });
     }
 
     /**

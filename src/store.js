@@ -25,9 +25,25 @@
     mode: 'demo',
     apiKey: '',
     corsBlocked: false,
+    serverMode: false,
     route: 'dashboard',
     toasts: [],
   });
+
+  /**
+   * Detecta el servidor local (server.mjs): si responde /api/health,
+   * el modo live usa el proxy local en vez de llamadas directas a Zernio.
+   * @returns {Promise<boolean>} true si el servidor está disponible.
+   */
+  async function detectServer() {
+    try {
+      const res = await fetch('/api/health', { cache: 'no-store' });
+      store.serverMode = res.ok;
+    } catch {
+      store.serverMode = false;
+    }
+    return store.serverMode;
+  }
 
   /**
    * Muestra una notificación transitoria.
@@ -84,5 +100,5 @@
   }
 
   window.ZernioCrm = window.ZernioCrm || {};
-  Object.assign(window.ZernioCrm, { store, toast, applyAccent, navigate, flagCorsBlocked, canEdit });
+  Object.assign(window.ZernioCrm, { store, toast, applyAccent, navigate, flagCorsBlocked, canEdit, detectServer });
 })();

@@ -657,10 +657,10 @@
                 <option v-for="t in templates" :key="tplId(t)" :value="tplId(t)">{{ t.name }} ({{ t.status }})</option>
               </select>
             </ui-field>
-            <ui-field label="Audiencia">
+            <ui-field label="Audiencia" hint="Consentimiento: solo se envían mensajes a contactos suscritos (isSubscribed).">
               <select v-model="form.tag" class="w-full border-2 border-neutral-300 bg-white px-3 py-2.5 outline-none focus:border-neutral-900">
-                <option :value="null">Todos los contactos activos</option>
-                <option v-for="t in niche.tags" :key="t" :value="t">Contactos con tag "{{ t }}"</option>
+                <option :value="null">Todos los contactos activos y suscritos</option>
+                <option v-for="t in niche.tags" :key="t" :value="t">Contactos suscritos con tag "{{ t }}"</option>
               </select>
             </ui-field>
             <button @click="createBroadcast" :disabled="!form.name.trim() || !form.templateId || sending"

@@ -33,6 +33,7 @@
       const sending = Vue.ref(false);
       const loading = Vue.ref(true);
       const syncing = Vue.ref(false);
+      const humanAgent = Vue.ref(false);
       const newConvOpen = Vue.ref(false);
       const newContactId = Vue.ref(null);
 
@@ -74,12 +75,30 @@
       const unreadTotal = Vue.computed(() => conversations.value.reduce((acc, c) => acc + (c.unread || 0), 0));
       const isLive = Vue.computed(() => store.mode === 'live');
 
+      /** ¿La conversación seleccionada está fuera de la ventana de 24h? */
+      const outsideWindow = Vue.computed(() => {
+        const conv = selected.value;
+        if (!conv || !conv.messages.length) return false;
+        return Date.now() - conv.messages[conv.messages.length - 1].ts > 24 * 3600 * 1000;
+      });
+
+      /** IG/FB permiten responder fuera de ventana con HUMAN_AGENT (política Meta). */
+      const canHumanAgent = Vue.computed(() =>
+        ['instagram', 'facebook'].includes(selected.value && selected.value.platform) && outsideWindow.value
+      );
+
+      /** WhatsApp fuera de ventana exige plantilla aprobada (Campañas). */
+      const blockedByWindow = Vue.computed(() =>
+        selected.value && selected.value.platform === 'whatsapp' && outsideWindow.value && isLive.value
+      );
+
       /** Pantalla de carga simulada al entrar a la bandeja. */
       later(() => { loading.value = false; }, 600);
 
       /** Abre una conversación; en live carga sus mensajes si aún no están. */
       async function selectConversation(conv) {
         selectedId.value = conv.id;
+        humanAgent.value = false;
         if (conv.unread > 0) conv.unread = 0;
         if (isLive.value && conv.messages.length === 0) {
           // Cada conversación pide sus mensajes con SU cuenta (puede haber varias por perfil)
@@ -134,6 +153,17 @@
         const text = draft.value.trim();
         const conv = selected.value;
         if (!text || !conv || sending.value) return;
+        // Políticas de ventana de 24h (validación ANTES de insertar el mensaje)
+        if (isLive.value && outsideWindow.value) {
+          if (conv.platform === 'whatsapp') {
+            toast('WhatsApp fuera de la ventana de 24h: usa una plantilla aprobada (Campañas)', 'error');
+            return;
+          }
+          if (['instagram', 'facebook'].includes(conv.platform) && !humanAgent.value) {
+            toast('Fuera de la ventana de 24h: activa "Enviar como agente humano"', 'error');
+            return;
+          }
+        }
         sending.value = true;
         const msg = { id: uid('msg'), from: 'out', text, ts: Date.now(), status: 'sent' };
         conv.messages.push(msg);
@@ -141,10 +171,15 @@
         draft.value = '';
         try {
           if (isLive.value) {
-            await ZernioCrm.api.sendMessage(conv.id, {
-              accountId: (workspace.value.zernio && workspace.value.zernio.accountId) || '',
+            const payload = {
+              accountId: (conv.accountId || (workspace.value.zernio && workspace.value.zernio.accountId)) || '',
               message: text,
-            });
+            };
+            if (['instagram', 'facebook'].includes(conv.platform) && outsideWindow.value) {
+              payload.messagingType = 'MESSAGE_TAG';
+              payload.messageTag = 'HUMAN_AGENT';
+            }
+            await ZernioCrm.api.sendMessage(conv.id, payload);
           } else {
             simulateDelivery(msg);
             simulateIncoming(conv);
@@ -252,7 +287,7 @@
       return {
         search, filter, selectedId, draft, sending, loading, syncing, newConvOpen, newContactId,
         workspace, niche, conversations, contacts, filtered, selected, selectedContact, unreadTotal, isLive,
-        QUICK_REPLIES, canEdit,
+        QUICK_REPLIES, canEdit, humanAgent, outsideWindow, canHumanAgent, blockedByWindow,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
     },
@@ -393,6 +428,13 @@
 
               <!-- Composer -->
               <footer class="border-t-2 border-neutral-200 p-3.5">
+                <div v-if="canHumanAgent" class="mb-2.5 flex items-center gap-2.5 border-2 border-amber-700 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <ui-toggle v-model="humanAgent" class="shrink-0"></ui-toggle>
+                  <span>Conversación fuera de la ventana de 24h: enviar como agente humano (HUMAN_AGENT).</span>
+                </div>
+                <div v-if="blockedByWindow" class="mb-2.5 border-2 border-red-800 bg-red-50 px-3 py-2 text-xs text-red-800">
+                  WhatsApp fuera de la ventana de 24h: usa una plantilla aprobada desde Campañas.
+                </div>
                 <div class="mb-2.5 flex gap-1.5 overflow-x-auto scrollbar-none">
                   <button v-for="qr in QUICK_REPLIES" :key="qr" @click="draft = qr"
                     class="shrink-0 border border-neutral-300 px-3 py-1.5 text-sm transition hover:border-neutral-900">

@@ -270,6 +270,7 @@
 
   const MODULES = [
     { id: 'dashboard', label: 'Resumen', icon: 'home' },
+    { id: 'analytics', label: 'Analítica', icon: 'chart' },
     { id: 'inbox', label: 'Bandeja', icon: 'message' },
     { id: 'contacts', label: 'Contactos', icon: 'users' },
     { id: 'broadcasts', label: 'Campañas', icon: 'megaphone' },
@@ -278,10 +279,10 @@
   ];
 
   const PERMISSIONS = {
-    owner: { dashboard: 'edit', inbox: 'edit', contacts: 'edit', broadcasts: 'edit', team: 'edit', settings: 'edit' },
-    admin: { dashboard: 'edit', inbox: 'edit', contacts: 'edit', broadcasts: 'edit', team: 'edit', settings: 'view' },
-    agente: { dashboard: 'view', inbox: 'edit', contacts: 'edit', broadcasts: null, team: null, settings: null },
-    vendedor: { dashboard: 'view', inbox: 'edit', contacts: 'edit', broadcasts: 'edit', team: null, settings: null },
+    owner: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', broadcasts: 'edit', team: 'edit', settings: 'edit' },
+    admin: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', broadcasts: 'edit', team: 'edit', settings: 'view' },
+    agente: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', broadcasts: null, team: null, settings: null },
+    vendedor: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', broadcasts: 'edit', team: null, settings: null },
   };
 
   /** Modalidades de conexión WhatsApp que ofrece Zernio. */
@@ -346,6 +347,7 @@
     download: { paths: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>' },
     'credit-card': { paths: '<rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>' },
     'message-circle': { paths: '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>' },
+    chart: { paths: '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>' },
   };
 
   /**

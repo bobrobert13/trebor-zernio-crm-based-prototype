@@ -11,6 +11,7 @@
   /** Mapa ruta → componente de vista. */
   const VIEWS = {
     dashboard: 'dashboard-view',
+    analytics: 'analytics-view',
     inbox: 'inbox-view',
     contacts: 'contacts-view',
     team: 'team-view',

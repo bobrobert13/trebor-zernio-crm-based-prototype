@@ -82,7 +82,8 @@
         selectedId.value = conv.id;
         if (conv.unread > 0) conv.unread = 0;
         if (isLive.value && conv.messages.length === 0) {
-          const accountId = workspace.value.zernio && workspace.value.zernio.accountId;
+          // Cada conversación pide sus mensajes con SU cuenta (puede haber varias por perfil)
+          const accountId = conv.accountId || (workspace.value.zernio && workspace.value.zernio.accountId);
           if (!accountId) return;
           try {
             const data = await ZernioCrm.api.listMessages(conv.id, accountId);
@@ -174,12 +175,19 @@
           const data = await ZernioCrm.api.listConversations({ profileId, platform: 'whatsapp' });
           const list = ZernioCrm.asArray(data).filter((c) => c.accountId === accountId);
           let added = 0;
+          // Limpia conversaciones live huérfanas (de otras cuentas o borradas):
+          // solo se conservan las demo (conv_*) y las presentes en la respuesta actual
+          const liveIds = new Set(list.map((c) => c.id));
+          workspace.value.conversations = workspace.value.conversations.filter((c) => c.id.startsWith('conv_') || liveIds.has(c.id));
           list.forEach((conv) => {
             const existing = conversations.value.find((c) => c.id === conv.id);
             if (existing) return;
             const name = conv.participantName || conv.participantUsername || 'Cliente Zernio';
             const phone = conv.participantUsername || conv.participantId || '';
             let contact = contacts.value.find((c) => digits(c.phone) === digits(phone));
+            if (contact && /^\d+$/.test(contact.name) && !/^\d+$/.test(name)) {
+              contact.name = name; // mejora el nombre numérico con el del participante
+            }
             if (!contact) {
               contact = {
                 id: uid('ct'),
@@ -201,6 +209,7 @@
               tags: contact.tags.slice(0, 1),
               messages: [],
               lastTs: Date.parse(conv.updatedTime) || Date.now(),
+              accountId: conv.accountId,
             });
             added += 1;
           });

@@ -100,6 +100,20 @@
       const recipientsList = Vue.ref([]);
       const recipientsBroadcast = Vue.ref(null);
 
+      const seqOpen = Vue.ref(false);
+      const seqSaving = Vue.ref(false);
+      const seqForm = Vue.reactive({ name: '', steps: [{ delayMinutes: 0, message: '' }] });
+      const seqEnrollOpen = Vue.ref(false);
+      const seqEnrollTarget = Vue.ref(null);
+      const enrolling = Vue.ref(false);
+
+      const flowOpen = Vue.ref(false);
+      const flowSaving = Vue.ref(false);
+      const flowForm = Vue.reactive({ name: '', category: 'LEAD_GENERATION' });
+      const flowSendOpen = Vue.ref(false);
+      const flowSendTarget = Vue.ref(null);
+      const flowPhone = Vue.ref('');
+
       /** Temporizadores activos (cleanup en onUnmounted). */
       const timers = [];
       Vue.onUnmounted(() => timers.forEach(clearTimeout));
@@ -256,11 +270,167 @@
         return t.id || t._id || t.name;
       }
 
+      // ── Secuencias ─────────────────────────────────────────────────────────
+
+      function addSeqStep() {
+        seqForm.steps.push({ delayMinutes: 1440, message: '' });
+      }
+
+      function removeSeqStep(index) {
+        if (seqForm.steps.length > 1) seqForm.steps.splice(index, 1);
+      }
+
+      /** Crea una secuencia (live: /sequences; demo: local). */
+      async function createSequence() {
+        if (!seqForm.name.trim() || seqSaving.value) return;
+        const steps = seqForm.steps
+          .filter((s) => s.message.trim())
+          .map((s, i) => ({ order: i + 1, delayMinutes: Number(s.delayMinutes) || 0, message: { text: s.message.trim() } }));
+        if (steps.length === 0) return;
+        seqSaving.value = true;
+        try {
+          if (isLive.value) {
+            const created = await api.createSequence({
+              profileId: profileId.value,
+              accountId: accountId.value,
+              platform: 'whatsapp',
+              name: seqForm.name.trim(),
+              steps,
+              exitOnReply: true,
+              exitOnUnsubscribe: true,
+            });
+            sequences.value.unshift(created);
+            toast('Secuencia creada (draft)', 'success');
+          } else {
+            sequences.value.unshift({
+              id: uid('seq'),
+              name: seqForm.name.trim(),
+              status: 'draft',
+              steps,
+              enrolled: 0,
+            });
+            toast('Secuencia creada (simulación)', 'success');
+          }
+          seqOpen.value = false;
+          Object.assign(seqForm, { name: '', steps: [{ delayMinutes: 0, message: '' }] });
+        } catch (err) {
+          toast(err.message || 'No se pudo crear la secuencia', 'error');
+        } finally {
+          seqSaving.value = false;
+        }
+      }
+
+      /** Activa o pausa una secuencia. */
+      async function toggleSequence(seq) {
+        const id = seq.id || seq._id;
+        try {
+          if (isLive.value) {
+            if (seq.status === 'active') await api.pauseSequence(id);
+            else await api.activateSequence(id);
+          }
+          seq.status = seq.status === 'active' ? 'paused' : 'active';
+          toast(seq.status === 'active' ? 'Secuencia activada' : 'Secuencia pausada', 'success');
+        } catch (err) {
+          toast(err.message || 'No se pudo cambiar el estado', 'error');
+        }
+      }
+
+      /** Enrola todos los contactos locales en la secuencia. */
+      async function enrollSequence() {
+        const seq = seqEnrollTarget.value;
+        const id = seq && (seq.id || seq._id);
+        if (!seq || !id || enrolling.value) return;
+        enrolling.value = true;
+        try {
+          const contactIds = (workspace.value.contacts || []).map((c) => c.id).filter(Boolean);
+          if (isLive.value) {
+            await api.enrollSequence(id, contactIds);
+          } else {
+            seq.enrolled += contactIds.length;
+          }
+          toast(`${contactIds.length} contactos enrolados`, 'success');
+          seqEnrollOpen.value = false;
+          seqEnrollTarget.value = null;
+        } catch (err) {
+          toast(err.message || 'No se pudieron enrolar contactos', 'error');
+        } finally {
+          enrolling.value = false;
+        }
+      }
+
+      // ── Flows de WhatsApp ──────────────────────────────────────────────────
+
+      /** Crea un flow de captura de leads y lo publica. */
+      async function createFlow() {
+        if (!flowForm.name.trim() || flowSaving.value) return;
+        flowSaving.value = true;
+        try {
+          if (isLive.value) {
+            const draft = await api.createFlow({
+              accountId: accountId.value,
+              name: flowForm.name.trim(),
+              categories: [flowForm.category],
+            });
+            const id = draft.id || draft._id;
+            await api.uploadFlowJson(id, leadFlowJson(niche.value.nombre), accountId.value);
+            const published = await api.publishFlow(id, accountId.value);
+            flows.value.unshift(published);
+            toast('Flow publicado en WhatsApp', 'success');
+          } else {
+            flows.value.unshift({
+              id: uid('flow'),
+              name: flowForm.name.trim(),
+              category: flowForm.category,
+              status: 'PUBLISHED',
+            });
+            toast('Flow publicado (simulación)', 'success');
+          }
+          flowOpen.value = false;
+          Object.assign(flowForm, { name: '', category: 'LEAD_GENERATION' });
+        } catch (err) {
+          toast(err.message || 'No se pudo publicar el flow', 'error');
+        } finally {
+          flowSaving.value = false;
+        }
+      }
+
+      /** Envía un flow publicado como mensaje interactivo. */
+      async function sendFlow() {
+        const flow = flowSendTarget.value;
+        const id = flow && (flow.id || flow._id);
+        if (!flow || !id || !flowPhone.value.trim()) return;
+        try {
+          if (isLive.value) {
+            await api.sendFlow({
+              accountId: accountId.value,
+              to: flowPhone.value.trim(),
+              flow_id: id,
+              flow_cta: 'Comenzar',
+              body: 'Completa este formulario rápido y te contactamos.',
+            });
+          }
+          toast(`Flow enviado a ${flowPhone.value.trim()}`, 'success');
+          flowSendOpen.value = false;
+          flowSendTarget.value = null;
+          flowPhone.value = '';
+        } catch (err) {
+          toast(err.message || 'No se pudo enviar el flow', 'error');
+        }
+      }
+
+      function seqStatusTone(status) {
+        return status === 'active' ? 'success' : status === 'paused' ? 'warn' : 'neutral';
+      }
+
       return {
         tab, loading, createOpen, sending, form, tplOpen, tplSaving, tplForm,
         recipientsOpen, recipientsList, recipientsBroadcast,
+        seqOpen, seqSaving, seqForm, seqEnrollOpen, seqEnrollTarget, enrolling,
+        flowOpen, flowSaving, flowForm, flowSendOpen, flowSendTarget, flowPhone,
         workspace, niche, isLive, broadcasts, templates, sequences, flows, TEMPLATE_TONES,
-        canEdit, createBroadcast, createTemplate, openRecipients, tplId, formatDate, formatTime,
+        canEdit, createBroadcast, createTemplate, openRecipients, tplId,
+        addSeqStep, removeSeqStep, createSequence, toggleSequence, enrollSequence,
+        createFlow, sendFlow, seqStatusTone, formatDate, formatTime,
       };
     },
 
@@ -371,14 +541,78 @@
             </section>
           </section>
 
-          <!-- ═══ TAB: SECUENCIAS (commit 9) ═══ -->
-          <section v-if="tab === 'sequences'">
-            <ui-empty icon="zap" title="Secuencias" desc="Sección en construcción — ver próxima iteración."></ui-empty>
+          <!-- ═══ TAB: SECUENCIAS ═══ -->
+          <section v-if="tab === 'sequences'" class="space-y-5">
+            <div class="flex items-center justify-between">
+              <p class="text-sm text-neutral-500">
+                Drip multi-paso por WhatsApp. Los contactos enrolados salen al responder (exitOnReply).
+              </p>
+              <button v-if="canEdit('broadcasts')" @click="seqOpen = true"
+                class="flex shrink-0 items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                <ui-icon name="plus" class="h-4 w-4"></ui-icon> Nueva secuencia
+              </button>
+            </div>
+            <div v-if="sequences.length === 0" class="border-2 border-dashed border-neutral-300 bg-white">
+              <ui-empty icon="zap" title="Sin secuencias" desc="Crea un flujo de seguimiento automático."></ui-empty>
+            </div>
+            <div v-else class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <article v-for="s in sequences" :key="s.id || s._id" class="border-2 border-neutral-900 bg-white p-5">
+                <div class="flex items-start justify-between gap-2">
+                  <h4 class="font-semibold">{{ s.name }}</h4>
+                  <ui-badge :variant="seqStatusTone(s.status)" dot>{{ s.status }}</ui-badge>
+                </div>
+                <p class="mt-2 font-mono text-[11px] tabular-nums text-neutral-500">
+                  {{ (s.steps || []).length }} pasos · {{ s.enrolled || s.enrollmentCount || 0 }} enrolados
+                </p>
+                <ul class="mt-3 space-y-1.5 border-t border-neutral-100 pt-3">
+                  <li v-for="st in (s.steps || []).slice(0, 3)" :key="st.order" class="flex items-center gap-2 text-xs text-neutral-600">
+                    <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-100 font-mono text-[10px] tabular-nums">{{ st.order }}</span>
+                    <span class="min-w-0 flex-1 truncate">{{ (st.message && st.message.text) || (st.template && st.template.name) || 'Mensaje' }}</span>
+                    <span class="shrink-0 font-mono text-[9px] uppercase text-neutral-400">{{ st.delayMinutes === 0 ? 'ahora' : Math.round((st.delayMinutes || 0) / 1440) + ' d' }}</span>
+                  </li>
+                </ul>
+                <div class="mt-4 flex gap-2">
+                  <button @click="toggleSequence(s)" class="flex-1 border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
+                    {{ s.status === 'active' ? 'Pausar' : 'Activar' }}
+                  </button>
+                  <button @click="seqEnrollTarget = s; seqEnrollOpen = true" class="flex-1 border-2 border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                    Enrolar
+                  </button>
+                </div>
+              </article>
+            </div>
           </section>
 
-          <!-- ═══ TAB: FLOWS (commit 9) ═══ -->
-          <section v-if="tab === 'flows'">
-            <ui-empty icon="edit" title="Flows de WhatsApp" desc="Sección en construcción — ver próxima iteración."></ui-empty>
+          <!-- ═══ TAB: FLOWS ═══ -->
+          <section v-if="tab === 'flows'" class="space-y-5">
+            <div class="flex items-center justify-between">
+              <p class="text-sm text-neutral-500">
+                Formularios nativos de WhatsApp (captura de leads por nicho). Publicados son inmutables: para editar se clona.
+              </p>
+              <button v-if="canEdit('broadcasts')" @click="flowOpen = true"
+                class="flex shrink-0 items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                <ui-icon name="plus" class="h-4 w-4"></ui-icon> Nuevo flow
+              </button>
+            </div>
+            <div v-if="flows.length === 0" class="border-2 border-dashed border-neutral-300 bg-white">
+              <ui-empty icon="edit" title="Sin flows" desc="Crea tu primer formulario de captura de leads."></ui-empty>
+            </div>
+            <div v-else class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <article v-for="f in flows" :key="f.id || f._id" class="border-2 border-neutral-900 bg-white p-5">
+                <div class="flex items-start justify-between gap-2">
+                  <h4 class="break-all font-mono text-sm font-semibold">{{ f.name }}</h4>
+                  <ui-badge :variant="f.status === 'PUBLISHED' ? 'success' : f.status === 'DEPRECATED' ? 'warn' : 'neutral'" dot>{{ f.status }}</ui-badge>
+                </div>
+                <div class="mt-3 flex items-center gap-2">
+                  <ui-badge variant="neutral">{{ f.category }}</ui-badge>
+                  <span v-if="f.previewUrl" class="truncate font-mono text-[10px] text-neutral-400">{{ f.previewUrl }}</span>
+                </div>
+                <button v-if="f.status === 'PUBLISHED'" @click="flowSendTarget = f; flowSendOpen = true"
+                  class="mt-4 w-full border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                  Enviar flow
+                </button>
+              </article>
+            </div>
           </section>
         </template>
 
@@ -445,6 +679,101 @@
               {{ tplSaving ? 'Creando…' : 'Crear plantilla' }}
             </button>
           </div>
+        </ui-modal>
+
+        <!-- Modal: nueva secuencia -->
+        <ui-modal :open="seqOpen" title="Nueva secuencia" width="max-w-2xl" @close="seqOpen = false">
+          <div class="space-y-4">
+            <ui-field label="Nombre de la secuencia">
+              <input v-model.trim="seqForm.name" type="text" placeholder="Ej: Seguimiento post-venta"
+                class="w-full border-2 border-neutral-300 px-3 py-2.5 outline-none focus:border-neutral-900" />
+            </ui-field>
+            <div class="space-y-3">
+              <div v-for="(step, i) in seqForm.steps" :key="i" class="border-2 border-neutral-200 p-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Paso {{ i + 1 }}</span>
+                  <button v-if="seqForm.steps.length > 1" @click="removeSeqStep(i)" class="text-neutral-400 hover:text-red-700" aria-label="Quitar paso">
+                    <ui-icon name="x" class="h-4 w-4"></ui-icon>
+                  </button>
+                </div>
+                <div class="mt-2 flex items-center gap-2">
+                  <span class="font-mono text-[10px] uppercase text-neutral-400">Espera</span>
+                  <select v-model.number="step.delayMinutes" class="border-2 border-neutral-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-neutral-900">
+                    <option :value="0">Ahora</option>
+                    <option :value="1440">1 día</option>
+                    <option :value="2880">2 días</option>
+                    <option :value="4320">3 días</option>
+                    <option :value="10080">7 días</option>
+                  </select>
+                </div>
+                <textarea v-model.trim="step.message" rows="2" placeholder="Mensaje del paso…"
+                  class="mt-2 w-full resize-none border-2 border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900"></textarea>
+              </div>
+            </div>
+            <button @click="addSeqStep" class="flex items-center gap-1.5 text-sm font-medium text-[var(--accent)]">
+              <ui-icon name="plus" class="h-4 w-4"></ui-icon> Añadir paso
+            </button>
+            <button @click="createSequence" :disabled="seqSaving || !seqForm.name.trim()"
+              class="flex w-full items-center justify-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+              <ui-spinner v-if="seqSaving" size="h-4 w-4"></ui-spinner>
+              {{ seqSaving ? 'Creando…' : 'Crear secuencia' }}
+            </button>
+          </div>
+        </ui-modal>
+
+        <!-- Modal: enrolar contactos -->
+        <ui-modal :open="seqEnrollOpen" title="Enrolar contactos" width="max-w-md" @close="seqEnrollOpen = false">
+          <p class="text-sm text-neutral-600">
+            Se enrolarán <span class="font-semibold">{{ workspace.contacts.length }}</span> contactos en
+            <span class="font-semibold">{{ seqEnrollTarget ? seqEnrollTarget.name : '' }}</span>.
+            Los que ya estén enrolados se omiten.
+          </p>
+          <button @click="enrollSequence" :disabled="enrolling"
+            class="mt-4 flex w-full items-center justify-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+            <ui-spinner v-if="enrolling" size="h-4 w-4"></ui-spinner>
+            {{ enrolling ? 'Enrolando…' : 'Enrolar contactos' }}
+          </button>
+        </ui-modal>
+
+        <!-- Modal: nuevo flow -->
+        <ui-modal :open="flowOpen" title="Nuevo flow de captura de leads" @close="flowOpen = false">
+          <div class="space-y-4">
+            <ui-field label="Nombre (minúsculas y _)">
+              <input v-model.trim="flowForm.name" type="text" placeholder="ej: captura_leads"
+                class="w-full border-2 border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none focus:border-neutral-900" />
+            </ui-field>
+            <ui-field label="Categoría">
+              <select v-model="flowForm.category" class="w-full border-2 border-neutral-300 bg-white px-3 py-2.5 outline-none focus:border-neutral-900">
+                <option value="LEAD_GENERATION">LEAD_GENERATION</option>
+                <option value="CONTACT_US">CONTACT_US</option>
+                <option value="CUSTOMER_SUPPORT">CUSTOMER_SUPPORT</option>
+                <option value="SURVEY">SURVEY</option>
+                <option value="APPOINTMENT_BOOKING">APPOINTMENT_BOOKING</option>
+                <option value="SIGN_UP">SIGN_UP</option>
+              </select>
+            </ui-field>
+            <div class="border-2 border-dashed border-neutral-300 bg-stone-50 p-3 text-xs text-neutral-500">
+              Se generará un formulario de captura (nombre, teléfono y mensaje) adaptado a
+              <span class="font-semibold">{{ niche.nombre }}</span>, se subirá el JSON y se publicará (irreversible).
+            </div>
+            <button @click="createFlow" :disabled="flowSaving || !flowForm.name.trim()"
+              class="flex w-full items-center justify-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+              <ui-spinner v-if="flowSaving" size="h-4 w-4"></ui-spinner>
+              {{ flowSaving ? 'Publicando…' : 'Crear y publicar' }}
+            </button>
+          </div>
+        </ui-modal>
+
+        <!-- Modal: enviar flow -->
+        <ui-modal :open="flowSendOpen" :title="'Enviar flow · ' + (flowSendTarget ? flowSendTarget.name : '')" width="max-w-md" @close="flowSendOpen = false">
+          <ui-field label="Teléfono (E.164)">
+            <input v-model.trim="flowPhone" type="tel" placeholder="+58 412 000 0000"
+              class="w-full border-2 border-neutral-300 px-3 py-2.5 outline-none focus:border-neutral-900" />
+          </ui-field>
+          <button @click="sendFlow" :disabled="!flowPhone.trim()"
+            class="mt-4 w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+            Enviar formulario
+          </button>
         </ui-modal>
 
         <!-- Modal: destinatarios -->

@@ -171,8 +171,13 @@
             });
             const id = draft.id || draft._id || draft.broadcastId;
             await api.addBroadcastRecipients(id, { useSegment: true });
-            await api.sendBroadcast(id);
-            toast('Campaña enviada a Zernio', 'success');
+            const result = await api.sendBroadcast(id);
+            const failed = Number(result && (result.failed ?? result.failedCount)) || 0;
+            if (failed > 0) {
+              toast(`${failed} destinatarios fallaron: revisa que la plantilla esté APROBADA por Meta`, 'error', 6000);
+            } else {
+              toast('Campaña enviada a Zernio', 'success');
+            }
           } else {
             const total = 80 + ((Math.random() * 140) | 0);
             broadcasts.value.unshift({

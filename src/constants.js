@@ -380,6 +380,29 @@
     return level === 'edit' || (action === 'view' && level === 'view');
   }
 
+  /**
+   * Tiempo relativo legible.
+   * @param {number} ts — timestamp en ms.
+   * @returns {string} "hace 5 min", "hace 2 h", etc.
+   */
+  function timeAgo(ts) {
+    const diff = Date.now() - ts;
+    if (diff < 60000) return 'ahora';
+    if (diff < 3600000) return `hace ${Math.floor(diff / 60000)} min`;
+    if (diff < 86400000) return `hace ${Math.floor(diff / 3600000)} h`;
+    return `hace ${Math.floor(diff / 86400000)} d`;
+  }
+
+  /** @param {number} ts — timestamp en ms. @returns {string} HH:MM. */
+  function formatTime(ts) {
+    return new Date(ts).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  /** @param {number} ts — timestamp en ms. @returns {string} "12 ago", etc. */
+  function formatDate(ts) {
+    return new Date(ts).toLocaleDateString('es-VE', { day: 'numeric', month: 'short' });
+  }
+
   window.ZernioCrm = window.ZernioCrm || {};
   Object.assign(window.ZernioCrm, {
     BRAND,
@@ -398,5 +421,8 @@
     getNiche,
     permOf,
     can,
+    timeAgo,
+    formatTime,
+    formatDate,
   });
 })();

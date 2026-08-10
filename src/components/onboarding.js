@@ -234,21 +234,54 @@
     },
 
     template: `
-      <div class="flex min-h-screen flex-col items-center justify-center bg-stone-100 px-4 py-10">
-        <header class="mb-8 flex w-full max-w-3xl items-center justify-between">
-          <div class="flex items-center gap-3">
-            <span class="flex h-10 w-10 items-center justify-center bg-[var(--accent)] text-white shadow-brutal-sm">
-              <ui-icon name="whatsapp" class="h-5 w-5"></ui-icon>
-            </span>
-            <div>
-              <h1 class="text-lg font-bold leading-tight">{{ ui.BRAND }}</h1>
-              <p class="font-mono text-[11px] uppercase tracking-widest text-neutral-400">Configuración inicial</p>
+      <div class="grid min-h-screen bg-stone-100 lg:grid-cols-[420px_1fr]">
+        <!-- Panel izquierdo de marca (escritorio) -->
+        <aside class="sticky top-0 hidden h-screen flex-col justify-between bg-[var(--accent)] p-10 text-white lg:flex">
+          <div>
+            <div class="flex items-center gap-3">
+              <span class="flex h-11 w-11 items-center justify-center bg-white text-[var(--accent)] shadow-brutal-sm">
+                <ui-icon name="whatsapp" class="h-5 w-5"></ui-icon>
+              </span>
+              <div>
+                <h1 class="text-xl font-bold leading-tight">{{ ui.BRAND }}</h1>
+                <p class="font-mono text-[11px] uppercase tracking-widest opacity-70">Configuración inicial</p>
+              </div>
             </div>
+            <h2 class="mt-12 text-3xl font-bold leading-tight">Tu atención al cliente por WhatsApp, lista en minutos.</h2>
+            <p class="mt-3 max-w-xs text-sm opacity-80">
+              Elige tu tipo de negocio, conecta tu número y empieza a responder a tus clientes desde un solo lugar.
+            </p>
           </div>
-          <ui-stepper v-if="current > 0" :steps="STEPS" :current="current" @jump="jumpTo"></ui-stepper>
-        </header>
 
-        <main class="w-full max-w-3xl">
+          <!-- Progreso vertical -->
+          <ol class="space-y-2.5">
+            <li v-for="(s, i) in STEPS" :key="i" class="flex items-center gap-3 font-mono text-xs uppercase tracking-widest"
+              :class="i === current ? 'font-semibold opacity-100' : i < current ? 'opacity-60' : 'opacity-35'">
+              <span class="flex h-6 w-6 items-center justify-center border border-white/40">
+                <ui-icon v-if="i < current" name="check" class="h-3.5 w-3.5"></ui-icon>
+                <span v-else class="tabular-nums">{{ i + 1 }}</span>
+              </span>
+              {{ s }}
+            </li>
+          </ol>
+
+          <p class="font-mono text-[11px] uppercase tracking-widest opacity-60">MVP · integración Zernio</p>
+        </aside>
+
+        <!-- Panel derecho -->
+        <div class="flex min-h-screen flex-col">
+          <header class="flex items-center justify-between border-b-2 border-neutral-900 bg-white px-5 py-3 lg:hidden">
+            <div class="flex items-center gap-2.5">
+              <span class="flex h-8 w-8 items-center justify-center bg-[var(--accent)] text-white">
+                <ui-icon name="whatsapp" class="h-4 w-4"></ui-icon>
+              </span>
+              <span class="font-bold">{{ ui.BRAND }}</span>
+            </div>
+            <ui-stepper v-if="current > 0" :steps="STEPS" :current="current" @jump="jumpTo"></ui-stepper>
+          </header>
+
+          <main class="flex-1 px-5 py-8 lg:px-12">
+            <div class="mx-auto w-full max-w-2xl">
           <!-- Pantalla de carga al pasar de bienvenida a nicho -->
           <div v-if="enterLoading" class="border-2 border-neutral-900 bg-white p-8 shadow-brutal">
             <div class="mb-6 flex items-center gap-2">
@@ -521,7 +554,7 @@
           </section>
 
           <!-- Navegación inferior -->
-          <footer v-if="current > 0 && current < 7" class="mt-4 flex items-center justify-between">
+          <footer v-if="current > 0 && current < 7" class="mt-6 flex items-center justify-between">
             <button @click="back" class="border-2 border-neutral-900 bg-white px-5 py-2.5 font-medium shadow-brutal-sm transition hover:shadow-none">
               ← Volver
             </button>
@@ -530,7 +563,9 @@
               Continuar →
             </button>
           </footer>
-        </main>
+            </div>
+          </main>
+        </div>
 
         <!-- Modal de conexión WhatsApp -->
         <ui-modal :open="waModal" :title="'Conectar · ' + (waModality ? (ui.WHATSAPP_MODALITIES.find(m => m.id === waModality) || {}).nombre : '')" @close="waModal = false">

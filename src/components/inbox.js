@@ -7,7 +7,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, getNiche, timeAgo, formatTime, uid } = ZernioCrm;
+  const { store, toast, getNiche, timeAgo, formatTime, uid, canEdit } = ZernioCrm;
 
   const components = {};
 
@@ -71,11 +71,6 @@
       });
       const unreadTotal = Vue.computed(() => conversations.value.reduce((acc, c) => acc + (c.unread || 0), 0));
       const isLive = Vue.computed(() => store.mode === 'live');
-
-      /** ¿Puede el usuario de sesión editar el módulo? (RBAC) */
-      function canEdit(module) {
-        return ZernioCrm.can(store.currentUser && store.currentUser.role, module, 'edit');
-      }
 
       /** Pantalla de carga simulada al entrar a la bandeja. */
       later(() => { loading.value = false; }, 700);

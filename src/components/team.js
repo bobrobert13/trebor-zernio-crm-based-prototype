@@ -7,7 +7,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, ROLES, MODULES, PERMISSIONS, uid } = ZernioCrm;
+  const { store, toast, ROLES, MODULES, PERMISSIONS, uid, canEdit } = ZernioCrm;
 
   const components = {};
 
@@ -22,10 +22,6 @@
       const me = Vue.computed(() => store.currentUser);
 
       const roleIds = Vue.computed(() => Object.keys(ROLES));
-
-      function canEdit(module) {
-        return ZernioCrm.can(me.value && me.value.role, module, 'edit');
-      }
 
       /** Nivel de permiso de un rol sobre un módulo para la matriz. */
       function levelOf(role, module) {
@@ -46,8 +42,9 @@
        */
       function changeRole(user, role) {
         const mine = me.value;
-        if (mine.role === 'admin' && (user.role === 'owner' || user.role === 'admin' || role === 'owner')) {
-          toast('Un administrador no puede modificar roles de propietario', 'error');
+        const isPrivileged = user.role === 'owner' || user.role === 'admin' || role === 'owner' || role === 'admin';
+        if (mine.role === 'admin' && isPrivileged) {
+          toast('Un administrador no puede modificar roles de propietario ni crear administradores', 'error');
           return;
         }
         if (user.id === mine.id) {

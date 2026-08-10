@@ -74,6 +74,15 @@
     toast('Zernio bloqueó la petición (CORS). Cambiaste a modo demo.', 'error', 6000);
   }
 
+  /**
+   * ¿Puede el usuario de sesión editar un módulo? (RBAC, helper central).
+   * @param {string} module — id del módulo.
+   * @returns {boolean}
+   */
+  function canEdit(module) {
+    return ZernioCrm.can(store.currentUser && store.currentUser.role, module, 'edit');
+  }
+
   window.ZernioCrm = window.ZernioCrm || {};
-  Object.assign(window.ZernioCrm, { store, toast, applyAccent, navigate, flagCorsBlocked });
+  Object.assign(window.ZernioCrm, { store, toast, applyAccent, navigate, flagCorsBlocked, canEdit });
 })();

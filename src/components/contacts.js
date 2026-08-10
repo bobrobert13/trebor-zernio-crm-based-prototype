@@ -7,7 +7,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, getNiche, formatDate, uid } = ZernioCrm;
+  const { store, toast, getNiche, formatDate, uid, canEdit } = ZernioCrm;
 
   const components = {};
 
@@ -40,10 +40,6 @@
           return true;
         });
       });
-
-      function canEdit(module) {
-        return ZernioCrm.can(store.currentUser && store.currentUser.role, module, 'edit');
-      }
 
       function openCreate() {
         Object.assign(form, emptyForm());

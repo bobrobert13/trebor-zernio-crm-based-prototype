@@ -86,6 +86,15 @@
         form.focus = n.focusDefault;
         form.name = n.id === 'personalizado' ? '' : `Mi ${n.nombre.toLowerCase()}`;
         roadmapItems.value = n.roadmap.map((r) => ({ ...r, checked: r.optional ? false : true, simState: 'pending' }));
+        resetRoadmapSim();
+      }
+
+      /** Reinicia el estado de la simulación del roadmap. */
+      function resetRoadmapSim() {
+        roadmapSim.running = false;
+        roadmapSim.current = null;
+        roadmapSim.progress = 0;
+        roadmapSim.done = 0;
       }
 
       function jumpTo(i) {
@@ -114,6 +123,7 @@
        */
       async function runRoadmapSimulation() {
         if (roadmapSim.running) return;
+        resetRoadmapSim();
         roadmapSim.running = true;
         const items = selectedRoadmap.value;
         for (const item of items) {

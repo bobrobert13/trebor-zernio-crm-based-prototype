@@ -7,7 +7,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, formatDate, formatTime, uid } = ZernioCrm;
+  const { store, toast, formatDate, formatTime, uid, canEdit } = ZernioCrm;
 
   const components = {};
 
@@ -25,16 +25,16 @@
       const templates = Vue.computed(() => workspace.value.templates || []);
       const broadcasts = Vue.computed(() => workspace.value.broadcasts || []);
 
-      function canEdit(module) {
-        return ZernioCrm.can(store.currentUser && store.currentUser.role, module, 'edit');
-      }
+      /** Temporizadores activos (cleanup en onUnmounted). */
+      const timers = [];
+      Vue.onUnmounted(() => timers.forEach(clearTimeout));
 
       /** Simula el envío de un broadcast y lo agrega a la lista. */
       function createBroadcast() {
         if (!form.name.trim() || !form.templateId || sending.value) return;
         sending.value = true;
         const total = 80 + ((Math.random() * 140) | 0);
-        setTimeout(() => {
+        const timer = setTimeout(() => {
           workspace.value.broadcasts.unshift({
             id: uid('bc'),
             name: form.name.trim(),
@@ -48,6 +48,7 @@
           Object.assign(form, { name: '', templateId: null, tag: null });
           toast('Campaña enviada (simulación)', 'success');
         }, 1300);
+        timers.push(timer);
       }
 
       return {

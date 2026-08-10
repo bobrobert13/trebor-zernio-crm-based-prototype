@@ -63,7 +63,11 @@
         const envelope = await response.json().catch(() => ({}));
         throw new ApiError(envelope.error || `Error ${response.status}`, envelope.type || 'api_error', envelope.code || String(response.status));
       }
-      return response.json();
+      try {
+        return await response.json();
+      } catch {
+        throw new ApiError('El servidor devolvió una respuesta no válida', 'invalid_json');
+      }
     }
 
     /** Valida la API key listando los perfiles. */

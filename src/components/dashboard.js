@@ -66,7 +66,7 @@
         return actions;
       });
 
-      return { workspace, niche, focus, user, kpis, today, activity, roadmapDone, roadmapTotal, ACT_ICONS, quickActions, navigate, ROLES, timeAgo };
+      return { workspace, niche, focus, user, kpis, today, activity, roadmapDone, roadmapTotal, ACT_ICONS, quickActions, navigate, can, ROLES, timeAgo };
     },
 
     template: `

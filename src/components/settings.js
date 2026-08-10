@@ -7,7 +7,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, applyAccent, ACCENTS, REFERRERS, WHATSAPP_MODALITIES } = ZernioCrm;
+  const { store, toast, applyAccent, ACCENTS, REFERRERS, WHATSAPP_MODALITIES, canEdit } = ZernioCrm;
 
   const components = {};
 
@@ -24,10 +24,6 @@
         WHATSAPP_MODALITIES.find((m) => m.id === workspace.value.whatsapp.modality) || {}
       );
       const referrer = Vue.computed(() => REFERRERS.find((r) => r.id === workspace.value.referrer) || {});
-
-      function canEdit(module) {
-        return ZernioCrm.can(store.currentUser && store.currentUser.role, module, 'edit');
-      }
 
       /** Guarda branding y refresca el acento del tema. */
       function saveBranding() {
@@ -65,8 +61,9 @@
         }
       }
 
-      /** Desconecta el canal WhatsApp (demo). */
+      /** Desconecta el canal WhatsApp (demo). Solo owner/admin con edición. */
       function disconnectWhatsApp() {
+        if (!canEdit('settings')) return;
         workspace.value.whatsapp.connected = false;
         toast('Número WhatsApp desconectado', 'info');
       }
@@ -85,19 +82,21 @@
         a.href = url;
         a.download = `${workspace.value.name.replace(/\s+/g, '-').toLowerCase()}-workspace.json`;
         a.click();
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
         toast('Workspace exportado', 'success');
       }
 
-      /** Reset total de los datos del prototipo. */
+      /** Reset total de los datos del prototipo (solo owner). */
       function resetDemo() {
+        if (!canEdit('settings')) return;
         ZernioCrm.storage.resetAll();
         location.hash = '#/onboarding';
         location.reload();
       }
 
-      /** Elimina el workspace activo y vuelve al onboarding. */
+      /** Elimina el workspace activo y vuelve al onboarding (solo owner). */
       function deleteWorkspace() {
+        if (!canEdit('settings')) return;
         ZernioCrm.storage.deleteWorkspace(store.workspace.id);
         ZernioCrm.storage.clearSession();
         location.hash = '#/onboarding';
@@ -106,7 +105,7 @@
 
       return {
         apiKeyInput, testing, testResult, confirmReset, confirmDelete,
-        workspace, modality, referrer, ACCENTS,
+        workspace, modality, referrer, ACCENTS, store,
         canEdit, saveBranding, saveApiKey, testConnection,
         disconnectWhatsApp, reconnectWhatsApp, exportData, resetDemo, deleteWorkspace,
       };
@@ -205,11 +204,11 @@
               <ui-badge :variant="workspace.whatsapp.connected ? 'success' : 'danger'" dot>
                 {{ workspace.whatsapp.connected ? 'Conectado' : 'Desconectado' }}
               </ui-badge>
-              <button v-if="workspace.whatsapp.connected" @click="disconnectWhatsApp"
+              <button v-if="workspace.whatsapp.connected && canEdit('settings')" @click="disconnectWhatsApp"
                 class="border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
                 Desconectar
               </button>
-              <button v-else @click="reconnectWhatsApp"
+              <button v-else-if="!workspace.whatsapp.connected && canEdit('settings')" @click="reconnectWhatsApp"
                 class="border-2 border-neutral-900 bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
                 Reconectar (demo)
               </button>
@@ -225,11 +224,11 @@
               class="flex items-center gap-2 border-2 border-neutral-900 bg-white px-4 py-2 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
               <ui-icon name="download" class="h-4 w-4"></ui-icon> Exportar workspace (JSON)
             </button>
-            <button @click="confirmReset = true"
+            <button v-if="canEdit('settings')" @click="confirmReset = true"
               class="flex items-center gap-2 border-2 border-neutral-900 bg-white px-4 py-2 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
               <ui-icon name="refresh" class="h-4 w-4"></ui-icon> Reset de datos demo
             </button>
-            <button @click="confirmDelete = true"
+            <button v-if="canEdit('settings')" @click="confirmDelete = true"
               class="flex items-center gap-2 border-2 border-red-800 bg-red-800 px-4 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
               <ui-icon name="trash" class="h-4 w-4"></ui-icon> Eliminar workspace
             </button>

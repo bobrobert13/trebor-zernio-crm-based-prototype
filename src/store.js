@@ -28,7 +28,20 @@
     serverMode: false,
     route: 'dashboard',
     toasts: [],
+    webhookEvents: [],
   });
+
+  /**
+   * Encola un evento de webhook recibido (cola acotada a 50).
+   * @param {object} event — evento { event, timestamp, ... }.
+   */
+  function pushWebhookEvent(event) {
+    store.webhookEvents.unshift({ receivedAt: Date.now(), event });
+    if (store.webhookEvents.length > 50) store.webhookEvents.length = 50;
+    if (event && event.event === 'message.received') {
+      toast('Nuevo mensaje recibido (webhook)', 'success');
+    }
+  }
 
   /**
    * Detecta el servidor local (server.mjs): si responde /api/health,
@@ -100,5 +113,5 @@
   }
 
   window.ZernioCrm = window.ZernioCrm || {};
-  Object.assign(window.ZernioCrm, { store, toast, applyAccent, navigate, flagCorsBlocked, canEdit, detectServer });
+  Object.assign(window.ZernioCrm, { store, toast, applyAccent, navigate, flagCorsBlocked, canEdit, detectServer, pushWebhookEvent });
 })();

@@ -58,7 +58,32 @@
     }
     ZernioCrm.applyAccent(store.workspace);
     window.addEventListener('hashchange', syncRoute);
+    ZernioCrm.detectServer().then((ok) => { if (ok) startWebhookPolling(); });
     syncRoute();
+  }
+
+  /** Eventos de webhook vistos (para no duplicar al hacer polling). */
+  const seenWebhooks = new Set();
+
+  /**
+   * Polling de eventos del servidor local (server.mjs). Cada 15 s consulta
+   * /webhooks/events y encola solo los nuevos en store.webhookEvents.
+   */
+  function startWebhookPolling() {
+    setInterval(async () => {
+      if (!store.serverMode) return;
+      try {
+        const res = await fetch('/webhooks/events', { cache: 'no-store' });
+        const data = await res.json();
+        (data.events || []).forEach((entry) => {
+          if (seenWebhooks.has(entry.receivedAt)) return;
+          seenWebhooks.add(entry.receivedAt);
+          ZernioCrm.pushWebhookEvent(entry.event);
+        });
+      } catch {
+        // servidor caído: se ignora hasta el próximo tick
+      }
+    }, 15000);
   }
 
   /** Componente raíz: shell con sidebar y vista activa. */

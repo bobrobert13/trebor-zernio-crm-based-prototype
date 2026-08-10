@@ -19,6 +19,14 @@
       const confirmReset = Vue.ref(false);
       const confirmDelete = Vue.ref(false);
 
+      /** Eventos disponibles para suscripción de webhooks. */
+      const EVENTS = ['message.received', 'post.published', 'post.failed', 'post.partial', 'account.connected', 'account.disconnected'];
+      const whForm = Vue.reactive({ name: 'CRM MVP Webhook', url: '', secret: '', events: ['message.received'] });
+      const whExists = Vue.ref(false);
+      const whSaving = Vue.ref(false);
+      const whLogs = Vue.ref([]);
+      const whLogsOpen = Vue.ref(false);
+
       const workspace = Vue.computed(() => store.workspace);
       const modality = Vue.computed(() =>
         WHATSAPP_MODALITIES.find((m) => m.id === workspace.value.whatsapp.modality) || {}
@@ -103,11 +111,150 @@
         location.reload();
       }
 
+      // ── Webhooks ───────────────────────────────────────────────────────────
+
+      /** Genera un secret aleatorio para la firma HMAC. */
+      function randomSecret() {
+        const arr = new Uint8Array(18);
+        crypto.getRandomValues(arr);
+        return [...arr].map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 24);
+      }
+
+      /** URL local del receptor de webhooks (server.mjs) con el secret. */
+      function buildWebhookUrl() {
+        if (!whForm.secret) whForm.secret = randomSecret();
+        return `${location.origin}/webhooks/zernio?secret=${encodeURIComponent(whForm.secret)}`;
+      }
+
+      /** HMAC-SHA256 para firmar el body (verificación del server local). */
+      async function hmacSha256(message, secret) {
+        const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
+        return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+      }
+
+      /** Carga la configuración real de webhooks (live) o simula (demo). */
+      async function loadWebhooks() {
+        if (store.mode !== 'live') {
+          whForm.url = buildWebhookUrl();
+          return;
+        }
+        try {
+          const config = await ZernioCrm.api.getWebhookSettings();
+          if (config && (config.url || config.name)) {
+            whForm.name = config.name || whForm.name;
+            whForm.url = config.url || buildWebhookUrl();
+            whForm.events = config.events || ['message.received'];
+            whExists.value = true;
+          }
+        } catch {
+          whExists.value = false;
+          whForm.url = buildWebhookUrl();
+        }
+      }
+
+      /** Guarda la configuración (POST o PUT según exista). */
+      async function saveWebhooks() {
+        if (whSaving.value) return;
+        whSaving.value = true;
+        const payload = {
+          name: whForm.name.trim() || 'CRM MVP Webhook',
+          isActive: true,
+          url: whForm.url.trim() || buildWebhookUrl(),
+          secret: whForm.secret || randomSecret(),
+          events: whForm.events,
+        };
+        try {
+          if (store.mode === 'live') {
+            if (whExists.value) await ZernioCrm.api.updateWebhookSettings(payload);
+            else await ZernioCrm.api.createWebhookSettings(payload);
+            whExists.value = true;
+          }
+          toast('Webhook guardado · suscripción activa', 'success');
+        } catch (err) {
+          toast(err.message || 'No se pudo guardar el webhook', 'error');
+        } finally {
+          whSaving.value = false;
+        }
+      }
+
+      /** Elimina la suscripción de webhooks. */
+      async function deleteWebhooks() {
+        try {
+          if (store.mode === 'live') await ZernioCrm.api.deleteWebhookSettings();
+          whExists.value = false;
+          whForm.events = ['message.received'];
+          toast('Suscripción de webhook eliminada', 'info');
+        } catch (err) {
+          toast(err.message || 'No se pudo eliminar el webhook', 'error');
+        }
+      }
+
+      /** Envía un webhook de prueba. */
+      async function testWebhook() {
+        try {
+          if (store.mode === 'live') await ZernioCrm.api.testWebhook();
+          toast('Webhook de prueba enviado', 'success');
+        } catch (err) {
+          toast(err.message || 'Falló el webhook de prueba', 'error');
+        }
+      }
+
+      /** Abre los logs de entrega (live) o el feed local (demo). */
+      async function openLogs() {
+        try {
+          if (store.mode === 'live') whLogs.value = (await ZernioCrm.api.getWebhookLogs()) || [];
+          else whLogs.value = store.webhookEvents.slice(0, 20).map((e) => ({ event: e.event && e.event.event, createdAt: new Date(e.receivedAt).toISOString(), url: e.event && e.event.message ? 'local' : '—' }));
+          whLogsOpen.value = true;
+        } catch (err) {
+          toast(err.message || 'No se pudieron cargar los logs', 'error');
+        }
+      }
+
+      /** Simula un evento message.received firmado hacia el server local. */
+      async function simulateWebhook() {
+        const payload = {
+          event: 'message.received',
+          timestamp: new Date().toISOString(),
+          message: { id: `demo_${Date.now()}`, text: 'Hola, ¿tienen disponibilidad?', from: '+58 412 000 0101' },
+        };
+        try {
+          if (store.serverMode && crypto.subtle) {
+            const secret = whForm.secret || randomSecret();
+            const body = JSON.stringify(payload);
+            const signature = await hmacSha256(body, secret);
+            await fetch(buildWebhookUrl(), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-zernio-signature': signature },
+              body,
+            });
+            toast('Evento firmado enviado al servidor local', 'success');
+          } else {
+            ZernioCrm.pushWebhookEvent(payload);
+            toast('Evento simulado localmente', 'success');
+          }
+        } catch {
+          ZernioCrm.pushWebhookEvent(payload);
+          toast('Evento simulado localmente', 'info');
+        }
+      }
+
+      function toggleWhEvent(event) {
+        const i = whForm.events.indexOf(event);
+        if (i >= 0) whForm.events.splice(i, 1);
+        else whForm.events.push(event);
+      }
+
+      Vue.onMounted(loadWebhooks);
+
       return {
         apiKeyInput, testing, testResult, confirmReset, confirmDelete,
         workspace, modality, referrer, ACCENTS, store,
+        EVENTS, whForm, whExists, whSaving, whLogs, whLogsOpen,
         canEdit, saveBranding, saveApiKey, testConnection,
         disconnectWhatsApp, reconnectWhatsApp, exportData, resetDemo, deleteWorkspace,
+        saveWebhooks, deleteWebhooks, testWebhook, openLogs, simulateWebhook, toggleWhEvent,
+        buildWebhookUrl,
       };
     },
 
@@ -212,6 +359,86 @@
                 class="border-2 border-neutral-900 bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
                 Reconectar (demo)
               </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Webhooks -->
+        <section class="border-2 border-neutral-900 bg-white p-5 xl:col-span-2">
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Webhooks (eventos en tiempo real)</h3>
+            <div class="flex items-center gap-2">
+              <ui-badge v-if="store.serverMode" variant="success" dot>Servidor local activo</ui-badge>
+              <ui-badge v-else variant="neutral">Sin server.mjs</ui-badge>
+              <button @click="simulateWebhook"
+                class="border-2 border-neutral-900 bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider shadow-brutal-sm transition hover:shadow-none">
+                Simular mensaje
+              </button>
+              <button @click="openLogs"
+                class="border-2 border-neutral-900 bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider shadow-brutal-sm transition hover:shadow-none">
+                Logs ({{ whLogs.length || store.webhookEvents.length }})
+              </button>
+            </div>
+          </div>
+          <div class="grid gap-5 lg:grid-cols-2">
+            <div class="space-y-4">
+              <ui-field label="Nombre">
+                <input v-model.trim="whForm.name" type="text"
+                  class="w-full border-2 border-neutral-300 px-3 py-2.5 outline-none focus:border-neutral-900" />
+              </ui-field>
+              <ui-field label="URL del receptor" hint="Local: node server.mjs · Producción: URL pública (ngrok) + secret en query.">
+                <div class="flex items-center gap-2">
+                  <input v-model.trim="whForm.url" type="text" readonly
+                    class="w-full border-2 border-neutral-300 bg-stone-50 px-3 py-2.5 font-mono text-xs outline-none" />
+                  <button @click="whForm.url = buildWebhookUrl()" class="shrink-0 border-2 border-neutral-900 bg-white px-2.5 py-2 text-xs font-medium transition hover:shadow-brutal-sm" aria-label="Regenerar URL">
+                    <ui-icon name="refresh" class="h-4 w-4"></ui-icon>
+                  </button>
+                </div>
+              </ui-field>
+              <ui-field label="Eventos suscritos">
+                <div class="flex flex-wrap gap-1.5">
+                  <button v-for="ev in EVENTS" :key="ev" @click="toggleWhEvent(ev)"
+                    class="border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition"
+                    :class="whForm.events.includes(ev) ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300'">
+                    {{ ev }}
+                  </button>
+                </div>
+              </ui-field>
+              <div class="flex flex-wrap gap-2">
+                <button @click="saveWebhooks" :disabled="whSaving"
+                  class="flex items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                  <ui-spinner v-if="whSaving" size="h-4 w-4"></ui-spinner>
+                  {{ whExists ? 'Actualizar suscripción' : 'Suscribir webhook' }}
+                </button>
+                <button @click="testWebhook" class="border-2 border-neutral-900 bg-white px-4 py-2 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
+                  Enviar prueba
+                </button>
+                <button v-if="whExists" @click="deleteWebhooks"
+                  class="border-2 border-red-800 bg-red-50 px-4 py-2 text-sm font-medium text-red-800 transition hover:shadow-brutal-sm">
+                  Eliminar suscripción
+                </button>
+              </div>
+            </div>
+
+            <!-- Feed de eventos recibidos -->
+            <div class="border-2 border-neutral-200">
+              <div class="border-b-2 border-neutral-200 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">
+                Eventos recibidos (últimos 6)
+              </div>
+              <ul class="max-h-72 divide-y divide-neutral-100 overflow-y-auto">
+                <li v-if="store.webhookEvents.length === 0" class="px-3 py-4 text-sm text-neutral-400">
+                  Sin eventos todavía. Usa "Simular mensaje" o suscríbete para recibir los reales.
+                </li>
+                <li v-for="(entry, i) in store.webhookEvents.slice(0, 6)" :key="i" class="px-3 py-2.5">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="font-mono text-[11px] font-semibold text-[var(--accent)]">{{ entry.event.event }}</span>
+                    <span class="font-mono text-[10px] text-neutral-400">{{ new Date(entry.receivedAt).toLocaleTimeString('es-VE') }}</span>
+                  </div>
+                  <p v-if="entry.event.message" class="mt-0.5 truncate text-xs text-neutral-500">
+                    {{ entry.event.message.text || JSON.stringify(entry.event.message).slice(0, 80) }}
+                  </p>
+                </li>
+              </ul>
             </div>
           </div>
         </section>

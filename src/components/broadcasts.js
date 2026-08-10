@@ -9,18 +9,12 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, formatDate, formatTime, uid, canEdit, getNiche, api } = ZernioCrm;
+  const { store, toast, formatDate, formatTime, uid, canEdit, getNiche, api, asArray } = ZernioCrm;
 
   const components = {};
 
   /** Estados de plantilla → variante de badge. */
   const TEMPLATE_TONES = { APPROVED: 'success', PENDING: 'warn', REJECTED: 'danger' };
-
-  /** Normaliza respuestas del API que pueden venir como array o { items }. */
-  function asArray(data) {
-    if (Array.isArray(data)) return data;
-    return (data && (data.items || data.data || data.broadcasts || data.sequences || data.flows)) || [];
-  }
 
   /** Guiones demo de secuencias por nicho. */
   function demoSequences(niche) {

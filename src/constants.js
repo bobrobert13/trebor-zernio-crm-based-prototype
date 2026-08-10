@@ -405,6 +405,23 @@
     return new Date(ts).toLocaleDateString('es-VE', { day: 'numeric', month: 'short' });
   }
 
+  /**
+   * Normaliza respuestas del API de Zernio: acepta arrays directos o
+   * envelopes ({ profiles }, { accounts }, { numbers }, { data }, { items },
+   * { templates }, { broadcasts }, { sequences }, { flows }, { logs }…).
+   * @param {*} data — respuesta cruda del API.
+   * @returns {Array<object>} Lista normalizada (vacía si no hay datos).
+   */
+  function asArray(data) {
+    if (Array.isArray(data)) return data;
+    if (!data || typeof data !== 'object') return [];
+    const keys = ['data', 'items', 'profiles', 'accounts', 'numbers', 'templates', 'broadcasts', 'sequences', 'flows', 'logs', 'events'];
+    for (const key of keys) {
+      if (Array.isArray(data[key])) return data[key];
+    }
+    return [];
+  }
+
   window.ZernioCrm = window.ZernioCrm || {};
   Object.assign(window.ZernioCrm, {
     BRAND,
@@ -426,5 +443,6 @@
     timeAgo,
     formatTime,
     formatDate,
+    asArray,
   });
 })();

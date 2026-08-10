@@ -156,9 +156,14 @@
         }
       }
 
+      /** Dígitos de un teléfono (para comparar formatos distintos). */
+      function digits(phone) {
+        return String(phone || '').replace(/\D/g, '');
+      }
+
       /**
        * Sincroniza conversaciones desde Zernio (modo live).
-       * Mapea participantes a contactos locales cuando no existen.
+       * Mapea participantes (planos) a contactos locales cuando no existen.
        */
       async function sync() {
         const profileId = workspace.value.zernio && workspace.value.zernio.profileId;
@@ -166,14 +171,14 @@
         syncing.value = true;
         try {
           const data = await ZernioCrm.api.listConversations({ profileId, platform: 'whatsapp' });
-          const list = Array.isArray(data) ? data : data.items || [];
+          const list = ZernioCrm.asArray(data);
           let added = 0;
           list.forEach((conv) => {
             const existing = conversations.value.find((c) => c.id === conv.id);
             if (existing) return;
-            const name = (conv.participant && (conv.participant.name || conv.participant.username)) || 'Cliente Zernio';
-            const phone = (conv.participant && conv.participant.identifier) || '';
-            let contact = contacts.value.find((c) => c.phone === phone);
+            const name = conv.participantName || conv.participantUsername || 'Cliente Zernio';
+            const phone = conv.participantUsername || conv.participantId || '';
+            let contact = contacts.value.find((c) => digits(c.phone) === digits(phone));
             if (!contact) {
               contact = {
                 id: uid('ct'),
@@ -194,7 +199,7 @@
               unread: conv.unreadCount || 0,
               tags: contact.tags.slice(0, 1),
               messages: [],
-              lastTs: Date.now(),
+              lastTs: Date.parse(conv.updatedTime) || Date.now(),
             });
             added += 1;
           });

@@ -9,7 +9,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, api } = ZernioCrm;
+  const { store, toast, api, asArray } = ZernioCrm;
 
   const components = {};
 
@@ -44,12 +44,12 @@
         try {
           store.apiKey = key;
           const data = await api.getProfiles();
-          profiles.value = Array.isArray(data) ? data : [];
+          profiles.value = asArray(data);
           if (profiles.value.length === 0) {
             await createProfile();
           } else {
             step.value = 'profile';
-            toast(`API válida · ${profiles.value.length} perfil(es) encontrado(s)`, 'success');
+            toast(`${profiles.value.length} perfil(es) encontrado(s)`, 'success');
           }
         } catch (err) {
           toast(err.message || 'API key inválida', 'error');
@@ -62,12 +62,13 @@
       async function createProfile() {
         busy.value = true;
         try {
-          const profile = await api.createProfile((store.workspace && store.workspace.name) || 'Mi negocio');
+          const data = await api.createProfile((store.workspace && store.workspace.name) || 'Mi negocio');
+          const profile = asArray(data)[0] || data.profile || data;
           profiles.value.unshift(profile);
           selectedProfileId.value = profile.id || profile._id;
           step.value = 'profile';
           toast('Perfil creado en Zernio', 'success');
-          await loadChannelOptions();
+          await loadChannelOptions(selectedProfileId.value);
         } catch (err) {
           toast(err.message || 'No se pudo crear el perfil', 'error');
         } finally {
@@ -86,8 +87,8 @@
             api.getAccounts(id),
             api.listPhoneNumbers(),
           ]);
-          accounts.value = Array.isArray(accData) ? accData : [];
-          phones.value = Array.isArray(phoneData) ? phoneData : [];
+          accounts.value = asArray(accData);
+          phones.value = asArray(phoneData);
           step.value = 'account';
           if (waAccounts.value.length === 1 && phones.value.length === 0) {
             await connectWithAccount(waAccounts.value[0]);
@@ -101,10 +102,11 @@
 
       /** Vincula una cuenta WhatsApp existente. */
       async function connectWithAccount(account) {
+        const meta = account.metadata || {};
         result.value = {
           profileId: selectedProfileId.value,
           accountId: account.id || account._id,
-          phone: account.displayName || account.username || account.platformIdentifier || 'Número vinculado',
+          phone: meta.displayPhoneNumber || account.username || account.displayName || 'Número vinculado',
         };
         step.value = 'done';
         toast('Cuenta WhatsApp vinculada', 'success');
@@ -115,7 +117,7 @@
       async function connectWithPhone(phone) {
         result.value = {
           profileId: selectedProfileId.value,
-          accountId: phone.accountId || '',
+          accountId: phone.accountId || phone.ownerAccountId || '',
           phone: phone.phoneNumber || phone.displayName || 'Número Zernio',
         };
         step.value = 'done';

@@ -100,7 +100,7 @@
 
       /** Mapea respuestas del API live a la serie (defensivo). */
       function mapLiveDaily(data) {
-        const list = data.dailyMetrics || data.metrics || data.items || data.data || [];
+        const list = data.dailyData || data.dailyMetrics || data.metrics || data.items || data.data || [];
         if (!Array.isArray(list) || list.length === 0) return null;
         return list.slice(-range.value).map((d) => ({
           date: Date.parse(d.date || d.day || d.timestamp) || Date.now(),

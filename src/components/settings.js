@@ -26,6 +26,9 @@
       const whSaving = Vue.ref(false);
       const whLogs = Vue.ref([]);
       const whLogsOpen = Vue.ref(false);
+      const health = Vue.ref(null);
+      const healthBusy = Vue.ref(false);
+      const reconnectOpen = Vue.ref(false);
 
       const workspace = Vue.computed(() => store.workspace);
       const modality = Vue.computed(() =>
@@ -245,16 +248,64 @@
         else whForm.events.push(event);
       }
 
+      /** Health check de la cuenta WhatsApp vinculada a Zernio. */
+      async function checkHealth() {
+        const accountId = workspace.value.zernio && workspace.value.zernio.accountId;
+        if (!accountId || healthBusy.value) return;
+        healthBusy.value = true;
+        health.value = null;
+        try {
+          health.value = await ZernioCrm.api.getAccountHealth(accountId);
+          toast('Health check OK', 'success');
+        } catch (err) {
+          health.value = { error: err.message || 'Cuenta en mal estado' };
+          toast(err.message || 'Cuenta en mal estado', 'error');
+        } finally {
+          healthBusy.value = false;
+        }
+      }
+
+      /** Desconecta la cuenta de Zernio (DELETE /accounts/{id}). */
+      async function disconnectLive() {
+        const accountId = workspace.value.zernio && workspace.value.zernio.accountId;
+        try {
+          if (accountId && store.mode === 'live') await ZernioCrm.api.deleteAccount(accountId);
+          workspace.value.zernio = null;
+          workspace.value.whatsapp.connected = false;
+          toast('Cuenta desconectada de Zernio', 'info');
+        } catch (err) {
+          toast(err.message || 'No se pudo desconectar', 'error');
+        }
+      }
+
+      /** Recibe la reconexión de live-connect y actualiza el canal. */
+      function onLiveConnected(result) {
+        workspace.value.zernio = { profileId: result.profileId, accountId: result.accountId, phone: result.phone };
+        workspace.value.whatsapp = {
+          connected: true,
+          modality: 'live',
+          phone: result.phone,
+          status: 'connected',
+          since: Date.now(),
+          about: 'Conexión real con Zernio',
+          accountId: result.accountId,
+        };
+        store.mode = 'live';
+        reconnectOpen.value = false;
+        toast('Reconectado con Zernio', 'success');
+      }
+
       Vue.onMounted(loadWebhooks);
 
       return {
         apiKeyInput, testing, testResult, confirmReset, confirmDelete,
         workspace, modality, referrer, ACCENTS, store,
         EVENTS, whForm, whExists, whSaving, whLogs, whLogsOpen,
+        health, healthBusy, reconnectOpen,
         canEdit, saveBranding, saveApiKey, testConnection,
         disconnectWhatsApp, reconnectWhatsApp, exportData, resetDemo, deleteWorkspace,
         saveWebhooks, deleteWebhooks, testWebhook, openLogs, simulateWebhook, toggleWhEvent,
-        buildWebhookUrl,
+        buildWebhookUrl, checkHealth, disconnectLive, onLiveConnected,
       };
     },
 
@@ -334,34 +385,62 @@
         <!-- Canal WhatsApp -->
         <section class="border-2 border-neutral-900 bg-white p-5">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Canal WhatsApp</h3>
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="flex items-center gap-3">
-              <span class="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+              <span class="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
                 <ui-icon name="whatsapp" class="h-6 w-6"></ui-icon>
               </span>
-              <div>
+              <div class="min-w-0">
                 <p class="font-semibold">{{ workspace.whatsapp.phone }}</p>
-                <p class="text-xs text-neutral-500">
+                <p class="text-sm text-neutral-500">
                   Modalidad: {{ modality.nombre || workspace.whatsapp.modality }} ·
                   {{ new Date(workspace.whatsapp.since).toLocaleDateString('es-VE') }}
                 </p>
+                <p v-if="workspace.zernio" class="truncate font-mono text-[11px] text-neutral-400">
+                  perfil {{ workspace.zernio.profileId }} · cuenta {{ workspace.zernio.accountId }}
+                </p>
               </div>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <ui-badge :variant="workspace.whatsapp.connected ? 'success' : 'danger'" dot>
                 {{ workspace.whatsapp.connected ? 'Conectado' : 'Desconectado' }}
               </ui-badge>
-              <button v-if="workspace.whatsapp.connected && canEdit('settings')" @click="disconnectWhatsApp"
+              <button v-if="workspace.zernio && canEdit('settings')" @click="checkHealth" :disabled="healthBusy"
+                class="flex items-center gap-2 border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                <ui-spinner v-if="healthBusy" size="h-3.5 w-3.5"></ui-spinner>
+                Health check
+              </button>
+              <button v-if="workspace.zernio && canEdit('settings')" @click="reconnectOpen = true"
+                class="border-2 border-neutral-900 bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                Reconectar
+              </button>
+              <button v-if="workspace.zernio && canEdit('settings')" @click="disconnectLive"
                 class="border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
                 Desconectar
               </button>
-              <button v-else-if="!workspace.whatsapp.connected && canEdit('settings')" @click="reconnectWhatsApp"
-                class="border-2 border-neutral-900 bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
-                Reconectar (demo)
-              </button>
+              <template v-if="!workspace.zernio">
+                <button v-if="workspace.whatsapp.connected && canEdit('settings')" @click="disconnectWhatsApp"
+                  class="border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
+                  Desconectar (demo)
+                </button>
+                <button v-else-if="!workspace.whatsapp.connected && canEdit('settings')" @click="reconnectWhatsApp"
+                  class="border-2 border-neutral-900 bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                  Reconectar (demo)
+                </button>
+              </template>
             </div>
           </div>
+          <div v-if="health" class="mt-4 flex items-center gap-2 border-2 p-3 font-mono text-xs"
+            :class="health.error ? 'border-red-800 bg-red-50 text-red-800' : 'border-emerald-800 bg-emerald-50 text-emerald-800'">
+            <ui-icon :name="health.error ? 'alert' : 'check-circle'" class="h-4 w-4 shrink-0"></ui-icon>
+            {{ health.error || JSON.stringify(health).slice(0, 140) }}
+          </div>
         </section>
+
+        <!-- Modal: reconexión con Zernio -->
+        <ui-modal :open="reconnectOpen" title="Conectar con Zernio" @close="reconnectOpen = false">
+          <live-connect @connected="onLiveConnected"></live-connect>
+        </ui-modal>
 
         <!-- Webhooks -->
         <section class="border-2 border-neutral-900 bg-white p-5 xl:col-span-2">

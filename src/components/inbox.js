@@ -181,7 +181,14 @@
           workspace.value.conversations = workspace.value.conversations.filter((c) => c.id.startsWith('conv_') || liveIds.has(c.id));
           list.forEach((conv) => {
             const existing = conversations.value.find((c) => c.id === conv.id);
-            if (existing) return;
+            if (existing) {
+              // Conversaciones sincronizadas antes del fix por-cuenta: asignar accountId y refrescar
+              if (!existing.accountId && conv.accountId) {
+                existing.accountId = conv.accountId;
+                existing.lastTs = Date.parse(conv.updatedTime) || existing.lastTs;
+              }
+              return;
+            }
             const name = conv.participantName || conv.participantUsername || 'Cliente Zernio';
             const phone = conv.participantUsername || conv.participantId || '';
             let contact = contacts.value.find((c) => digits(c.phone) === digits(phone));

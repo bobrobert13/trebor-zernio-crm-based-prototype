@@ -62,7 +62,8 @@
     async request(path, { method = 'GET', query, body } = {}) {
       const serverMode = ZernioCrm.store.serverMode;
       const url = new URL(serverMode ? `${location.origin}/zernio${path}` : `${this.baseUrl}${path}`);
-      if (query) Object.entries(query).forEach(([k, v]) => v != null && url.searchParams.set(k, v));
+      // Nunca mandar query params vacíos (el API los rechaza como formato inválido)
+      if (query) Object.entries(query).forEach(([k, v]) => v != null && v !== '' && url.searchParams.set(k, v));
     
       const headers = serverMode
         ? { 'X-Zernio-Key': ZernioCrm.store.apiKey }

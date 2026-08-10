@@ -44,6 +44,9 @@
       const waModal = Vue.ref(false);
       const waModality = Vue.ref(null);
 
+      /** Resultado de la conexión real con Zernio (live-connect). */
+      const liveResult = Vue.ref(null);
+
       /** Temporizadores activos (limpieza en onUnmounted). */
       const timers = [];
 
@@ -169,6 +172,13 @@
         }, (modality.pasos.length + 1) * 1100);
       }
 
+      /** Recibe la conexión real de live-connect y habilita el siguiente paso. */
+      function onLiveConnected(result) {
+        liveResult.value = result;
+        waModality.value = 'live';
+        waSim.done = true;
+      }
+
       /** Crea el workspace, inicia sesión como propietario y entra al dashboard. */
       function finish() {
         if (!canContinue.value) return;
@@ -187,6 +197,24 @@
           });
           if (!form.inviteAgent) ws.users = ws.users.filter((u) => u.role !== 'agente');
           if (!form.inviteVendor) ws.users = ws.users.filter((u) => u.role !== 'vendedor');
+          // Conexión real con Zernio (si el cliente la eligió)
+          if (liveResult.value) {
+            ws.zernio = {
+              profileId: liveResult.value.profileId,
+              accountId: liveResult.value.accountId,
+              phone: liveResult.value.phone,
+            };
+            ws.whatsapp = {
+              connected: true,
+              modality: 'live',
+              phone: liveResult.value.phone,
+              status: 'connected',
+              since: Date.now(),
+              about: 'Conexión real con Zernio',
+              accountId: liveResult.value.accountId,
+            };
+            store.mode = 'live';
+          }
           store.workspace = ws;
           store.currentUser = ws.users.find((u) => u.role === 'owner');
           applyAccent(ws);
@@ -198,8 +226,8 @@
       return {
         STEPS, form, current, enterLoading, creating, niche, accent,
         roadmapItems, roadmapSim, selectedRoadmap, progressPercent,
-        waSim, waModal, waModality,
-        selectNiche, jumpTo, next, back, openWaCard, connectWhatsApp, finish,
+        waSim, waModal, waModality, liveResult,
+        selectNiche, jumpTo, next, back, openWaCard, connectWhatsApp, onLiveConnected, finish,
         canContinue,
         ui: ZernioCrm,
       };
@@ -411,6 +439,23 @@
                 <h3 class="mt-3 font-semibold">{{ m.nombre }}</h3>
                 <p class="mt-1 text-xs text-neutral-500">{{ m.desc }}</p>
               </button>
+            </div>
+
+            <!-- Conexión real con Zernio -->
+            <div class="mt-8 border-2 border-neutral-900 bg-white p-5">
+              <div class="mb-4 flex items-center gap-3">
+                <span class="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-900 text-white">
+                  <ui-icon name="key" class="h-4 w-4"></ui-icon>
+                </span>
+                <div>
+                  <h3 class="font-semibold">¿Ya usas Zernio? Conecta tu API key</h3>
+                  <p class="text-sm text-neutral-500">Vincula tu número real: detectamos tu perfil, cuentas WhatsApp y números provisionados.</p>
+                </div>
+              </div>
+              <live-connect @connected="onLiveConnected"></live-connect>
+              <p v-if="liveResult" class="mt-3 font-mono text-xs text-emerald-700">
+                ✓ Número vinculado: {{ liveResult.phone }}
+              </p>
             </div>
           </section>
 

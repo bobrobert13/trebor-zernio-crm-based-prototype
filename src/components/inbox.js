@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, getNiche, timeAgo, formatTime, uid, canEdit } = ZernioCrm;
+  const { store, toast, getNiche, timeAgo, formatTime, uid, canEdit, PLATFORMS, getPlatform } = ZernioCrm;
 
   const components = {};
 
@@ -28,6 +28,7 @@
     setup() {
       const search = Vue.ref('');
       const filter = Vue.ref('all');
+      const platformFilter = Vue.ref('all');
       const selectedId = Vue.ref(null);
       const draft = Vue.ref('');
       const sending = Vue.ref(false);
@@ -51,13 +52,15 @@
       const contacts = Vue.computed(() => workspace.value.contacts || []);
       const conversations = Vue.computed(() => workspace.value.conversations || []);
 
-      /** Conversaciones filtradas por búsqueda y pestaña/tag. */
+      /** Conversaciones filtradas por búsqueda, pestaña/tag y plataforma. */
       const filtered = Vue.computed(() => {
         const q = search.value.trim().toLowerCase();
         return conversations.value
           .slice()
           .sort((a, b) => b.lastTs - a.lastTs)
           .filter((c) => {
+            const convPlatform = c.platform || 'whatsapp';
+            if (platformFilter.value !== 'all' && convPlatform !== platformFilter.value) return false;
             const contact = contacts.value.find((ct) => ct.id === c.contactId);
             const haystack = `${contact ? contact.name : ''} ${c.messages.length ? c.messages[c.messages.length - 1].text : ''}`.toLowerCase();
             if (q && !haystack.includes(q)) return false;
@@ -66,6 +69,18 @@
             return true;
           });
       });
+
+      /** Plataformas presentes en la bandeja (para las pestañas). */
+      const presentPlatforms = Vue.computed(() => {
+        const ids = new Set(conversations.value.map((c) => c.platform || 'whatsapp'));
+        return PLATFORMS.filter((p) => ids.has(p.id));
+      });
+
+      /** Canal TikTok conectado (para el enlace externo). */
+      const tiktokChannel = Vue.computed(() => (workspace.value.channels || []).find((c) => c.platform === 'tiktok') || null);
+
+      /** ¿Filtro TikTok sin mensajería? */
+      const tiktokEmpty = Vue.computed(() => platformFilter.value === 'tiktok' && filtered.value.length === 0);
 
       const selected = Vue.computed(() => conversations.value.find((c) => c.id === selectedId.value) || null);
       const selectedContact = Vue.computed(() => {
@@ -198,63 +213,70 @@
       }
 
       /**
-       * Sincroniza conversaciones desde Zernio (modo live).
+       * Sincroniza conversaciones por cada canal con mensajería (WhatsApp e Instagram).
        * Mapea participantes (planos) a contactos locales cuando no existen.
        */
       async function sync() {
         const profileId = workspace.value.zernio && workspace.value.zernio.profileId;
-        const accountId = workspace.value.zernio && workspace.value.zernio.accountId;
-        if (!profileId || !accountId || syncing.value) return;
+        if (!profileId || syncing.value) return;
         syncing.value = true;
         try {
-          const data = await ZernioCrm.api.listConversations({ profileId, platform: 'whatsapp' });
-          const list = ZernioCrm.asArray(data).filter((c) => c.accountId === accountId);
           let added = 0;
-          // Limpia conversaciones live huérfanas (de otras cuentas o borradas):
-          // solo se conservan las demo (conv_*) y las presentes en la respuesta actual
-          const liveIds = new Set(list.map((c) => c.id));
-          workspace.value.conversations = workspace.value.conversations.filter((c) => c.id.startsWith('conv_') || liveIds.has(c.id));
-          list.forEach((conv) => {
-            const existing = conversations.value.find((c) => c.id === conv.id);
-            if (existing) {
-              // Conversaciones sincronizadas antes del fix por-cuenta: asignar accountId y refrescar
-              if (!existing.accountId && conv.accountId) {
-                existing.accountId = conv.accountId;
-                existing.lastTs = Date.parse(conv.updatedTime) || existing.lastTs;
+          for (const p of PLATFORMS.filter((x) => x.inbox)) {
+            const channel = (workspace.value.channels || []).find((c) => c.platform === p.id);
+            const accountId = channel ? channel.accountId : p.id === 'whatsapp' ? (workspace.value.zernio && workspace.value.zernio.accountId) || '' : '';
+            const data = await ZernioCrm.api.listConversations({ profileId, platform: p.id });
+            let list = ZernioCrm.asArray(data);
+            if (accountId) list = list.filter((c) => c.accountId === accountId);
+            // Limpia conversaciones live huérfanas de ESTE canal (demo conv_* se mantienen)
+            const liveIds = new Set(list.map((c) => c.id));
+            workspace.value.conversations = workspace.value.conversations.filter(
+              (c) => c.id.startsWith('conv_') || (c.platform || 'whatsapp') !== p.id || liveIds.has(c.id)
+            );
+            list.forEach((conv) => {
+              const existing = conversations.value.find((c) => c.id === conv.id);
+              if (existing) {
+                // Conversaciones sincronizadas antes del fix por-cuenta: asignar accountId y refrescar
+                if (!existing.accountId && conv.accountId) {
+                  existing.accountId = conv.accountId;
+                  existing.platform = p.id;
+                  existing.lastTs = Date.parse(conv.updatedTime) || existing.lastTs;
+                }
+                return;
               }
-              return;
-            }
-            const name = conv.participantName || conv.participantUsername || 'Cliente Zernio';
-            const phone = conv.participantUsername || conv.participantId || '';
-            let contact = contacts.value.find((c) => digits(c.phone) === digits(phone));
-            if (contact && /^\d+$/.test(contact.name) && !/^\d+$/.test(name)) {
-              contact.name = name; // mejora el nombre numérico con el del participante
-            }
-            if (!contact) {
-              contact = {
-                id: uid('ct'),
-                name,
-                phone,
-                platform: 'whatsapp',
-                tags: ['cliente'],
-                customFields: {},
-                createdAt: Date.now(),
-              };
-              workspace.value.contacts.unshift(contact);
-            }
-            workspace.value.conversations.unshift({
-              id: conv.id,
-              contactId: contact.id,
-              platform: 'whatsapp',
-              status: conv.status || 'active',
-              unread: conv.unreadCount || 0,
-              tags: contact.tags.slice(0, 1),
-              messages: [],
-              lastTs: Date.parse(conv.updatedTime) || Date.now(),
-              accountId: conv.accountId,
+              const name = conv.participantName || conv.participantUsername || 'Cliente Zernio';
+              const phone = conv.participantUsername || conv.participantId || '';
+              let contact = contacts.value.find((c) => digits(c.phone) === digits(phone));
+              if (contact && /^\d+$/.test(contact.name) && !/^\d+$/.test(name)) {
+                contact.name = name; // mejora el nombre numérico con el del participante
+              }
+              if (!contact) {
+                contact = {
+                  id: uid('ct'),
+                  name,
+                  phone,
+                  platform: p.id,
+                  tags: ['cliente'],
+                  customFields: {},
+                  createdAt: Date.now(),
+                };
+                workspace.value.contacts.unshift(contact);
+              }
+              workspace.value.conversations.unshift({
+                id: conv.id,
+                contactId: contact.id,
+                platform: p.id,
+                status: conv.status || 'active',
+                unread: conv.unreadCount || 0,
+                tags: contact.tags.slice(0, 1),
+                messages: [],
+                lastTs: Date.parse(conv.updatedTime) || Date.now(),
+                accountId: conv.accountId,
+                igProfile: conv.participant && conv.participant.instagramProfile ? conv.participant.instagramProfile : conv.participantInstagramProfile || null,
+              });
+              added += 1;
             });
-            added += 1;
-          });
+          }
           toast(added > 0 ? `${added} conversaciones sincronizadas` : 'Sin conversaciones nuevas', 'success');
         } catch (err) {
           toast(err.message || 'No se pudo sincronizar', 'error');
@@ -285,9 +307,10 @@
       }
 
       return {
-        search, filter, selectedId, draft, sending, loading, syncing, newConvOpen, newContactId,
+        search, filter, platformFilter, selectedId, draft, sending, loading, syncing, newConvOpen, newContactId,
         workspace, niche, conversations, contacts, filtered, selected, selectedContact, unreadTotal, isLive,
         QUICK_REPLIES, canEdit, humanAgent, outsideWindow, canHumanAgent, blockedByWindow,
+        presentPlatforms, tiktokChannel, tiktokEmpty, getPlatform,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
     },
@@ -342,7 +365,21 @@
                 <input v-model.trim="search" type="search" placeholder="Buscar conversación…"
                   class="w-full bg-transparent text-sm outline-none" />
               </div>
+              <!-- Pestañas por plataforma -->
               <div class="mt-2.5 flex gap-1.5 overflow-x-auto scrollbar-none">
+                <button @click="platformFilter = 'all'"
+                  class="flex shrink-0 items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="platformFilter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300'">
+                  Todas
+                </button>
+                <button v-for="p in presentPlatforms" :key="p.id" @click="platformFilter = p.id"
+                  class="flex shrink-0 items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="platformFilter === p.id ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300'">
+                  <ui-icon :name="p.icon" class="h-3.5 w-3.5"></ui-icon>
+                  {{ p.nombre }}
+                </button>
+              </div>
+              <div class="mt-2 flex gap-1.5 overflow-x-auto scrollbar-none">
                 <button @click="filter = 'all'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
                   :class="filter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300'">
                   Todas ({{ conversations.length }})
@@ -358,12 +395,24 @@
                 </button>
               </div>
             </div>
-            <ul class="h-[calc(100%-108px)] overflow-y-auto">
-              <ui-empty v-if="filtered.length === 0" icon="message" title="Sin conversaciones"
+            <ul class="h-[calc(100%-158px)] overflow-y-auto">
+              <!-- TikTok no tiene mensajería en Zernio -->
+              <ui-empty v-if="tiktokEmpty" icon="tiktok" title="TikTok no tiene mensajería en Zernio"
+                desc="Zernio solo expone publicación para TikTok. Responde a tus DM desde la app de TikTok." class="m-4">
+                <a v-if="tiktokChannel && tiktokChannel.username" :href="'https://www.tiktok.com/@' + tiktokChannel.username.replace('@', '')" target="_blank"
+                  class="border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                  Abrir perfil externo
+                </a>
+              </ui-empty>
+              <ui-empty v-else-if="filtered.length === 0" icon="message" title="Sin conversaciones"
                 desc="Prueba con otro filtro o inicia una conversación nueva." class="m-4"></ui-empty>
               <li v-for="conv in filtered" :key="conv.id">
                 <button @click="selectConversation(conv)" class="flex w-full items-center gap-3 border-b border-neutral-100 px-4 py-4 text-left transition hover:bg-stone-50"
                   :class="conv.id === selectedId ? 'bg-[var(--accent-soft)]' : ''">
+                  <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+                    :class="(getPlatform(conv.platform || 'whatsapp') || {}).tone">
+                    <ui-icon :name="(getPlatform(conv.platform || 'whatsapp') || {}).icon" class="h-3 w-3"></ui-icon>
+                  </span>
                   <ui-avatar :name="(contacts.find(c => c.id === conv.contactId) || {}).name" size="h-10 w-10 text-sm"></ui-avatar>
                   <div class="min-w-0 flex-1">
                     <div class="flex items-baseline justify-between gap-2">
@@ -398,10 +447,19 @@
                   <button class="lg:hidden" @click="backToList" aria-label="Volver a la lista">
                     <ui-icon name="chevron-left" class="h-5 w-5"></ui-icon>
                   </button>
+                  <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                    :class="(getPlatform(selected.platform || 'whatsapp') || {}).tone">
+                    <ui-icon :name="(getPlatform(selected.platform || 'whatsapp') || {}).icon" class="h-4 w-4"></ui-icon>
+                  </span>
                   <ui-avatar :name="selectedContact ? selectedContact.name : '?'" size="h-10 w-10 text-sm"></ui-avatar>
                   <div>
-                    <p class="font-semibold leading-tight">{{ selectedContact ? selectedContact.name : 'Contacto' }}</p>
+                    <p class="font-semibold leading-tight">{{ selectedContact ? selectedContact.name : 'Contacto' }}
+                      <span class="ml-1.5 font-mono text-[10px] uppercase tracking-wider text-neutral-400">{{ (getPlatform(selected.platform || 'whatsapp') || {}).nombre }}</span>
+                    </p>
                     <p class="font-mono text-[11px] uppercase tracking-wider text-neutral-400">{{ selectedContact ? selectedContact.phone : '' }}</p>
+                    <p v-if="selected.igProfile" class="font-mono text-[10px] text-neutral-400">
+                      {{ selected.igProfile.isFollower ? '· te sigue' : '' }}{{ selected.igProfile.followerCount != null ? ' · ' + selected.igProfile.followerCount + ' seguidores' : '' }}
+                    </p>
                   </div>
                 </div>
                 <div class="flex items-center gap-1.5">

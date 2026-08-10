@@ -12,13 +12,6 @@
 
   const components = {};
 
-  /** Color de acento por plataforma (clases Tailwind fijas). */
-  const PLATFORM_TONES = {
-    whatsapp: 'bg-emerald-100 text-emerald-800',
-    instagram: 'bg-pink-100 text-pink-700',
-    tiktok: 'bg-neutral-100 text-neutral-900',
-  };
-
   components['channels-view'] = {
     setup() {
       const connectPlatform = Vue.ref(null);
@@ -124,7 +117,7 @@
 
       return {
         connectPlatform, healthMap, busyMap, workspace, isLive, channels,
-        PLATFORMS, PLATFORM_TONES, channelOf, onConnected, checkHealth, disconnect,
+        PLATFORMS, channelOf, onConnected, checkHealth, disconnect,
         canEdit,
       };
     },
@@ -147,7 +140,7 @@
         <div class="grid gap-5 lg:grid-cols-3">
           <article v-for="p in PLATFORMS" :key="p.id" class="flex flex-col border-2 border-neutral-900 bg-white p-5">
             <div class="flex items-start justify-between gap-3">
-              <span class="flex h-12 w-12 items-center justify-center rounded-full" :class="PLATFORM_TONES[p.id]">
+              <span class="flex h-12 w-12 items-center justify-center rounded-full" :class="p.tone">
                 <ui-icon :name="p.icon" class="h-6 w-6"></ui-icon>
               </span>
               <ui-badge :variant="channelOf(p.id) && channelOf(p.id).connected ? 'success' : 'neutral'" dot>

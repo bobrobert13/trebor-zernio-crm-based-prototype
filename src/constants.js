@@ -291,9 +291,9 @@
    * inbox: true solo si Zernio expone la mensajería (DM) para esa plataforma.
    */
   const PLATFORMS = [
-    { id: 'whatsapp', nombre: 'WhatsApp', icon: 'whatsapp', inbox: true },
-    { id: 'instagram', nombre: 'Instagram', icon: 'instagram', inbox: true },
-    { id: 'tiktok', nombre: 'TikTok', icon: 'tiktok', inbox: false, nota: 'Zernio no expone DM de TikTok: la cuenta se conecta para verificación, sin bandeja.' },
+    { id: 'whatsapp', nombre: 'WhatsApp', icon: 'whatsapp', inbox: true, tone: 'bg-emerald-100 text-emerald-800' },
+    { id: 'instagram', nombre: 'Instagram', icon: 'instagram', inbox: true, tone: 'bg-pink-100 text-pink-700' },
+    { id: 'tiktok', nombre: 'TikTok', icon: 'tiktok', inbox: false, tone: 'bg-neutral-100 text-neutral-900', nota: 'Zernio no expone DM de TikTok: la cuenta se conecta para verificación, sin bandeja.' },
   ];
 
   /** @param {string} id — id de plataforma. @returns {object|undefined} */

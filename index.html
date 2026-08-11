@@ -104,6 +104,14 @@
       background-size: cover;
       background-position: center;
     }
+    /* Drawer lateral derecho (fichas y detalles) */
+    .drawer-in {
+      animation: drawer-in 0.22s ease;
+    }
+    @keyframes drawer-in {
+      from { transform: translateX(100%); }
+      to { transform: translateX(0); }
+    }
   </style>
 </head>
 

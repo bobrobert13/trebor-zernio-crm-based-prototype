@@ -34,6 +34,31 @@
         stroke-linecap="round" stroke-linejoin="round" v-html="paths" aria-hidden="true"></svg>`,
   };
 
+  /** Drawer lateral derecho deslizante (fichas, detalles). */
+  components['ui-drawer'] = {
+    props: { open: { type: Boolean, default: false }, title: { type: String, default: '' } },
+    emits: ['close'],
+    template: `
+      <teleport to="body">
+        <transition name="fade">
+          <div v-if="open" class="fixed inset-0 z-50" role="dialog" aria-modal="true">
+            <div class="absolute inset-0 bg-neutral-900/40" @click="$emit('close')"></div>
+            <aside class="drawer-in absolute right-0 top-0 flex h-full w-full max-w-md flex-col border-l-2 border-neutral-900 bg-white shadow-brutal">
+              <header class="flex items-center justify-between border-b-2 border-neutral-900 px-5 py-3.5">
+                <h3 class="font-mono text-xs font-semibold uppercase tracking-widest">{{ title }}</h3>
+                <button class="p-1 hover:text-[var(--accent)]" aria-label="Cerrar" @click="$emit('close')">
+                  <ui-icon name="x" class="h-4 w-4"></ui-icon>
+                </button>
+              </header>
+              <div class="min-h-0 flex-1 overflow-y-auto p-5">
+                <slot></slot>
+              </div>
+            </aside>
+          </div>
+        </transition>
+      </teleport>`,
+  };
+
   /** Modal con header, panel y overlay. */
   components['ui-modal'] = {
     props: {

@@ -402,6 +402,44 @@
         tplFirstOpen.value = false;
       }
 
+      // ── Ficha del cliente (drawer, flujo CRM por conversación) ─────────────
+      const contactDrawerOpen = Vue.ref(false);
+      const contactTags = Vue.computed(() => workspace.value.contactTags || []);
+
+      /** Alterna una etiqueta de contacto (clasificación general, no lead). */
+      function toggleContactTag(tag) {
+        const c = selectedContact.value;
+        if (!c) return;
+        const i = c.tags.indexOf(tag);
+        if (i >= 0) c.tags.splice(i, 1);
+        else c.tags.push(tag);
+      }
+
+      /** Asigna la etapa del lead al contacto (coherente con el kanban). */
+      function setLeadTag(tag) {
+        const c = selectedContact.value;
+        if (!c) return;
+        c.leadTag = tag || null;
+      }
+
+      /** Registra un contacto desde una conversación huérfana (sin ficha). */
+      function registerContact() {
+        const conv = selected.value;
+        if (!conv || selectedContact.value) return;
+        const contact = {
+          id: uid('ct'),
+          name: 'Cliente sin ficha',
+          phone: '',
+          platform: conv.platform || 'whatsapp',
+          tags: ['cliente'],
+          customFields: {},
+          createdAt: Date.now(),
+        };
+        workspace.value.contacts.unshift(contact);
+        conv.contactId = contact.id;
+        toast('Contacto registrado: completa su ficha aquí mismo', 'success');
+      }
+
       /** Envía la plantilla seleccionada (re-enganche >24h o primer mensaje). */
       async function sendApprovedTemplate() {
         const t = tplSelected.value;
@@ -480,6 +518,7 @@
         presentPlatforms, tiktokChannel, tiktokEmpty, getPlatform, leadTags,
         tplPickerOpen, tplList, tplSelected, tplParams, tplVariables, tplSending,
         openTemplatePicker, closeTemplatePicker, sendApprovedTemplate,
+        contactDrawerOpen, contactTags, toggleContactTag, setLeadTag, registerContact,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
     },
@@ -641,6 +680,9 @@
                 </div>
                 <div class="flex items-center gap-1.5">
                   <ui-badge v-for="t in selected.tags" :key="t" variant="neutral">{{ t }}</ui-badge>
+                  <button @click="contactDrawerOpen = true" class="p-1.5 hover:text-[var(--accent)]" aria-label="Ficha del cliente">
+                    <ui-icon name="user" class="h-4 w-4"></ui-icon>
+                  </button>
                 </div>
               </header>
 
@@ -750,6 +792,78 @@
             </template>
           </div>
         </ui-modal>
+        <!-- Drawer: ficha del cliente (gestión por conversación) -->
+        <ui-drawer :open="contactDrawerOpen" :title="'Ficha · ' + (selectedContact ? selectedContact.name : 'Sin ficha')" @close="contactDrawerOpen = false">
+          <div v-if="selected" class="space-y-5">
+            <template v-if="selectedContact">
+              <div class="flex items-center gap-3">
+                <ui-avatar :name="selectedContact.name" size="h-12 w-12 text-base"></ui-avatar>
+                <div class="min-w-0 flex-1">
+                  <input :value="selectedContact.name" @change="selectedContact.name = $event.target.value"
+                    class="w-full border-b border-transparent bg-transparent font-semibold outline-none focus:border-neutral-900" />
+                  <input :value="selectedContact.phone" @change="selectedContact.phone = $event.target.value"
+                    class="w-full border-b border-transparent bg-transparent font-mono text-xs text-neutral-500 outline-none focus:border-neutral-900" />
+                </div>
+              </div>
+              <p class="text-xs text-neutral-400">Cliente desde {{ selectedContact.createdAt ? new Date(selectedContact.createdAt).toLocaleDateString('es-VE') : '—' }}</p>
+
+              <div>
+                <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Etiquetas de contacto</p>
+                <div class="flex flex-wrap gap-1.5">
+                  <button v-for="t in contactTags" :key="t" @click="toggleContactTag(t)"
+                    class="border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition"
+                    :class="selectedContact.tags.includes(t) ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
+                    {{ t }}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Etapa del lead</p>
+                <select :value="selectedContact.leadTag || ''" @change="setLeadTag($event.target.value)"
+                  class="w-full border-2 border-neutral-300 bg-white px-3 py-2 outline-none focus:border-neutral-900">
+                  <option value="">Sin asignar</option>
+                  <option v-for="t in leadTags" :key="t" :value="t">{{ t }}</option>
+                </select>
+              </div>
+
+              <div v-if="niche.customFields.length">
+                <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Campos del negocio · {{ niche.nombre }}</p>
+                <div class="space-y-2">
+                  <ui-field v-for="f in niche.customFields" :key="f.slug" :label="f.name">
+                    <input v-model="selectedContact.customFields[f.slug]" type="text"
+                      class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
+                  </ui-field>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <p class="text-sm text-neutral-500">Esta conversación no tiene contacto registrado.</p>
+              <button @click="registerContact"
+                class="w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                Registrar contacto
+              </button>
+            </template>
+
+            <!-- Historial resumido del contacto -->
+            <div>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial</p>
+              <ul class="space-y-1.5">
+                <li v-for="c in conversations.filter(x => selectedContact && x.contactId === selectedContact.id)" :key="c.id"
+                  class="flex items-center justify-between gap-2 text-xs">
+                  <span class="flex min-w-0 items-center gap-1.5">
+                    <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
+                    <span class="truncate">{{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}</span>
+                  </span>
+                  <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ timeAgo(c.lastTs) }} · {{ c.messages.length }} msgs</span>
+                </li>
+                <li v-if="!selectedContact || conversations.filter(x => x.contactId === selectedContact.id).length === 0" class="text-xs text-neutral-400">
+                  Sin historial previo.
+                </li>
+              </ul>
+            </div>
+          </div>
+        </ui-drawer>
       </div>`,
   };
 

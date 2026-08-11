@@ -7,7 +7,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, applyAccent, ACCENTS, REFERRERS, WHATSAPP_MODALITIES, canEdit } = ZernioCrm;
+  const { store, toast, applyAccent, ACCENTS, REFERRERS, WHATSAPP_MODALITIES, canEdit, api, asArray } = ZernioCrm;
 
   const components = {};
 
@@ -337,11 +337,90 @@
 
       Vue.onMounted(loadWebhooks);
 
+      // ── Credenciales del centro (sub-key por negocio) ──────────────────────
+
+      /** Máscara de una clave para mostrar (sk_1234…abcd). */
+      function maskKey(key) {
+        if (!key) return '';
+        return key.length > 12 ? `${key.slice(0, 6)}…${key.slice(-4)}` : '••••••••';
+      }
+
+      /** Sub-key activa del negocio (persistida en workspace.zernio). */
+      const subKey = Vue.computed(() => (workspace.value.zernio && workspace.value.zernio.subKey) || '');
+      const subKeyBusy = Vue.ref(false);
+
+      /** Resuelve el id de una sub-key por el sufijo de su preview (para revocarla). */
+      async function findKeyId(subKeyValue) {
+        try {
+          const data = await api.listApiKeys();
+          const keys = asArray(data) || [];
+          const suffix = String(subKeyValue).slice(-6);
+          const found = keys.find((k) => {
+            const preview = k.keyPreview || k.preview || '';
+            return preview.endsWith(suffix) || String(k.id || '').endsWith(suffix);
+          });
+          return found ? found.id || found._id : null;
+        } catch {
+          return null;
+        }
+      }
+
+      /** Rota la sub-key: crea una nueva, la activa y revoca la anterior. */
+      async function rotateSubKey() {
+        const z = workspace.value.zernio;
+        if (!z || !z.subKey || !z.profileId || subKeyBusy.value) return;
+        subKeyBusy.value = true;
+        try {
+          const data = await api.createApiKey({
+            name: `negocio-${workspace.value.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`,
+            profileIds: [z.profileId],
+          });
+          const newKey = (data.apiKey && data.apiKey.key) || data.key;
+          if (!newKey) throw new Error('El API no devolvió la sub-key');
+          const oldKeyId = await findKeyId(z.subKey);
+          z.subKey = newKey;
+          store.apiKey = newKey;
+          if (oldKeyId) {
+            await api.revokeApiKey(oldKeyId);
+            toast('Sub-key rotada: la anterior quedó revocada', 'success');
+          } else {
+            toast('Sub-key rotada (no se encontró la anterior para revocar)', 'info');
+          }
+        } catch (err) {
+          toast(err.message || 'No se pudo rotar la sub-key', 'error');
+        } finally {
+          subKeyBusy.value = false;
+        }
+      }
+
+      /** Revoca el acceso del negocio: sub-key revocada y conexión limpiada. */
+      async function revokeSubKey() {
+        const z = workspace.value.zernio;
+        if (!z || !z.subKey || subKeyBusy.value) return;
+        subKeyBusy.value = true;
+        try {
+          const keyId = await findKeyId(z.subKey);
+          if (keyId) await api.revokeApiKey(keyId);
+          z.subKey = '';
+          z.accountId = '';
+          z.phone = '';
+          workspace.value.whatsapp.connected = false;
+          store.apiKey = store.masterKey || '';
+          store.mode = 'demo';
+          toast('Acceso revocado: el negocio quedó desconectado (401 en la próxima llamada)', 'info', 6000);
+        } catch (err) {
+          toast(err.message || 'No se pudo revocar el acceso', 'error');
+        } finally {
+          subKeyBusy.value = false;
+        }
+      }
+
       return {
         apiKeyInput, testing, testResult, confirmReset, confirmDelete,
         workspace, modality, referrer, ACCENTS, store,
         EVENTS, whForm, whExists, whSaving, whLogs, whLogsOpen,
         health, healthBusy, reconnectOpen, tunnelUrl, tunnelBusy,
+        subKey, subKeyBusy, maskKey, rotateSubKey, revokeSubKey,
         canEdit, saveBranding, saveApiKey, testConnection,
         disconnectWhatsApp, reconnectWhatsApp, exportData, resetDemo, deleteWorkspace,
         saveWebhooks, deleteWebhooks, testWebhook, openLogs, simulateWebhook, toggleWhEvent,
@@ -475,6 +554,37 @@
             <ui-icon :name="health.error ? 'alert' : 'check-circle'" class="h-4 w-4 shrink-0"></ui-icon>
             {{ health.error || JSON.stringify(health).slice(0, 140) }}
           </div>
+        </section>
+
+        <!-- Credenciales del centro (multi-negocio) -->
+        <section class="border-2 border-neutral-900 bg-white p-5">
+          <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Credenciales del centro</h3>
+          <p class="text-sm text-neutral-600">
+            Este negocio opera con una sub-key de Zernio limitada a su perfil (expiración 90 días).
+            Si un cliente abusa o deja de pagar, revocas solo su acceso sin afectar a los demás.
+          </p>
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span class="text-neutral-500">Sub-key activa</span>
+            <span class="flex flex-wrap items-center gap-2 font-mono text-xs">
+              <span v-if="subKey">{{ maskKey(subKey) }} · expira en ~90 días</span>
+              <span v-else class="text-neutral-400">Sin sub-key (operando con la key directa)</span>
+              <ui-badge v-if="subKey" variant="success" dot>Aislada al perfil</ui-badge>
+            </span>
+          </div>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <button v-if="subKey && canEdit('settings')" @click="rotateSubKey" :disabled="subKeyBusy"
+              class="flex items-center gap-2 border-2 border-neutral-900 bg-white px-3 py-2 text-xs font-medium shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+              <ui-spinner v-if="subKeyBusy" size="h-3.5 w-3.5"></ui-spinner>
+              Rotar sub-key
+            </button>
+            <button v-if="subKey && canEdit('settings')" @click="revokeSubKey" :disabled="subKeyBusy"
+              class="border-2 border-red-800 bg-red-50 px-3 py-2 text-xs font-medium text-red-800 transition hover:shadow-brutal-sm">
+              Revocar acceso
+            </button>
+          </div>
+          <p class="mt-3 text-xs text-neutral-400">
+            Rotar crea una sub-key nueva y revoca la anterior al instante. Revocar deja el negocio sin conexión.
+          </p>
         </section>
 
         <!-- Modal: reconexión con Zernio -->

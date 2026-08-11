@@ -786,7 +786,7 @@
         </ui-modal>
 
         <!-- Modal: selector de plantilla aprobada (primer mensaje o re-enganche >24h) -->
-        <ui-modal :open="tplPickerOpen" :title="tplTarget ? 'Re-enganchar con plantilla aprobada' : 'Primer mensaje: elige una plantilla aprobada'" width="max-w-2xl" @close="closeTemplatePicker">
+        <ui-modal :open="tplPickerOpen" :title="tplTarget ? 'Re-enganchar con plantilla aprobada' : 'Primer mensaje: elige una plantilla aprobada'" width="max-w-3xl" @close="closeTemplatePicker">
           <div class="space-y-4">
             <p class="text-xs text-neutral-500">
               WhatsApp exige plantillas aprobadas por Meta para abrir o re-enganchar conversaciones. Elige una y completa sus variables.
@@ -807,12 +807,8 @@
             </div>
 
             <template v-if="tplSelected">
-              <div class="border border-neutral-200 bg-stone-50 p-3">
-                <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Vista previa</p>
-                <div class="mt-2 rounded-lg border border-neutral-200 bg-white px-3 py-2">
-                  <p class="whitespace-pre-wrap text-sm">{{ tplSelected.body || (tplSelected.components || []).find(c => c.type === 'body')?.text || tplSelected.name }}</p>
-                </div>
-              </div>
+              <!-- Preview gráfico completo (burbuja WhatsApp + info + estado) -->
+              <template-preview :tpl="tplSelected"></template-preview>
               <div v-if="tplVariables.length" class="grid gap-3 sm:grid-cols-2">
                 <ui-field v-for="v in tplVariables" :key="v" :label="'Valor para ' + v">
                   <input v-model.trim="tplParams[v]" type="text" :placeholder="'Dato para ' + v"

@@ -320,10 +320,15 @@
       function startConversation() {
         const contact = contacts.value.find((c) => c.id === newContactId.value);
         if (!contact) return;
-        // Live + WhatsApp: el primer mensaje DEBE ser una plantilla aprobada
-        if (isLive.value) {
+        // Regla de 24h de WhatsApp: mensaje libre solo si hubo conversación reciente;
+        // si el contacto es nuevo o la última conversación pasó de 24h → plantilla aprobada
+        const recent = conversations.value.some(
+          (c) => c.contactId === contact.id && Date.now() - (c.lastTs || 0) < 24 * 3600 * 1000
+        );
+        if (!recent) {
           newConvOpen.value = false;
           openTemplatePicker(null);
+          toast('Sin conversación en las últimas 24h: se requiere una plantilla aprobada', 'info', 5000);
           return;
         }
         const conv = {

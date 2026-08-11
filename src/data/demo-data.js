@@ -88,7 +88,7 @@
     }
   }
 
-  /** Construye los contactos demo: muestras del nicho + relleno genérico. */
+  /** Construye los contactos demo: muestras del nicho + relleno genérico + Instagram. */
   function buildContacts(niche) {
     const samples = NICHE_SAMPLES[niche.id] || NICHE_SAMPLES.personalizado;
     const fields = niche.customFields;
@@ -113,12 +113,17 @@
         createdAt: Date.now() - (i + 9) * 864e5,
       });
     }
+    // Contactos de Instagram (canal con mensajería)
+    contacts.push(
+      { id: uid('ct'), name: 'Valentina Ríos', phone: '@valentina.rios', platform: 'instagram', tags: ['cliente'], customFields: {}, createdAt: Date.now() - 2 * 864e5, igProfile: { isFollower: true, isFollowing: false, followerCount: 1240, isVerified: false } },
+      { id: uid('ct'), name: 'Sofía Marcano', phone: '@sofia.marcano', platform: 'instagram', tags: ['cliente'], customFields: {}, createdAt: Date.now() - 4 * 864e5, igProfile: { isFollower: false, isFollowing: true, followerCount: 305, isVerified: false } }
+    );
     return contacts;
   }
 
   /** Construye las conversaciones demo a partir de los primeros contactos. */
   function buildConversations(contacts) {
-    return contacts.slice(0, 6).map((contact, i) => {
+    const conversations = contacts.slice(0, 6).map((contact, i) => {
       const [incoming, outgoing] = SCRIPTS[i % SCRIPTS.length];
       const ts = Date.now() - RECENT_MINUTES[i] * 60000;
       const unread = i < 2 ? 1 + i : 0;
@@ -144,8 +149,31 @@
         tags: contact.tags.slice(0, 1),
         messages,
         lastTs: ts,
+        accountId: 'demo_wa',
       };
     });
+
+    // Conversaciones de Instagram (canal con mensajería)
+    const igContacts = contacts.filter((c) => c.platform === 'instagram');
+    igContacts.forEach((contact, i) => {
+      const ts = Date.now() - (12 + i * 45) * 60000;
+      conversations.push({
+        id: uid('conv'),
+        contactId: contact.id,
+        platform: 'instagram',
+        status: 'active',
+        unread: i === 0 ? 1 : 0,
+        tags: contact.tags.slice(0, 1),
+        messages: [
+          { id: uid('msg'), from: 'in', text: i === 0 ? '¡Hola! Vi su perfil en Instagram, ¿me pasan el catálogo? 😍' : 'Gracias por el seguimiento, ¿tienen delivery?', ts: ts - 300000, status: 'delivered' },
+          { id: uid('msg'), from: 'out', text: '¡Hola! Claro, te lo envío ahora mismo por aquí.', ts, status: 'read' },
+        ],
+        lastTs: ts,
+        accountId: 'demo_ig',
+        igProfile: contact.igProfile || null,
+      });
+    });
+    return conversations;
   }
 
   /** Construye los usuarios demo (uno por rol para validar RBAC). */
@@ -238,6 +266,11 @@
       broadcasts: buildBroadcasts(niche),
       activity: buildActivity([contacts[0].name, contacts[1].name]),
       settings: { notifications: true, autoReply: false },
+      channels: [
+        { platform: 'whatsapp', accountId: 'demo_wa', username: DEMO_PHONE, connected: true, since: Date.now() - 3600e3 },
+        { platform: 'instagram', accountId: 'demo_ig', username: 'mi.negocio.ve', connected: true, since: Date.now() - 864e5 },
+        { platform: 'tiktok', accountId: 'demo_tt', username: 'minegociove', connected: true, since: Date.now() - 2 * 864e5 },
+      ],
     };
   }
 

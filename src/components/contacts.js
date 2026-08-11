@@ -110,9 +110,14 @@
       <div class="space-y-4">
         <!-- Encabezado -->
         <header class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 class="text-2xl font-bold">Contactos</h2>
-            <p class="mt-1 text-sm text-neutral-500">{{ contacts.length }} contactos en {{ workspace.name }}</p>
+          <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-800">
+              <ui-icon name="users" class="h-5 w-5"></ui-icon>
+            </span>
+            <div>
+              <h2 class="text-lg font-bold leading-tight">Contactos</h2>
+              <p class="text-xs text-neutral-500">{{ contacts.length }} contactos en {{ workspace.name }}</p>
+            </div>
           </div>
           <button v-if="canEdit('contacts')" @click="openCreate"
             class="flex items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
@@ -122,40 +127,40 @@
 
         <!-- Búsqueda y filtros -->
         <div class="flex flex-wrap items-center gap-3">
-          <div class="flex min-w-72 flex-1 items-center gap-2 border-2 border-neutral-300 bg-white px-3 py-2.5 focus-within:border-neutral-900">
+          <div class="flex min-w-72 flex-1 items-center gap-2 border border-neutral-300 bg-stone-50 px-3 py-2.5 focus-within:border-neutral-900 focus-within:bg-white">
             <ui-icon name="search" class="h-4 w-4 text-neutral-400"></ui-icon>
             <input v-model.trim="search" type="search" placeholder="Buscar por nombre o teléfono…"
               class="w-full bg-transparent text-sm outline-none" />
           </div>
           <div class="flex gap-1.5 overflow-x-auto scrollbar-none">
             <button @click="tagFilter = 'all'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-              :class="tagFilter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 bg-white'">
+              :class="tagFilter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
               Todos
             </button>
             <button v-for="t in availableTags" :key="t" @click="tagFilter = t"
               class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-              :class="tagFilter === t ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 bg-white'">
+              :class="tagFilter === t ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
               {{ t }}
             </button>
           </div>
         </div>
 
         <!-- Tabla -->
-        <div class="overflow-x-auto border-2 border-neutral-900 bg-white">
+        <div class="overflow-auto border border-neutral-200 bg-white">
           <table class="w-full min-w-[720px] text-left text-sm">
-            <thead class="border-b-2 border-neutral-900 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+            <thead class="border-b border-neutral-200 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
               <tr>
-                <th class="px-4 py-3">Contacto</th>
-                <th v-for="f in niche.customFields" :key="f.slug" class="px-4 py-3">{{ f.name }}</th>
-                <th class="px-4 py-3">Tags</th>
-                <th class="px-4 py-3">Creado</th>
-                <th class="px-4 py-3 text-right">Acciones</th>
+                <th class="sticky top-0 z-10 bg-white px-4 py-3">Contacto</th>
+                <th v-for="f in niche.customFields" :key="f.slug" class="sticky top-0 z-10 bg-white px-4 py-3">{{ f.name }}</th>
+                <th class="sticky top-0 z-10 bg-white px-4 py-3">Tags</th>
+                <th class="sticky top-0 z-10 bg-white px-4 py-3">Creado</th>
+                <th class="sticky top-0 z-10 bg-white px-4 py-3 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100">
               <ui-empty v-if="filtered.length === 0" icon="users" title="Sin contactos"
                 desc="Crea tu primer contacto o cambia los filtros." class="p-8"></ui-empty>
-              <tr v-for="c in filtered" :key="c.id" class="hover:bg-stone-50">
+              <tr v-for="c in filtered" :key="c.id" class="hover:bg-stone-100">
                 <td class="px-4 py-3.5">
                   <div class="flex items-center gap-3">
                     <ui-avatar :name="c.name" size="h-10 w-10 text-sm"></ui-avatar>

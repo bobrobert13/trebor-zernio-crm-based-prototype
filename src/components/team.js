@@ -124,7 +124,7 @@
             </thead>
             <tbody class="divide-y divide-neutral-100">
               <tr v-for="u in users" :key="u.id" class="hover:bg-stone-50">
-                <td class="px-4 py-3">
+                <td class="px-4 py-3.5">
                   <div class="flex items-center gap-3">
                     <ui-avatar :name="u.name"></ui-avatar>
                     <div>
@@ -139,7 +139,7 @@
                 <td class="px-4 py-3">
                   <select :value="u.role" @change="changeRole(u, $event.target.value)"
                     :disabled="!canEdit('team') || u.id === me.id"
-                    class="border-2 border-neutral-300 bg-white px-2 py-1.5 font-mono text-[11px] uppercase tracking-wider outline-none focus:border-neutral-900 disabled:opacity-40">
+                    class="border-2 border-neutral-300 bg-white px-2 py-2 font-mono text-[11px] uppercase tracking-wider outline-none focus:border-neutral-900 disabled:opacity-40">
                     <option v-for="r in roleIds" :key="r" :value="r">{{ ROLES[r].label }}</option>
                   </select>
                 </td>
@@ -147,8 +147,8 @@
                   <ui-badge v-if="u.invited" variant="warn" dot>Invitado</ui-badge>
                   <ui-badge v-else variant="success" dot>{{ u.online ? 'En línea' : 'Ausente' }}</ui-badge>
                 </td>
-                <td class="px-4 py-3">
-                  <p class="max-w-60 text-xs text-neutral-500">{{ ROLES[u.role].desc }}</p>
+                <td class="px-4 py-3.5">
+                  <p class="max-w-64 text-xs leading-snug text-neutral-500">{{ ROLES[u.role].desc }}</p>
                 </td>
               </tr>
             </tbody>
@@ -156,7 +156,7 @@
         </section>
 
         <!-- Matriz de permisos -->
-        <section class="border-2 border-neutral-900 bg-white p-5 xl:sticky xl:top-8">
+        <section class="border-2 border-neutral-900 bg-white p-6 xl:sticky xl:top-8">
           <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Matriz de permisos (RBAC)</h3>
           <div class="mt-4 overflow-x-auto">
             <table class="w-full min-w-[560px] text-left text-sm">
@@ -179,10 +179,10 @@
               </tbody>
             </table>
           </div>
-          <p class="mt-3 text-xs text-neutral-400">
-            <ui-icon name="check-circle" class="mr-1 inline h-3.5 w-3.5 text-emerald-700"></ui-icon> editar ·
-            <ui-icon name="eye" class="mx-1 inline h-3.5 w-3.5 text-amber-600"></ui-icon> ver ·
-            <ui-icon name="x" class="mx-1 inline h-3.5 w-3.5 text-neutral-300"></ui-icon> sin acceso
+          <p class="mt-4 flex items-center gap-3 text-xs text-neutral-400">
+            <span class="flex items-center gap-1"><ui-icon name="check-circle" class="h-3.5 w-3.5 text-emerald-700"></ui-icon> editar</span>
+            <span class="flex items-center gap-1"><ui-icon name="eye" class="h-3.5 w-3.5 text-amber-600"></ui-icon> ver</span>
+            <span class="flex items-center gap-1"><ui-icon name="x" class="h-3.5 w-3.5 text-neutral-300"></ui-icon> sin acceso</span>
           </p>
         </section>
         </div>

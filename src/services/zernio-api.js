@@ -62,7 +62,8 @@
     async request(path, { method = 'GET', query, body } = {}) {
       const serverMode = ZernioCrm.store.serverMode;
       const url = new URL(serverMode ? `${location.origin}/zernio${path}` : `${this.baseUrl}${path}`);
-      if (query) Object.entries(query).forEach(([k, v]) => v != null && url.searchParams.set(k, v));
+      // Nunca mandar query params vacíos (el API los rechaza como formato inválido)
+      if (query) Object.entries(query).forEach(([k, v]) => v != null && v !== '' && url.searchParams.set(k, v));
     
       const headers = serverMode
         ? { 'X-Zernio-Key': ZernioCrm.store.apiKey }
@@ -72,6 +73,13 @@
       let response;
       try {
         response = await fetch(url, { method, headers, body: body ? JSON.stringify(sanitizeBody(body)) : undefined });
+        // Rate limit (política de Zernio): espera el reset del header y reintenta 1 vez
+        if (response.status === 429) {
+          const reset = response.headers.get('X-RateLimit-Reset');
+          const waitMs = reset ? Number(reset) * 1000 - Date.now() : 1000;
+          await new Promise((r) => setTimeout(r, Math.max(waitMs, 1000)));
+          response = await fetch(url, { method, headers, body: body ? JSON.stringify(sanitizeBody(body)) : undefined });
+        }
       } catch {
         if (serverMode) {
           throw new ApiError('No se pudo conectar con el servidor local. Ejecuta: node server.mjs', 'server_unreachable', 'SERVER_UNREACHABLE');
@@ -82,6 +90,9 @@
 
       if (!response.ok) {
         const envelope = await response.json().catch(() => ({}));
+        if (response.status === 429) {
+          throw new ApiError('Límite de peticiones alcanzado (rate limit del plan). Intenta en un minuto.', 'rate_limit_error', 'RATE_LIMITED');
+        }
         throw new ApiError(envelope.error || `Error ${response.status}`, envelope.type || 'api_error', envelope.code || String(response.status));
       }
       try {
@@ -126,6 +137,16 @@
      */
     getWhatsAppConnectUrl(profileId) {
       return this.request('/connect/whatsapp', { query: { profileId, headless: true } });
+    }
+
+    /**
+     * Inicia el flujo OAuth de una plataforma (Instagram, TikTok, etc.).
+     * @param {string} platform — id de plataforma (ruta /connect/{platform}).
+     * @param {string} profileId — id del perfil.
+     * @returns {Promise<{url?:string, authUrl?:string}>} URL de autorización.
+     */
+    getConnectUrl(platform, profileId) {
+      return this.request(`/connect/${platform}`, { query: { profileId } });
     }
 
     /**

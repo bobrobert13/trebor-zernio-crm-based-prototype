@@ -14,6 +14,7 @@
   const components = {};
 
   components['live-connect'] = {
+    props: { platform: { type: String, default: 'whatsapp' } },
     emits: ['connected'],
     setup(props, { emit }) {
       /** Paso actual del sub-flujo. */
@@ -32,9 +33,13 @@
       const showCreds = Vue.ref(false);
 
       const result = Vue.ref(null);
+      const oauthUrl = Vue.ref(null);
 
-      /** Cuentas WhatsApp disponibles en el perfil. */
-      const waAccounts = Vue.computed(() => accounts.value.filter((a) => a.platform === 'whatsapp'));
+      /** WhatsApp tiene flujo de cuentas/números/credenciales; el resto usa OAuth. */
+      const isWhatsApp = Vue.computed(() => props.platform === 'whatsapp');
+
+      /** Cuentas de la plataforma seleccionada en el perfil. */
+      const platformAccounts = Vue.computed(() => accounts.value.filter((a) => a.platform === props.platform));
 
       /** Valida la key listando perfiles. */
       async function validateKey() {
@@ -85,13 +90,13 @@
         try {
           const [accData, phoneData] = await Promise.all([
             api.getAccounts(id),
-            api.listPhoneNumbers(id),
+            isWhatsApp.value ? api.listPhoneNumbers(id) : Promise.resolve([]),
           ]);
           accounts.value = asArray(accData);
           phones.value = asArray(phoneData);
           step.value = 'account';
-          if (waAccounts.value.length === 1 && phones.value.length === 0) {
-            await connectWithAccount(waAccounts.value[0]);
+          if (isWhatsApp.value && platformAccounts.value.length === 1 && phones.value.length === 0) {
+            await connectWithAccount(platformAccounts.value[0]);
           }
         } catch (err) {
           toast(err.message || 'No se pudieron cargar las cuentas', 'error');
@@ -100,16 +105,21 @@
         }
       }
 
-      /** Vincula una cuenta WhatsApp existente. */
+      /** Vincula una cuenta existente (cualquier plataforma). */
       async function connectWithAccount(account) {
         const meta = account.metadata || {};
+        const phone = isWhatsApp.value
+          ? meta.displayPhoneNumber || account.username || account.displayName || 'Número vinculado'
+          : account.username || account.displayName || 'Cuenta conectada';
         result.value = {
+          platform: props.platform,
           profileId: selectedProfileId.value,
           accountId: account.id || account._id,
-          phone: meta.displayPhoneNumber || account.username || account.displayName || 'Número vinculado',
+          phone,
+          username: account.username || account.displayName || '',
         };
         step.value = 'done';
-        toast('Cuenta WhatsApp vinculada', 'success');
+        toast(`${props.platform === 'whatsapp' ? 'Cuenta WhatsApp' : 'Cuenta ' + props.platform} vinculada`, 'success');
         emit('connected', result.value);
       }
 
@@ -155,6 +165,50 @@
         }
       }
 
+      /** Inicia el flujo OAuth de la plataforma (Instagram/TikTok). */
+      async function startOAuth() {
+        const profileId = selectedProfileId.value;
+        if (!profileId || busy.value) return;
+        busy.value = true;
+        try {
+          const data = await api.getConnectUrl(props.platform, profileId);
+          const url = data.url || data.authUrl;
+          if (url) {
+            oauthUrl.value = url;
+            window.open(url, '_blank');
+            toast('Autoriza en la ventana abierta y luego pulsa "Verificar conexión"', 'info', 6000);
+          } else {
+            toast('El API no devolvió URL de autorización', 'error');
+          }
+        } catch (err) {
+          toast(err.message || 'No se pudo iniciar la autorización', 'error');
+        } finally {
+          busy.value = false;
+        }
+      }
+
+      /** Verifica si la cuenta ya apareció conectada en el perfil. */
+      async function verifyOAuth() {
+        const profileId = selectedProfileId.value;
+        if (!profileId || busy.value) return;
+        busy.value = true;
+        try {
+          const data = await api.getAccounts(profileId);
+          accounts.value = asArray(data);
+          if (platformAccounts.value.length === 1) {
+            await connectWithAccount(platformAccounts.value[0]);
+          } else if (platformAccounts.value.length > 1) {
+            step.value = 'account';
+          } else {
+            toast('La cuenta aún no aparece: completa la autorización en la ventana de la plataforma', 'info', 6000);
+          }
+        } catch (err) {
+          toast(err.message || 'No se pudo verificar la conexión', 'error');
+        } finally {
+          busy.value = false;
+        }
+      }
+
       /** Reinicia el flujo para probar con otra key. */
       function reset() {
         step.value = 'key';
@@ -169,9 +223,10 @@
 
       return {
         step, busy, apiKey, profiles, selectedProfileId, accounts, phones,
-        selectedAccountId, selectedPhoneId, creds, showCreds, result, waAccounts,
+        selectedAccountId, selectedPhoneId, creds, showCreds, result, waAccounts: platformAccounts,
+        isWhatsApp, oauthUrl,
         validateKey, createProfile, loadChannelOptions, connectWithAccount,
-        connectWithPhone, connectCredentials, reset,
+        connectWithPhone, connectCredentials, startOAuth, verifyOAuth, reset,
       };
     },
 
@@ -223,66 +278,106 @@
 
           <!-- Paso 3 · Cuenta o número -->
           <div v-if="step === 'account'" class="space-y-4">
-            <div v-if="waAccounts.length > 0">
-              <span class="mb-2 block font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-500">
-                Cuenta WhatsApp existente ({{ waAccounts.length }})
-              </span>
-              <button v-for="a in waAccounts" :key="a.id || a._id" @click="connectWithAccount(a)"
-                class="flex w-full items-center gap-3 border-2 border-neutral-900 bg-white p-4 text-left transition hover:bg-stone-50"
-                :class="selectedAccountId === (a.id || a._id) ? 'shadow-brutal-sm' : ''">
-                <span class="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
-                  <ui-icon name="whatsapp" class="h-5 w-5"></ui-icon>
+            <template v-if="isWhatsApp">
+              <div v-if="waAccounts.length > 0">
+                <span class="mb-2 block font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-500">
+                  Cuenta WhatsApp existente ({{ waAccounts.length }})
                 </span>
-                <div class="min-w-0 flex-1">
-                  <p class="font-semibold">{{ a.displayName || a.username || 'Cuenta WhatsApp' }}</p>
-                  <p class="truncate font-mono text-[11px] text-neutral-400">{{ a.platformIdentifier || a.id || a._id }}</p>
-                </div>
-                <ui-icon name="chevron-right" class="h-4 w-4 text-neutral-300"></ui-icon>
-              </button>
-            </div>
-
-            <div v-if="phones.length > 0">
-              <span class="mb-2 block font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-500">
-                Números Zernio provisionados ({{ phones.length }})
-              </span>
-              <div class="grid gap-2 sm:grid-cols-2">
-                <button v-for="ph in phones" :key="ph.id || ph.phoneNumber" @click="connectWithPhone(ph)"
-                  class="flex items-center justify-between border-2 border-neutral-900 bg-white px-4 py-3 text-left transition hover:bg-stone-50">
-                  <div class="min-w-0">
-                    <p class="font-semibold">{{ ph.phoneNumber || ph.displayName }}</p>
-                    <p class="font-mono text-[10px] uppercase text-neutral-400">{{ ph.status || 'provisioned' }}</p>
+                <button v-for="a in waAccounts" :key="a.id || a._id" @click="connectWithAccount(a)"
+                  class="flex w-full items-center gap-3 border-2 border-neutral-900 bg-white p-4 text-left transition hover:bg-stone-50"
+                  :class="selectedAccountId === (a.id || a._id) ? 'shadow-brutal-sm' : ''">
+                  <span class="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
+                    <ui-icon name="whatsapp" class="h-5 w-5"></ui-icon>
+                  </span>
+                  <div class="min-w-0 flex-1">
+                    <p class="font-semibold">{{ a.displayName || a.username || 'Cuenta WhatsApp' }}</p>
+                    <p class="truncate font-mono text-[11px] text-neutral-400">{{ a.platformIdentifier || a.id || a._id }}</p>
                   </div>
-                  <ui-badge variant="neutral">Usar</ui-badge>
+                  <ui-icon name="chevron-right" class="h-4 w-4 text-neutral-300"></ui-icon>
                 </button>
               </div>
-            </div>
 
-            <div v-if="waAccounts.length === 0 && phones.length === 0" class="border-2 border-dashed border-neutral-300 bg-white p-4 text-sm text-neutral-500">
-              No hay cuentas WhatsApp ni números provisionados en este perfil. Usa el acceso por credenciales de Meta o conecta un número desde Zernio.
-            </div>
+              <div v-if="phones.length > 0">
+                <span class="mb-2 block font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-500">
+                  Números Zernio provisionados ({{ phones.length }})
+                </span>
+                <div class="grid gap-2 sm:grid-cols-2">
+                  <button v-for="ph in phones" :key="ph.id || ph.phoneNumber" @click="connectWithPhone(ph)"
+                    class="flex items-center justify-between border-2 border-neutral-900 bg-white px-4 py-3 text-left transition hover:bg-stone-50">
+                    <div class="min-w-0">
+                      <p class="font-semibold">{{ ph.phoneNumber || ph.displayName }}</p>
+                      <p class="font-mono text-[10px] uppercase text-neutral-400">{{ ph.status || 'provisioned' }}</p>
+                    </div>
+                    <ui-badge variant="neutral">Usar</ui-badge>
+                  </button>
+                </div>
+              </div>
 
-            <!-- Fallback: credenciales Meta -->
-            <button @click="showCreds = !showCreds" class="text-sm font-medium text-[var(--accent)]">
-              {{ showCreds ? '− Ocultar credenciales Meta' : '+ Conectar con credenciales de Meta (wabaId, phoneNumberId, token)' }}
-            </button>
-            <div v-if="showCreds" class="space-y-3 border-2 border-neutral-900 bg-white p-4">
-              <ui-field label="WABA ID">
-                <input v-model.trim="creds.wabaId" type="text" placeholder="123456789012345"
-                  class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
-              </ui-field>
-              <ui-field label="Phone Number ID">
-                <input v-model.trim="creds.phoneNumberId" type="text" placeholder="123456789012345"
-                  class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
-              </ui-field>
-              <ui-field label="Token de acceso (Meta)">
-                <input v-model.trim="creds.token" type="password" placeholder="EAAG…" autocomplete="off"
-                  class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
-              </ui-field>
-              <button @click="connectCredentials" :disabled="busy || !creds.wabaId.trim() || !creds.phoneNumberId.trim() || !creds.token.trim()"
-                class="flex w-full items-center justify-center gap-2 border-2 border-neutral-900 bg-neutral-900 px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
-                <ui-spinner v-if="busy" size="h-4 w-4"></ui-spinner>
-                Conectar WhatsApp
+              <div v-if="waAccounts.length === 0 && phones.length === 0" class="border-2 border-dashed border-neutral-300 bg-white p-4 text-sm text-neutral-500">
+                No hay cuentas WhatsApp ni números provisionados en este perfil. Usa el acceso por credenciales de Meta o conecta un número desde Zernio.
+              </div>
+
+              <!-- Fallback: credenciales Meta -->
+              <button @click="showCreds = !showCreds" class="text-sm font-medium text-[var(--accent)]">
+                {{ showCreds ? '− Ocultar credenciales Meta' : '+ Conectar con credenciales de Meta (wabaId, phoneNumberId, token)' }}
               </button>
+              <div v-if="showCreds" class="space-y-3 border-2 border-neutral-900 bg-white p-4">
+                <ui-field label="WABA ID">
+                  <input v-model.trim="creds.wabaId" type="text" placeholder="123456789012345"
+                    class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
+                </ui-field>
+                <ui-field label="Phone Number ID">
+                  <input v-model.trim="creds.phoneNumberId" type="text" placeholder="123456789012345"
+                    class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
+                </ui-field>
+                <ui-field label="Token de acceso (Meta)">
+                  <input v-model.trim="creds.token" type="password" placeholder="EAAG…" autocomplete="off"
+                    class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
+                </ui-field>
+                <button @click="connectCredentials" :disabled="busy || !creds.wabaId.trim() || !creds.phoneNumberId.trim() || !creds.token.trim()"
+                  class="flex w-full items-center justify-center gap-2 border-2 border-neutral-900 bg-neutral-900 px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                  <ui-spinner v-if="busy" size="h-4 w-4"></ui-spinner>
+                  Conectar WhatsApp
+                </button>
+              </div>
+            </template>
+
+            <!-- OAuth para Instagram/TikTok -->
+            <div v-else class="space-y-4">
+              <div class="border-2 border-neutral-900 bg-white p-4">
+                <p class="text-sm text-neutral-600">
+                  Zernio inicia el flujo OAuth de {{ platform === 'instagram' ? 'Instagram' : 'TikTok' }}.
+                  Autoriza en la ventana que se abre y vuelve a verificar.
+                </p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <button @click="startOAuth" :disabled="busy || oauthUrl"
+                    class="flex items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                    <ui-spinner v-if="busy" size="h-4 w-4"></ui-spinner>
+                    {{ oauthUrl ? 'Autorización iniciada' : 'Autorizar con ' + (platform === 'instagram' ? 'Instagram' : 'TikTok') }}
+                  </button>
+                  <button @click="verifyOAuth" :disabled="busy"
+                    class="flex items-center gap-2 border-2 border-neutral-900 bg-white px-4 py-2 text-sm font-medium shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                    <ui-spinner v-if="busy" size="h-4 w-4"></ui-spinner>
+                    Verificar conexión
+                  </button>
+                </div>
+              </div>
+              <div v-if="waAccounts.length > 0">
+                <span class="mb-2 block font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-500">
+                  Cuenta detectada ({{ waAccounts.length }})
+                </span>
+                <button v-for="a in waAccounts" :key="a.id || a._id" @click="connectWithAccount(a)"
+                  class="flex w-full items-center gap-3 border-2 border-neutral-900 bg-white p-4 text-left transition hover:bg-stone-50">
+                  <span class="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-700">
+                    <ui-icon :name="platform === 'instagram' ? 'instagram' : 'tiktok'" class="h-5 w-5"></ui-icon>
+                  </span>
+                  <div class="min-w-0 flex-1">
+                    <p class="font-semibold">{{ a.displayName || a.username || 'Cuenta' }}</p>
+                    <p class="truncate font-mono text-[11px] text-neutral-400">{{ a.username || a.id || a._id }}</p>
+                  </div>
+                  <ui-icon name="chevron-right" class="h-4 w-4 text-neutral-300"></ui-icon>
+                </button>
+              </div>
             </div>
           </div>
         </template>

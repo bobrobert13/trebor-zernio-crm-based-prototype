@@ -50,31 +50,54 @@ El frontend detecta el servidor con `GET /api/health` y activa automáticamente 
 ## Webhooks en producción (entrega real)
 
 Localmente la entrega se simula con polling del servidor. Para entrega real:
-1. `npx ngrok http 8787` → URL pública `https://xxxx.ngrok.io`.
-2. En Configuración → Webhooks, usa la URL `https://xxxx.ngrok.io/webhooks/zernio?secret=<tu-secret>` y suscríbete a los eventos.
-3. Zernio firmará cada POST con `x-zernio-signature` (HMAC-SHA256 del body con el secret); el server rechaza firmas inválidas con 401.
 
-## Arquitectura del código (v2)
+```bash
+node tunnel.mjs        # túnel HTTPS público (cloudflared quick tunnel, sin cuenta)
+```
+
+1. `node tunnel.mjs` imprime y guarda la URL pública (`https://<rand>.trycloudflare.com`) en `.tunnel-url`.
+2. En Configuración → Webhooks pulsa **"URL pública"** (obtiene la URL del túnel desde `/api/tunnel`) y **Suscribir** — el MVP actualiza la suscripción real en Zernio (`PUT /webhooks/settings`) con la URL https + secret.
+3. Zernio firmará cada POST con `x-zernio-signature` (HMAC-SHA256 del body con el secret); el server rechaza firmas inválidas con 401 y **deduplica por `event.id`** (entrega at-least-once).
+4. Cuando alguien te escribe, el evento `message.received` se refleja automáticamente en la bandeja (conversación creada/actualizada + mensaje entrante).
+
+Instalación de cloudflared (1 línea): `curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o ~/.local/bin/cloudflared && chmod +x ~/.local/bin/cloudflared`.
+
+## Canales multicanal (WhatsApp, Instagram, TikTok)
+
+- **Módulo Canales** (`#/channels`): estado por plataforma, conexión/reconexión con `live-connect` por plataforma, health check y desconexión. RBAC: solo owner/admin.
+- **WhatsApp**: se conecta en el onboarding (cuentas existentes, números Zernio o credenciales Meta).
+- **Instagram**: mensajería real vía inbox de Zernio. Conexión por OAuth (`GET /connect/instagram?profileId=`) — abre la autorización y verifica con `GET /accounts`.
+- **TikTok**: Zernio NO expone DM de TikTok (solo publicación). Se conecta para verificación y la bandeja muestra un estado explicativo con enlace externo; no se promete mensajería inexistente.
+- La bandeja tiene pestañas por plataforma, distintivo de canal en cada conversación (icono+color), perfil de Instagram del participante (`isFollower`) y envío con el accountId de cada canal.
+
+## Políticas y cumplimiento
+
+Ver `docs/POLICIES.md`: rate limits por plan con retry 429, ventana de 24h (WhatsApp → plantillas; IG/FB → `HUMAN_AGENT`), consentimiento en broadcasts (`isSubscribed`), dedupe de webhooks por id, reglas de plantillas/Flows y cláusulas futuras (COPPA, TikTok UX compliance).
+
+## Arquitectura del código (v3)
 
 ```
 server.mjs                  → servidor ligero: estáticos + proxy /zernio/* + webhook receiver (0 deps)
-index.html                  → shell + CDNs + orden de scripts (añade live-connect.js y analytics.js)
-src/constants.js            → nichos, RBAC (incluye módulo analytics), iconos, helpers
-src/store.js                → estado global + serverMode + detectServer() + webhookEvents
+tunnel.mjs                  → túnel HTTPS público (cloudflared/ngrok) para webhooks reales
+index.html                  → shell + CDNs + orden de scripts
+src/constants.js            → nichos, RBAC (incluye analytics y channels), PLATFORMS, iconos, helpers
+src/store.js                → estado global + serverMode + detectServer() + webhookEvents + reflectIncomingMessage
 src/data/storage.js         → localStorage namespaced + persistencia automática
-src/data/demo-data.js       → generador de workspace demo por nicho
-src/services/zernio-api.js  → cliente API v2: 40+ endpoints, routing serverMode/directo, errores tipados
+src/data/demo-data.js       → generador de workspace demo por nicho (multicanal)
+src/services/zernio-api.js  → cliente API v3: 40+ endpoints, serverMode/directo, retry 429, sanitizeBody
 src/components/ui.js        → primitivas (modal, toast, spinner, badge, stepper, empty…)
-src/components/live-connect.js → sub-flujo key → perfiles → cuentas/números (reutilizable)
+src/components/live-connect.js → conexión por plataforma: key → perfiles → cuentas (OAuth IG/TikTok)
 src/components/onboarding.js  → wizard 8 pasos + panel de conexión real con Zernio
-src/components/dashboard.js   → resumen full-width (KPIs, canal, acciones, roadmap, actividad)
-src/components/analytics.js   → métricas diarias (barras), heatmap de horarios, export CSV
-src/components/inbox.js       → bandeja full-viewport con sincronización live
+src/components/dashboard.js   → resumen full-width
+src/components/analytics.js   → métricas diarias, heatmap, export CSV
+src/components/inbox.js       → bandeja multicanal (filtros por plataforma, badges, HUMAN_AGENT)
 src/components/contacts.js    → directorio con campos del nicho
-src/components/team.js        → miembros + matriz de permisos (2 columnas)
-src/components/broadcasts.js  → tabs: broadcasts (live/demo), secuencias, flows de WhatsApp
-src/components/settings.js    → branding, integración (key/test), canal (health/reconexión), webhooks, datos
-src/app.js                  → bootstrap, routing hash + guards RBAC, detección de servidor, polling webhooks
+src/components/channels.js    → módulo de Canales (estado, conexión, health, desconexión)
+src/components/team.js        → miembros + matriz de permisos
+src/components/broadcasts.js  → tabs: broadcasts/secuencias/flows (plantillas aprobadas obligatorias)
+src/components/settings.js    → branding, integración, canal, webhooks (URL pública), datos
+src/app.js                  → bootstrap, routing + guards RBAC, detección de servidor, polling webhooks
+docs/POLICIES.md            → políticas y cumplimiento de la documentación de Zernio
 ```
 
 ## Roadmap de evolución sugerido (siguiente iteración)

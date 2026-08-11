@@ -25,6 +25,7 @@ const PORT = Number(process.env.PORT) || 8787;
 const ZERNIO = { host: 'zernio.com', base: '/api/v1' };
 const MAX_BODY = 10 * 1024 * 1024; // 10 MB
 const WEBHOOK_MAX = 200; // eventos en memoria (cola acotada)
+const TUNNEL_FILE = join(ROOT, '.tunnel-url');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -42,6 +43,26 @@ const MIME = {
 
 /** Cola de eventos de webhook recibidos (para polling del frontend). */
 const webhookEvents = [];
+
+/** Ids ya recibidos (dedupe: Zernio entrega at-least-once). */
+const seenWebhookIds = new Set();
+
+/**
+ * Lee la URL pública del túnel (env TUNNEL_URL o fichero .tunnel-url).
+ * @returns {Promise<string|null>} URL https del túnel o null.
+ */
+async function tunnelUrl() {
+  if (process.env.TUNNEL_URL) return process.env.TUNNEL_URL;
+  try {
+    const info = await stat(TUNNEL_FILE);
+    if (Date.now() - info.mtimeMs > 10 * 60 * 1000) return null; // URL caducada (túnel muerto)
+    const raw = await readFile(TUNNEL_FILE, 'utf8');
+    const url = raw.trim();
+    return url.startsWith('https://') ? url : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Headers CORS restringidos: solo refleja origen si es localhost (protege el feed de webhooks). */
 function corsHeaders(req) {
@@ -174,7 +195,21 @@ async function handleWebhook(req, res, url) {
   } catch {
     event = { raw: body.toString('utf8') };
   }
-  webhookEvents.unshift({ receivedAt: new Date().toISOString(), event });
+  // Dedupe por id de evento (entrega at-least-once de Zernio)
+  const eventId = event && (event.id || (event.message && event.message.id));
+  if (eventId) {
+    if (seenWebhookIds.has(eventId)) {
+      res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, duplicate: true }));
+      return;
+    }
+    seenWebhookIds.add(eventId);
+    if (seenWebhookIds.size > WEBHOOK_MAX * 2) {
+      const first = seenWebhookIds.values().next().value;
+      seenWebhookIds.delete(first);
+    }
+  }
+  webhookEvents.unshift({ id: eventId || null, receivedAt: new Date().toISOString(), event });
   if (webhookEvents.length > WEBHOOK_MAX) webhookEvents.length = WEBHOOK_MAX;
   res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ ok: true, received: webhookEvents.length }));
@@ -194,6 +229,14 @@ const server = createServer(async (req, res) => {
     if (pathname === '/api/health') {
       res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, server: 'zernio-mvp', proxy: true, webhooks: true, uptime: process.uptime() }));
+      return;
+    }
+
+    if (pathname === '/api/tunnel') {
+      const url = await tunnelUrl();
+      res.setHeader('Vary', 'Origin');
+      res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ url }));
       return;
     }
 

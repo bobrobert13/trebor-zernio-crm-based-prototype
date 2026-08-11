@@ -25,7 +25,7 @@
     },
     template: `
       <svg :class="[size, 'shrink-0']" viewBox="0 0 24 24"
-        :fill="icon.fill ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2"
+        :fill="icon.fill ? 'currentColor' : 'none'" stroke="currentColor" :stroke-width="icon.fill ? 0 : 2"
         stroke-linecap="round" stroke-linejoin="round" v-html="icon.paths" aria-hidden="true"></svg>`,
   };
 

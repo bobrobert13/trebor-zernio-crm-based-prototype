@@ -267,6 +267,7 @@
       activity: buildActivity([contacts[0].name, contacts[1].name]),
       settings: { notifications: true, autoReply: false },
       leadTags: [...niche.tags], // etiquetas de leads por defecto del nicho (editables)
+      contactTags: [...niche.tags, 'cliente'], // etiquetas de contacto por defecto del nicho (editables)
       channels: [
         { platform: 'whatsapp', accountId: 'demo_wa', username: DEMO_PHONE, connected: true, since: Date.now() - 3600e3 },
         { platform: 'instagram', accountId: 'demo_ig', username: 'mi.negocio.ve', connected: true, since: Date.now() - 864e5 },

@@ -21,12 +21,17 @@
     props: { name: { type: String, required: true }, size: { type: String, default: 'w-5 h-5' } },
     setup(props) {
       const icon = Vue.computed(() => ICONS[props.name] || ICONS.alert);
-      return { icon };
+      // Guard: si la definición no trae paths (mapa incompleto), placeholder visible
+      const paths = Vue.computed(() => {
+        const p = icon.value && icon.value.paths;
+        return p && String(p).trim() ? p : '<circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>';
+      });
+      return { icon, paths };
     },
     template: `
       <svg :class="[size, 'shrink-0']" viewBox="0 0 24 24"
         :fill="icon.fill ? 'currentColor' : 'none'" stroke="currentColor" :stroke-width="icon.fill ? 0 : 2"
-        stroke-linecap="round" stroke-linejoin="round" v-html="icon.paths" aria-hidden="true"></svg>`,
+        stroke-linecap="round" stroke-linejoin="round" v-html="paths" aria-hidden="true"></svg>`,
   };
 
   /** Modal con header, panel y overlay. */

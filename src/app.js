@@ -15,6 +15,7 @@
     inbox: 'inbox-view',
     contacts: 'contacts-view',
     channels: 'channels-view',
+    leads: 'leads-view',
     team: 'team-view',
     broadcasts: 'broadcasts-view',
     billing: 'billing-view',

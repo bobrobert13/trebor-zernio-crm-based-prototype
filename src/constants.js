@@ -357,6 +357,7 @@
     { id: 'inbox', label: 'Bandeja', icon: 'message' },
     { id: 'contacts', label: 'Contactos', icon: 'users' },
     { id: 'channels', label: 'Canales', icon: 'layers' },
+    { id: 'leads', label: 'Leads', icon: 'tag' },
     { id: 'broadcasts', label: 'Campañas', icon: 'megaphone' },
     { id: 'billing', label: 'Billing', icon: 'credit-card' },
     { id: 'system', label: 'Estados', icon: 'activity' },
@@ -365,10 +366,10 @@
   ];
 
   const PERMISSIONS = {
-    owner: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', channels: 'edit', broadcasts: 'edit', billing: 'edit', system: 'edit', team: 'edit', settings: 'edit' },
-    admin: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', channels: 'edit', broadcasts: 'edit', billing: 'view', system: 'view', team: 'edit', settings: 'view' },
-    agente: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', channels: null, broadcasts: null, billing: null, system: null, team: null, settings: null },
-    vendedor: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', channels: null, broadcasts: 'edit', billing: null, system: null, team: null, settings: null },
+    owner: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', channels: 'edit', leads: 'edit', broadcasts: 'edit', billing: 'edit', system: 'edit', team: 'edit', settings: 'edit' },
+    admin: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', channels: 'edit', leads: 'edit', broadcasts: 'edit', billing: 'view', system: 'view', team: 'edit', settings: 'view' },
+    agente: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', channels: null, leads: 'view', broadcasts: null, billing: null, system: null, team: null, settings: null },
+    vendedor: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', channels: null, leads: 'view', broadcasts: 'edit', billing: null, system: null, team: null, settings: null },
   };
 
   /**

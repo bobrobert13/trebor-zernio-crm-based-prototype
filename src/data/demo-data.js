@@ -98,6 +98,7 @@
       phone,
       platform: 'whatsapp',
       tags,
+      leadTag: (niche.tags || [])[i % (niche.tags || []).length] || null, // etapa inicial del pipeline
       customFields: Object.fromEntries(fields.map((f, j) => [f.slug, values[j] ?? ''])),
       createdAt: Date.now() - (i + 3) * 864e5,
     }));
@@ -109,6 +110,7 @@
         phone: `+58 412 555 02${10 + i}`,
         platform: 'whatsapp',
         tags: ['cliente'],
+        leadTag: (niche.tags || [])[(i + 1) % (niche.tags || []).length] || null,
         customFields: Object.fromEntries(fields.map((f) => [f.slug, sampleFieldValue(f)])),
         createdAt: Date.now() - (i + 9) * 864e5,
       });

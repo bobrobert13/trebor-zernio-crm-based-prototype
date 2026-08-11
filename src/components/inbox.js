@@ -55,6 +55,9 @@
       /** Etiquetas de leads del negocio (personalizables en Configuración). */
       const leadTags = Vue.computed(() => workspace.value.leadTags || niche.value.tags || []);
 
+      /** Campos del negocio (personalizables en Configuración). */
+      const bizFields = Vue.computed(() => workspace.value.customFields || niche.value.customFields || []);
+
       /** Conversaciones filtradas por búsqueda, pestaña/tag y plataforma. */
       const filtered = Vue.computed(() => {
         const q = search.value.trim().toLowerCase();
@@ -524,6 +527,7 @@
         tplPickerOpen, tplList, tplSelected, tplParams, tplVariables, tplSending,
         openTemplatePicker, closeTemplatePicker, sendApprovedTemplate,
         contactDrawerOpen, contactTags, toggleContactTag, setLeadTag, registerContact,
+        bizFields,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
     },
@@ -832,10 +836,10 @@
                 </select>
               </div>
 
-              <div v-if="niche.customFields.length">
+              <div v-if="bizFields.length">
                 <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Campos del negocio · {{ niche.nombre }}</p>
                 <div class="space-y-2">
-                  <ui-field v-for="f in niche.customFields" :key="f.slug" :label="f.name">
+                  <ui-field v-for="f in bizFields" :key="f.slug" :label="f.name">
                     <input v-model="selectedContact.customFields[f.slug]" type="text"
                       class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
                   </ui-field>

@@ -440,6 +440,79 @@
 
       Vue.onMounted(loadWebhooks);
 
+      // ── Campos del negocio (personalizables) ───────────────────────────────
+      const customFields = Vue.computed(() => workspace.value.customFields || []);
+      const fieldInput = Vue.reactive({ name: '', type: 'text', options: '' });
+      const fieldTypeOptions = ['text', 'number', 'date', 'select'];
+
+      /** Genera un slug único a partir del nombre. */
+      function slugify(name) {
+        const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'campo';
+        let slug = base;
+        let n = 2;
+        while (customFields.value.some((f) => f.slug === slug)) slug = `${base}_${n++}`;
+        return slug;
+      }
+
+      function addField() {
+        const name = fieldInput.name.trim();
+        if (!name) return;
+        const field = {
+          slug: slugify(name),
+          name,
+          type: fieldInput.type,
+          ...(fieldInput.type === 'select' && fieldInput.options.trim()
+            ? { options: fieldInput.options.split(',').map((o) => o.trim()).filter(Boolean) }
+            : {}),
+        };
+        workspace.value.customFields = [...customFields.value, field];
+        Object.assign(fieldInput, { name: '', type: 'text', options: '' });
+        toast('Campo del negocio agregado', 'success');
+      }
+
+      function removeField(index) {
+        workspace.value.customFields = customFields.value.filter((_, i) => i !== index);
+        toast('Campo eliminado', 'info');
+      }
+
+      function moveField(index, dir) {
+        const list = [...customFields.value];
+        const next = index + dir;
+        if (next < 0 || next >= list.length) return;
+        [list[index], list[next]] = [list[next], list[index]];
+        workspace.value.customFields = list;
+      }
+
+      /** Renombra el campo sin tocar el slug (los datos de contactos se conservan). */
+      function renameField(index, value) {
+        const list = [...customFields.value];
+        const name = value.trim();
+        if (!name || name === list[index].name) {
+          workspace.value.customFields = list; // fuerza re-render
+          return;
+        }
+        list[index] = { ...list[index], name };
+        workspace.value.customFields = list;
+        toast('Campo renombrado', 'success');
+      }
+
+      function updateFieldType(index, type) {
+        const list = [...customFields.value];
+        const field = { ...list[index], type };
+        if (type !== 'select') delete field.options;
+        list[index] = field;
+        workspace.value.customFields = list;
+      }
+
+      function updateFieldOptions(index, optionsText) {
+        const list = [...customFields.value];
+        list[index] = {
+          ...list[index],
+          options: optionsText.split(',').map((o) => o.trim()).filter(Boolean),
+        };
+        workspace.value.customFields = list;
+      }
+
       // ── Credenciales del centro (sub-key por negocio) ──────────────────────
 
       /** Máscara de una clave para mostrar (sk_1234…abcd). */
@@ -535,6 +608,8 @@
         advancedOpen, isAdvanced, adminKeyInput, adminKeyBusy, validateAdminKey,
         leadTags, contactTags, leadInput, contactInput,
         addTag, addLeadTag, addContactTag, removeTag, moveTag, renameTag,
+        customFields, fieldInput, fieldTypeOptions,
+        addField, removeField, moveField, renameField, updateFieldType, updateFieldOptions,
         canEdit, saveBranding, saveApiKey, testConnection,
         disconnectWhatsApp, reconnectWhatsApp, exportData, resetDemo, deleteWorkspace,
         saveWebhooks, deleteWebhooks, testWebhook, openLogs, simulateWebhook, toggleWhEvent,
@@ -651,6 +726,60 @@
               Agregar
             </button>
           </div>
+        </section>
+
+        <!-- Campos del negocio (personalizables) -->
+        <section class="border-2 border-neutral-900 bg-white p-5">
+          <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Campos del negocio</h3>
+          <p class="text-sm text-neutral-600">
+            Información que registras de cada cliente (además del nombre y teléfono).
+            Cada negocio inicia con los campos de su modelo y puede adaptarlos.
+          </p>
+          <div class="mt-4 space-y-2">
+            <div v-for="(f, i) in customFields" :key="f.slug" class="border border-neutral-200 bg-stone-50 px-3 py-2">
+              <div class="flex items-center gap-2">
+                <input :value="f.name" @change="renameField(i, $event.target.value)"
+                  class="min-w-0 flex-1 border border-transparent bg-transparent px-1 py-1 text-sm font-medium outline-none focus:border-neutral-900 focus:bg-white" />
+                <select :value="f.type" @change="updateFieldType(i, $event.target.value)"
+                  class="border border-neutral-300 bg-white px-1.5 py-1 font-mono text-[10px] uppercase outline-none focus:border-neutral-900">
+                  <option v-for="t in fieldTypeOptions" :key="t" :value="t">{{ t }}</option>
+                </select>
+                <div class="flex shrink-0 items-center gap-1">
+                  <button @click="moveField(i, -1)" :disabled="i === 0" class="p-1 text-neutral-400 hover:text-neutral-900 disabled:opacity-30" aria-label="Subir campo">
+                    <ui-icon name="chevron-up" class="h-4 w-4"></ui-icon>
+                  </button>
+                  <button @click="moveField(i, 1)" :disabled="i === customFields.length - 1" class="p-1 text-neutral-400 hover:text-neutral-900 disabled:opacity-30" aria-label="Bajar campo">
+                    <ui-icon name="chevron-down" class="h-4 w-4"></ui-icon>
+                  </button>
+                  <button @click="removeField(i)" class="p-1 text-red-600 hover:text-red-800" aria-label="Eliminar campo">
+                    <ui-icon name="trash" class="h-4 w-4"></ui-icon>
+                  </button>
+                </div>
+              </div>
+              <input v-if="f.type === 'select'" :value="(f.options || []).join(', ')" @change="updateFieldOptions(i, $event.target.value)"
+                placeholder="Opciones separadas por coma (ej: Local, Para llevar, Delivery)"
+                class="mt-1.5 w-full border border-neutral-300 bg-white px-2 py-1 text-xs outline-none focus:border-neutral-900" />
+            </div>
+            <div v-if="customFields.length === 0" class="border border-dashed border-neutral-300 p-4 text-center text-sm text-neutral-400">
+              Sin campos: agrega el primero abajo.
+            </div>
+          </div>
+          <div class="mt-3 grid gap-2 sm:grid-cols-3">
+            <input v-model.trim="fieldInput.name" type="text" placeholder="Nuevo campo (ej: Talla)" @keydown.enter="addField"
+              class="w-full border-2 border-neutral-300 px-3 py-2.5 text-sm outline-none focus:border-neutral-900" />
+            <select v-model="fieldInput.type" class="border-2 border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-900">
+              <option v-for="t in fieldTypeOptions" :key="t" :value="t">{{ t }}</option>
+            </select>
+            <input v-if="fieldInput.type === 'select'" v-model.trim="fieldInput.options" type="text" placeholder="Opciones (coma)"
+              class="w-full border-2 border-neutral-300 px-3 py-2.5 text-sm outline-none focus:border-neutral-900" />
+            <button v-else @click="addField" :disabled="!fieldInput.name.trim()"
+              class="shrink-0 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+              Agregar campo
+            </button>
+          </div>
+          <p class="mt-3 text-xs text-neutral-400">
+            Renombrar no pierde los datos ya registrados. Los campos aparecen en la ficha del cliente y en Contactos.
+          </p>
         </section>
 
         <!-- Opciones avanzadas (superadministrador) -->

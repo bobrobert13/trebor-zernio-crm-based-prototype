@@ -31,6 +31,9 @@
       /** Tags disponibles: etiquetas de contacto del negocio (administrables en Configuración). */
       const availableTags = Vue.computed(() => workspace.value.contactTags || [...new Set([...niche.value.tags, 'cliente'])]);
 
+      /** Campos del negocio (personalizables en Configuración). */
+      const fields = Vue.computed(() => workspace.value.customFields || niche.value.customFields || []);
+
       /** Contactos filtrados por búsqueda y tag. */
       const filtered = Vue.computed(() => {
         const q = search.value.trim().toLowerCase();
@@ -101,7 +104,7 @@
 
       return {
         search, tagFilter, modalOpen, confirmDelete, form,
-        workspace, niche, contacts, availableTags, filtered,
+        workspace, niche, contacts, availableTags, filtered, fields,
         openCreate, openEdit, toggleTag, save, remove, canEdit, formatDate,
       };
     },
@@ -151,7 +154,7 @@
             <thead class="border-b border-neutral-200 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
               <tr>
                 <th class="sticky top-0 z-10 bg-white px-4 py-3">Contacto</th>
-                <th v-for="f in niche.customFields" :key="f.slug" class="sticky top-0 z-10 bg-white px-4 py-3">{{ f.name }}</th>
+                <th v-for="f in fields" :key="f.slug" class="sticky top-0 z-10 bg-white px-4 py-3">{{ f.name }}</th>
                 <th class="sticky top-0 z-10 bg-white px-4 py-3">Tags</th>
                 <th class="sticky top-0 z-10 bg-white px-4 py-3">Creado</th>
                 <th class="sticky top-0 z-10 bg-white px-4 py-3 text-right">Acciones</th>
@@ -170,7 +173,7 @@
                     </div>
                   </div>
                 </td>
-                <td v-for="f in niche.customFields" :key="f.slug" class="max-w-40 truncate px-4 py-3 text-neutral-600">
+                <td v-for="f in fields" :key="f.slug" class="max-w-40 truncate px-4 py-3 text-neutral-600">
                   {{ c.customFields[f.slug] || '—' }}
                 </td>
                 <td class="px-4 py-3">
@@ -210,7 +213,7 @@
 
             <ui-field label="Campos del nicho · {{ niche.nombre }}">
               <div class="grid gap-4 sm:grid-cols-2">
-                <template v-for="f in niche.customFields" :key="f.slug">
+                <template v-for="f in fields" :key="f.slug">
                   <input v-if="f.type === 'text'" v-model="form.customFields[f.slug]" type="text" :placeholder="f.name"
                     class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
                   <input v-else-if="f.type === 'number'" v-model="form.customFields[f.slug]" type="number" :placeholder="f.name"

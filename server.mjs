@@ -15,8 +15,8 @@
  */
 import { createServer } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,6 +26,7 @@ const ZERNIO = { host: 'zernio.com', base: '/api/v1' };
 const MAX_BODY = 10 * 1024 * 1024; // 10 MB
 const WEBHOOK_MAX = 200; // eventos en memoria (cola acotada)
 const TUNNEL_FILE = join(ROOT, '.tunnel-url');
+const USAGE_FILE = join(ROOT, 'data', 'usage.json');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -46,6 +47,71 @@ const webhookEvents = [];
 
 /** Ids ya recibidos (dedupe: Zernio entrega at-least-once). */
 const seenWebhookIds = new Set();
+
+/**
+ * Medidor local de consumo por workspace (para el panel Billing y detectar
+ * abuso por negocio). Persistido en data/usage.json con debounce.
+ */
+const usageStore = { byKey: {} }; // { [keyHash]: { total, byEndpoint, byDay, updatedAt } }
+let usageDirty = false;
+let usageTimer = null;
+
+/** Hash corto de la key (nunca persistir el secreto). */
+function keyHash(key) {
+  return createHash('sha256').update(String(key || '')).digest('hex').slice(0, 16);
+}
+
+/** Carga lazy del medidor desde disco. */
+async function loadUsage() {
+  try {
+    const raw = await readFile(USAGE_FILE, 'utf8');
+    Object.assign(usageStore, JSON.parse(raw));
+  } catch {
+    usageStore.byKey = {};
+  }
+}
+
+/** Persiste el medidor (debounce 2s; flush inmediato si ya hay timer). */
+function scheduleUsageWrite() {
+  usageDirty = true;
+  if (usageTimer) return;
+  usageTimer = setTimeout(async () => {
+    usageTimer = null;
+    await flushUsage();
+  }, 2000);
+}
+
+async function flushUsage() {
+  if (!usageDirty) return;
+  usageDirty = false;
+  try {
+    await mkdir(join(ROOT, 'data'), { recursive: true });
+    await writeFile(USAGE_FILE, JSON.stringify(usageStore), 'utf8');
+  } catch (err) {
+    usageDirty = true; // reintenta en el próximo flush
+    console.error('[usage] no se pudo persistir:', err.message);
+  }
+}
+
+/** Registra una llamada del proxy para la key dada. */
+function recordUsage(apiKey, endpoint) {
+  const hash = keyHash(apiKey);
+  const day = new Date().toISOString().slice(0, 10);
+  const entry = (usageStore.byKey[hash] = usageStore.byKey[hash] || { total: 0, byEndpoint: {}, byDay: {}, updatedAt: Date.now() });
+  entry.total += 1;
+  entry.byEndpoint[endpoint] = (entry.byEndpoint[endpoint] || 0) + 1;
+  entry.byDay[day] = (entry.byDay[day] || 0) + 1;
+  entry.updatedAt = Date.now();
+  scheduleUsageWrite();
+}
+
+/** Lee el medidor de un workspace (por hash) o todos si no se filtra. */
+async function usageSnapshot(wsHash) {
+  await loadUsage();
+  if (usageDirty) await flushUsage();
+  if (wsHash) return { ws: wsHash, ...(usageStore.byKey[wsHash] || { total: 0, byEndpoint: {}, byDay: {} }) };
+  return { workspaces: usageStore.byKey };
+}
 
 /**
  * Lee la URL pública del túnel (env TUNNEL_URL o fichero .tunnel-url).
@@ -112,6 +178,8 @@ function proxyZernio(req, res, apiPath, apiKey) {
     res.end(JSON.stringify({ error: 'Falta X-Zernio-Key en la petición' }));
     return;
   }
+  // Medidor local de consumo (panel Billing del centro)
+  recordUsage(apiKey, apiPath.split('?')[0]);
   const upstream = httpsRequest(
     {
       host: ZERNIO.host,
@@ -237,6 +305,14 @@ const server = createServer(async (req, res) => {
       res.setHeader('Vary', 'Origin');
       res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ url }));
+      return;
+    }
+
+    if (pathname === '/api/usage') {
+      const ws = url.searchParams.get('ws');
+      res.setHeader('Vary', 'Origin');
+      res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(await usageSnapshot(ws)));
       return;
     }
 

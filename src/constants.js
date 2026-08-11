@@ -76,6 +76,40 @@
   ];
 
   /**
+   * Guía de métricas de Analítica: qué miden, cómo se calculan y cuándo mirarlas.
+   */
+  const ANALYTICS_GUIDE = [
+    {
+      id: 'interacciones', nombre: 'Interacciones', icon: 'activity',
+      color: 'border-emerald-700 text-emerald-800',
+      que: 'Cada contacto del público con tus publicaciones o mensajes: reacciones, comentarios y compartidos.',
+      como: 'Se acumulan por día y por franja horaria desde la plataforma.',
+      cuando: 'Semana a semana: detecta qué contenido conecta con tu audiencia y replica lo que funciona.',
+    },
+    {
+      id: 'horarios', nombre: 'Mejores horarios', icon: 'clock',
+      color: 'border-amber-700 text-amber-900',
+      que: 'Franjas del día con más actividad de tus clientes.',
+      como: 'Heatmap de interacciones por hora y día de la semana (más oscuro = más actividad).',
+      cuando: 'Antes de enviar campañas o plantillas: programa en las franjas calientes para más respuesta.',
+    },
+    {
+      id: 'seguidores', nombre: 'Crecimiento de comunidad', icon: 'users',
+      color: 'border-sky-700 text-sky-800',
+      que: 'Evolución de tus seguidores y contactos en el tiempo.',
+      como: 'Diferencia entre el inicio y el fin del periodo seleccionado.',
+      cuando: 'Evalúa campañas de crecimiento, temporadas y el impacto de tus publicaciones.',
+    },
+    {
+      id: 'respuesta', nombre: 'Tiempo de respuesta', icon: 'zap',
+      color: 'border-red-700 text-red-800',
+      que: 'Rapidez con la que tu equipo responde en la bandeja.',
+      como: 'Promedio de minutos entre el mensaje del cliente y tu primera respuesta.',
+      cuando: 'Siempre: una respuesta ágil es la primera impresión de tu negocio.',
+    },
+  ];
+
+  /**
    * Nichos de negocio. Cada nicho define campos personalizados, KPIs,
    * tags de conversación y un roadmap específico de configuración.
    */
@@ -416,6 +450,7 @@
     search: { paths: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>' },
     plus: { paths: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>' },
     x: { paths: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>' },
+    minus: { paths: '<line x1="5" y1="12" x2="19" y2="12"/>' },
     check: { paths: '<polyline points="20 6 9 17 4 12"/>' },
     'check-circle': { paths: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>' },
     'chevron-left': { paths: '<polyline points="15 18 9 12 15 6"/>' },
@@ -533,6 +568,7 @@
     PERMISSIONS,
     WHATSAPP_MODALITIES,
     CAMPAIGN_TOOLS,
+    ANALYTICS_GUIDE,
     ICONS,
     getNiche,
     permOf,

@@ -107,7 +107,7 @@
         if (!id || !canEdit('leads')) return;
         const contact = contacts.value.find((c) => c.id === id);
         if (!contact) return;
-        contact.leadTag = col.id === '__sin_asignar__' ? null : col.id;
+        ZernioCrm.applyLeadTag(contact, col.id === '__sin_asignar__' ? null : col.id);
         toast(`Lead movido a "${col.nombre}"`, 'success');
       }
 
@@ -117,7 +117,7 @@
         const idx = columns.value.findIndex((c) => (contact.leadTag && leadTags.value.includes(contact.leadTag) ? c.id === contact.leadTag : c.id === '__sin_asignar__'));
         const next = columns.value[idx + dir];
         if (!next) return;
-        contact.leadTag = next.id === '__sin_asignar__' ? null : next.id;
+        ZernioCrm.applyLeadTag(contact, next.id === '__sin_asignar__' ? null : next.id);
         toast(`Lead movido a "${next.nombre}"`, 'success');
       }
 
@@ -141,10 +141,17 @@
         }));
       }
 
+      /** Abre la conversación en la bandeja (sin salir de la lógica del drawer). */
+      function openConversation(conv) {
+        if (!conv) return;
+        store.pendingConversationId = conv.id;
+        ZernioCrm.navigate('inbox');
+      }
+
       return {
         workspace, isLive, leadTags, columns, cardsOf, metricsOf, lastMessageOf,
         dragContactId, onDragStart, onDragOver, onDrop, moveContact,
-        detailOpen, detailContact, openDetail, channelBars,
+        detailOpen, detailContact, openDetail, channelBars, openConversation,
         getPlatform, timeAgo, canEdit,
       };
     },
@@ -224,7 +231,7 @@
         </div>
 
         <!-- Drawer: detalle profundo del lead -->
-        <ui-drawer :open="detailOpen" :title="'Lead · ' + (detailContact ? detailContact.name : '')" @close="detailOpen = false">
+        <ui-drawer :open="detailOpen" width="max-w-xl" :title="'Lead · ' + (detailContact ? detailContact.name : '')" @close="detailOpen = false">
           <div v-if="detailContact" class="space-y-5">
             <div class="flex items-center gap-3">
               <ui-avatar :name="detailContact.name" size="h-12 w-12 text-base"></ui-avatar>
@@ -291,21 +298,24 @@
               </div>
             </div>
 
-            <!-- Conversaciones recientes -->
+            <!-- Conversaciones recientes (click = abrir en la bandeja) -->
             <div>
-              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Conversaciones recientes</p>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Conversaciones</p>
               <ul class="space-y-2">
-                <li v-for="c in metricsOf(detailContact).convs.slice(-3).reverse()" :key="c.id" class="border border-neutral-200 p-2.5">
-                  <div class="flex items-center justify-between">
-                    <span class="flex items-center gap-1.5 text-xs font-semibold">
-                      <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
-                      {{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}
-                    </span>
-                    <span class="font-mono text-[9px] uppercase text-neutral-400">{{ timeAgo(c.lastTs) }}</span>
-                  </div>
-                  <p class="mt-1 truncate text-xs text-neutral-600">
-                    {{ c.messages && c.messages.length ? c.messages[c.messages.length - 1].text : 'Sin mensajes' }}
-                  </p>
+                <li v-for="c in metricsOf(detailContact).convs.slice(-6).reverse()" :key="c.id">
+                  <button @click="openConversation(c)"
+                    class="w-full border border-neutral-200 p-2.5 text-left transition hover:border-neutral-900 hover:bg-stone-50">
+                    <div class="flex items-center justify-between">
+                      <span class="flex items-center gap-1.5 text-xs font-semibold">
+                        <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
+                        {{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}
+                      </span>
+                      <span class="font-mono text-[9px] uppercase text-neutral-400">{{ timeAgo(c.lastTs) }}</span>
+                    </div>
+                    <p class="mt-1 truncate text-xs text-neutral-600">
+                      {{ c.messages && c.messages.length ? c.messages[c.messages.length - 1].text : 'Sin mensajes' }}
+                    </p>
+                  </button>
                 </li>
                 <li v-if="metricsOf(detailContact).convs.length === 0" class="text-xs text-neutral-400">Sin conversaciones registradas.</li>
               </ul>

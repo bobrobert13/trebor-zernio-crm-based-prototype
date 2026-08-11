@@ -47,6 +47,18 @@
       }
       Vue.onUnmounted(() => timers.forEach(clearTimeout));
 
+      // Abre una conversación pedida desde otro módulo (ej. drawer de Leads)
+      Vue.watch(
+        () => store.pendingConversationId,
+        (id) => {
+          if (!id) return;
+          const conv = conversations.value.find((c) => c.id === id);
+          store.pendingConversationId = null;
+          if (conv) selectConversation(conv);
+        },
+        { immediate: true }
+      );
+
       const workspace = Vue.computed(() => store.workspace);
       const niche = Vue.computed(() => getNiche(workspace.value && workspace.value.nicheId));
       const contacts = Vue.computed(() => workspace.value.contacts || []);
@@ -423,11 +435,9 @@
         else c.tags.push(tag);
       }
 
-      /** Asigna la etapa del lead al contacto (coherente con el kanban). */
+      /** Asigna la etapa del lead al contacto (centralizado en store.applyLeadTag). */
       function setLeadTag(tag) {
-        const c = selectedContact.value;
-        if (!c) return;
-        c.leadTag = tag || null;
+        ZernioCrm.applyLeadTag(selectedContact.value, tag || null);
       }
 
       /** Registra un contacto desde una conversación huérfana (sin ficha). */
@@ -802,7 +812,7 @@
           </div>
         </ui-modal>
         <!-- Drawer: ficha del cliente (gestión por conversación) -->
-        <ui-drawer :open="contactDrawerOpen" :title="'Ficha · ' + (selectedContact ? selectedContact.name : 'Sin ficha')" @close="contactDrawerOpen = false">
+        <ui-drawer :open="contactDrawerOpen" width="max-w-lg" :title="'Ficha · ' + (selectedContact ? selectedContact.name : 'Sin ficha')" @close="contactDrawerOpen = false">
           <div v-if="selected" class="space-y-5">
             <template v-if="selectedContact">
               <div class="flex items-center gap-3">
@@ -854,17 +864,19 @@
               </button>
             </template>
 
-            <!-- Historial resumido del contacto -->
+            <!-- Historial resumido del contacto (click = abrir esa conversación) -->
             <div>
               <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial</p>
               <ul class="space-y-1.5">
-                <li v-for="c in conversations.filter(x => selectedContact && x.contactId === selectedContact.id)" :key="c.id"
-                  class="flex items-center justify-between gap-2 text-xs">
-                  <span class="flex min-w-0 items-center gap-1.5">
-                    <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
-                    <span class="truncate">{{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}</span>
-                  </span>
-                  <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ timeAgo(c.lastTs) }} · {{ (c.messages || []).length }} msgs</span>
+                <li v-for="c in conversations.filter(x => selectedContact && x.contactId === selectedContact.id)" :key="c.id">
+                  <button @click="selectConversation(c); contactDrawerOpen = false"
+                    class="flex w-full items-center justify-between gap-2 rounded border border-neutral-200 px-2.5 py-2 text-left text-xs transition hover:border-neutral-900 hover:bg-stone-50">
+                    <span class="flex min-w-0 items-center gap-1.5">
+                      <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
+                      <span class="truncate">{{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}</span>
+                    </span>
+                    <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ timeAgo(c.lastTs) }} · {{ (c.messages || []).length }} msgs</span>
+                  </button>
                 </li>
                 <li v-if="!selectedContact || conversations.filter(x => x.contactId === selectedContact.id).length === 0" class="text-xs text-neutral-400">
                   Sin historial previo.

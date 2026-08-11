@@ -30,6 +30,7 @@
     route: 'dashboard',
     toasts: [],
     webhookEvents: [],
+    pendingConversationId: null, // conversación a abrir al montar la bandeja (drawers de otros módulos)
   });
 
   /**
@@ -176,6 +177,23 @@
     return ZernioCrm.can(store.currentUser && store.currentUser.role, module, 'edit');
   }
 
+  /**
+   * Cambia la etapa del lead de un contacto registrando el histórico automático.
+   * Centraliza el cambio para que bandeja y kanban sean coherentes.
+   * @param {object} contact — contacto del workspace.
+   * @param {string|null} tag — nueva etapa (null = sin asignar).
+   */
+  function applyLeadTag(contact, tag) {
+    if (!contact) return;
+    const next = tag || null;
+    if (contact.leadTag === next) return;
+    contact.leadHistory = contact.leadHistory || [];
+    contact.leadHistory.push({ tag: next, at: Date.now() });
+    if (contact.leadHistory.length > 50) contact.leadHistory.shift();
+    contact.leadTag = next;
+    delete contact.leadClosed; // reabre el lead si estaba finalizado
+  }
+
   window.ZernioCrm = window.ZernioCrm || {};
-  Object.assign(window.ZernioCrm, { store, toast, applyAccent, navigate, flagCorsBlocked, canEdit, detectServer, pushWebhookEvent, reflectIncomingMessage });
+  Object.assign(window.ZernioCrm, { store, toast, applyAccent, navigate, flagCorsBlocked, canEdit, detectServer, pushWebhookEvent, reflectIncomingMessage, applyLeadTag });
 })();

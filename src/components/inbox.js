@@ -860,7 +860,7 @@
                     <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
                     <span class="truncate">{{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}</span>
                   </span>
-                  <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ timeAgo(c.lastTs) }} · {{ c.messages.length }} msgs</span>
+                  <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ timeAgo(c.lastTs) }} · {{ (c.messages || []).length }} msgs</span>
                 </li>
                 <li v-if="!selectedContact || conversations.filter(x => x.contactId === selectedContact.id).length === 0" class="text-xs text-neutral-400">
                   Sin historial previo.

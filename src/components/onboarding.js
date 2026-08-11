@@ -38,6 +38,13 @@
 
       /** Sección colapsada de clave de administración (solo si el centro no la dejó en sesión). */
       const adminKeyOpen = Vue.ref(false);
+      const hasMasterKey = Vue.computed(() => {
+        try {
+          return Boolean(sessionStorage.getItem('tzcrm.masterKey'));
+        } catch {
+          return false;
+        }
+      });
 
       /** Pasos del roadmap copiados (con estado de simulación local). */
       const roadmapItems = Vue.ref([]);
@@ -212,7 +219,7 @@
       return {
         STEPS, form, current, enterLoading, creating, niche, accent, selectedNiche,
         roadmapItems, roadmapSim, selectedRoadmap, progressPercent,
-        adminKeyOpen, liveResult,
+        adminKeyOpen, hasMasterKey, liveResult,
         selectNiche, jumpTo, next, back, onLiveConnected, finish,
         canContinue,
         ui: ZernioCrm,
@@ -535,7 +542,7 @@
             </div>
 
             <!-- Clave de administración (solo si el centro no la dejó en sesión) -->
-            <div v-if="!liveResult" class="mt-4">
+            <div v-if="!liveResult && !hasMasterKey" class="mt-4">
               <button @click="adminKeyOpen = !adminKeyOpen" class="text-sm font-medium text-neutral-500 underline">
                 {{ adminKeyOpen ? '− Ocultar acceso de administración' : '+ Acceso de administración' }}
               </button>

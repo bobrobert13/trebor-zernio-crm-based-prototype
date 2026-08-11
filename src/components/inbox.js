@@ -70,10 +70,11 @@
           });
       });
 
-      /** Plataformas presentes en la bandeja (para las pestañas). */
+      /** Plataformas presentes en la bandeja (conversaciones o canal conectado). */
       const presentPlatforms = Vue.computed(() => {
         const ids = new Set(conversations.value.map((c) => c.platform || 'whatsapp'));
-        return PLATFORMS.filter((p) => ids.has(p.id));
+        const tiktokConnected = (workspace.value.channels || []).some((c) => c.platform === 'tiktok' && c.connected);
+        return PLATFORMS.filter((p) => ids.has(p.id) || (p.id === 'tiktok' && tiktokConnected));
       });
 
       /** Canal TikTok conectado (para el enlace externo). */
@@ -225,9 +226,10 @@
           for (const p of PLATFORMS.filter((x) => x.inbox)) {
             const channel = (workspace.value.channels || []).find((c) => c.platform === p.id);
             const accountId = channel ? channel.accountId : p.id === 'whatsapp' ? (workspace.value.zernio && workspace.value.zernio.accountId) || '' : '';
+            if (!accountId) continue; // canal no conectado: Zernio devolvería conversaciones de otras cuentas
             const data = await ZernioCrm.api.listConversations({ profileId, platform: p.id });
             let list = ZernioCrm.asArray(data);
-            if (accountId) list = list.filter((c) => c.accountId === accountId);
+            list = list.filter((c) => c.accountId === accountId);
             // Limpia conversaciones live huérfanas de ESTE canal (demo conv_* se mantienen)
             const liveIds = new Set(list.map((c) => c.id));
             workspace.value.conversations = workspace.value.conversations.filter(

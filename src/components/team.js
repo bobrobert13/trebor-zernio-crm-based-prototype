@@ -95,14 +95,19 @@
     },
 
     template: `
-      <div class="space-y-6">
-        <!-- Encabezado -->
-        <header class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 class="text-2xl font-bold">Equipo</h2>
-            <p class="mt-1 text-sm text-neutral-500">
-              {{ users.length }} miembros · Tú eres <span class="font-semibold">{{ ROLES[me.role].label }}</span>
-            </p>
+      <div class="-mx-5 -my-5 flex h-[calc(100vh-40px)] flex-col lg:-mx-8 lg:-my-8 lg:h-[calc(100vh)]">
+        <!-- Encabezado integrado (full-bleed) -->
+        <header class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-stone-100/80 px-5 py-3.5 backdrop-blur lg:px-6">
+          <div class="flex items-center gap-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-800">
+              <ui-icon name="users" class="h-5 w-5"></ui-icon>
+            </span>
+            <div>
+              <h2 class="text-lg font-bold leading-tight">Equipo</h2>
+              <p class="text-xs text-neutral-500">
+                {{ users.length }} miembros · Tú eres <span class="font-semibold">{{ ROLES[me.role].label }}</span>
+              </p>
+            </div>
           </div>
           <button v-if="canEdit('team')" @click="inviteOpen = true"
             class="flex items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
@@ -110,11 +115,11 @@
           </button>
         </header>
 
-        <div class="grid items-start gap-6 xl:grid-cols-[1fr_400px]">
+        <div class="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[1fr_400px] xl:overflow-hidden">
           <!-- Usuarios -->
-          <section class="overflow-x-auto border-2 border-neutral-900 bg-white">
+          <section class="min-h-0 overflow-auto bg-white">
           <table class="w-full min-w-[640px] text-left text-sm">
-            <thead class="border-b-2 border-neutral-900 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+            <thead class="sticky top-0 z-10 border-b border-neutral-200 bg-white font-mono text-[10px] uppercase tracking-widest text-neutral-500">
               <tr>
                 <th class="px-4 py-3">Miembro</th>
                 <th class="px-4 py-3">Rol</th>
@@ -123,7 +128,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100">
-              <tr v-for="u in users" :key="u.id" class="hover:bg-stone-50">
+              <tr v-for="u in users" :key="u.id" class="hover:bg-stone-100">
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-3">
                     <ui-avatar :name="u.name"></ui-avatar>
@@ -155,8 +160,8 @@
           </table>
         </section>
 
-        <!-- Matriz de permisos -->
-        <section class="border-2 border-neutral-900 bg-white p-5 xl:sticky xl:top-8">
+        <!-- Matriz de permisos (panel lateral integrado) -->
+        <section class="min-h-0 overflow-auto border-t border-neutral-200 bg-stone-50 p-5 xl:border-l xl:border-t-0">
           <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Matriz de permisos (RBAC)</h3>
           <div class="mt-4 overflow-x-auto">
             <table class="w-full min-w-[560px] text-left text-sm">

@@ -95,3 +95,14 @@ Instagram y WhatsApp se aplican a través de su API.
   /accounts/{id}/tiktok/creator-info`) — pendiente cuando se habilite posting.
 - Políticas de contenido de cada plataforma aplican a publicaciones — fuera del
   alcance del MVP de mensajería.
+
+## Modelo multi-tenant: centro de cuenta (Camino B)
+
+- **Perfil por negocio:** cada negocio registrado crea su propio perfil en Zernio (`POST /profiles`) bajo la master key del centro. Un número = un perfil.
+- **Sub-key scoped por negocio:** al elegir/crear el perfil, el MVP crea una sub-key con `scope: profiles` limitada a ese perfil, `permission: read-write` y `expiresIn: 90` días (`POST /api-keys`). Toda la operación diaria (bandeja, campañas, contactos) usa la sub-key; la master solo se usa para llamadas admin (crear perfiles/keys, `/usage`, `/billing`, `/phone-numbers`, `/accounts/health`, `/webhooks/logs`).
+- **Revocación granular:** si un cliente abusa o deja de pagar, se revoca solo su sub-key (`DELETE /api-keys/{id}`, efecto inmediato) o se rota creando una nueva y revocando la anterior. El resto de negocios no se ve afectado.
+- **Límite operativo: 1 número por negocio.** El MVP bloquea una segunda vinculación (modal de reemplazo) y desconecta el número anterior antes de conectar uno nuevo. La rotación/expiración de la sub-key se avisa en Configuración.
+- **Detección de abuso:** medidor local en server.mjs (data/usage.json) que cuenta llamadas por key (hash, sin persistir secretos); el panel Billing cruza ese medidor con el snapshot oficial de Zernio (`GET /usage`, `GET /billing`). El snapshot de Zernio es la fuente oficial de facturación; el medidor es aproximado (1 request = 1 llamada).
+- **Estados y salud:** `GET /whatsapp/phone-numbers` (comprados vs bring-your-own), `GET /accounts/health`, `GET /webhooks/logs` (retención 7 días) y el evento webhook `account.disconnected` marca el canal para reconectar.
+- **Bring-your-own (Camino B):** el número es del cliente (WABA propia conectada con token de System User). No se factura el número al centro; solo el uso de la API según el plan. `registrationWarning` indica registro pendiente en Meta (no puede enviar mensajes hasta resolverlo).
+- **Seguridad de claves:** la master key nunca se persiste en demo-data ni se muestra completa en la UI (enmascarada); la sub-key viaja solo por el proxy local o localStorage del origin del negocio.

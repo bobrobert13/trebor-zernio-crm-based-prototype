@@ -38,6 +38,39 @@
       );
       const referrer = Vue.computed(() => REFERRERS.find((r) => r.id === workspace.value.referrer) || {});
 
+      // ── Opciones avanzadas (superadministrador) ────────────────────────────
+      const advancedOpen = Vue.ref(false);
+      const adminKeyInput = Vue.ref('');
+      const adminKeyBusy = Vue.ref(false);
+
+      /** ¿Hay clave de administración en sesión? (el centro la deja al configurar). */
+      const isAdvanced = Vue.computed(() => {
+        try {
+          return Boolean(sessionStorage.getItem('tzcrm.masterKey')) || Boolean(store.masterKey);
+        } catch {
+          return false;
+        }
+      });
+
+      /** Valida la clave de administración (probe admin) y la guarda en sesión. */
+      async function validateAdminKey() {
+        const key = adminKeyInput.value.trim();
+        if (!key || adminKeyBusy.value) return;
+        adminKeyBusy.value = true;
+        try {
+          store.apiKey = key;
+          await api.listApiKeys(); // solo la master puede listar/crear sub-keys
+          store.masterKey = key;
+          sessionStorage.setItem('tzcrm.masterKey', key);
+          adminKeyInput.value = '';
+          toast('Clave de administración válida: opciones avanzadas habilitadas', 'success');
+        } catch (err) {
+          toast(err.message || 'La clave no es válida para administración', 'error');
+        } finally {
+          adminKeyBusy.value = false;
+        }
+      }
+
       /** Guarda branding y refresca el acento del tema. */
       function saveBranding() {
         if (!workspace.value.name.trim()) return;
@@ -435,6 +468,7 @@
         EVENTS, whForm, whExists, whSaving, whLogs, whLogsOpen,
         health, healthBusy, reconnectOpen, tunnelUrl, tunnelBusy,
         subKey, subKeyBusy, maskKey, rotateSubKey, revokeSubKey,
+        advancedOpen, isAdvanced, adminKeyInput, adminKeyBusy, validateAdminKey,
         canEdit, saveBranding, saveApiKey, testConnection,
         disconnectWhatsApp, reconnectWhatsApp, exportData, resetDemo, deleteWorkspace,
         saveWebhooks, deleteWebhooks, testWebhook, openLogs, simulateWebhook, toggleWhEvent,
@@ -446,7 +480,7 @@
       <div class="grid items-start gap-6 xl:grid-cols-2">
         <header class="xl:col-span-2">
           <h2 class="text-2xl font-bold">Configuración</h2>
-          <p class="mt-1 text-sm text-neutral-500">Branding, canales y datos del espacio de trabajo.</p>
+          <p class="mt-1 text-sm text-neutral-500">Branding, canales y datos del espacio de trabajo. Las opciones avanzadas las gestiona tu proveedor.</p>
         </header>
 
         <!-- Branding -->
@@ -481,8 +515,48 @@
           </button>
         </section>
 
+        <!-- Opciones avanzadas (superadministrador) -->
+        <section class="border-2 border-neutral-900 bg-white xl:col-span-2">
+          <button @click="advancedOpen = !advancedOpen" class="flex w-full items-center justify-between gap-3 px-5 py-4 text-left">
+            <div class="flex items-center gap-3">
+              <span class="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-neutral-600">
+                <ui-icon name="settings" class="h-4 w-4"></ui-icon>
+              </span>
+              <div>
+                <p class="font-semibold">Opciones avanzadas</p>
+                <p class="text-xs text-neutral-500">Webhooks, credenciales e integración técnica.</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <ui-badge v-if="isAdvanced" variant="success" dot>Habilitadas</ui-badge>
+              <ui-icon name="chevron-down" class="h-4 w-4 text-neutral-400" :class="advancedOpen ? 'rotate-180 transition-transform' : ''"></ui-icon>
+            </div>
+          </button>
+          <div v-if="advancedOpen" class="border-t-2 border-neutral-900 p-5">
+            <!-- Sin clave de administración: aviso + campo discreto -->
+            <template v-if="!isAdvanced">
+              <p class="text-sm text-neutral-600">
+                Estas opciones las gestiona tu proveedor. Ingresa la clave de administración si la tienes.
+              </p>
+              <div class="mt-3 flex max-w-xl items-end gap-2">
+                <input v-model.trim="adminKeyInput" type="password" placeholder="sk_…" autocomplete="off"
+                  class="w-full border-2 border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none focus:border-neutral-900" />
+                <button @click="validateAdminKey" :disabled="adminKeyBusy || !adminKeyInput.trim()"
+                  class="flex shrink-0 items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                  <ui-spinner v-if="adminKeyBusy" size="h-4 w-4"></ui-spinner>
+                  Validar
+                </button>
+              </div>
+            </template>
+            <!-- Con clave: las secciones técnicas quedan dentro del grid original -->
+            <template v-else>
+              <p class="mb-4 text-xs text-neutral-500">Modo administración: puedes gestionar la integración técnica del negocio.</p>
+            </template>
+          </div>
+        </section>
+
         <!-- Integración de canales -->
-        <section class="border-2 border-neutral-900 bg-white p-5">
+        <section v-if="advancedOpen && isAdvanced" class="border-2 border-neutral-900 bg-white p-5">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Integración de canales</h3>
           <div v-if="store.corsBlocked" class="mb-4 flex items-start gap-3 border-2 border-amber-700 bg-amber-50 p-3 text-sm text-amber-900">
             <ui-icon name="alert" class="mt-0.5 h-4 w-4 shrink-0"></ui-icon>
@@ -571,7 +645,7 @@
         </section>
 
         <!-- Credenciales del centro (multi-negocio) -->
-        <section class="border-2 border-neutral-900 bg-white p-5">
+        <section v-if="advancedOpen && isAdvanced" class="border-2 border-neutral-900 bg-white p-5">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Credenciales del centro</h3>
           <p class="text-sm text-neutral-600">
             Este negocio opera con una sub-key de acceso limitada a su perfil (expiración 90 días).
@@ -607,7 +681,7 @@
         </ui-modal>
 
         <!-- Webhooks -->
-        <section class="border-2 border-neutral-900 bg-white p-5 xl:col-span-2">
+        <section v-if="advancedOpen && isAdvanced" class="border-2 border-neutral-900 bg-white p-5 xl:col-span-2">
           <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Webhooks (eventos en tiempo real)</h3>
             <div class="flex items-center gap-2">

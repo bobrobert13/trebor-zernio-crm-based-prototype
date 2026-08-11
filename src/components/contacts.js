@@ -133,12 +133,12 @@
               class="w-full bg-transparent text-sm outline-none" />
           </div>
           <div class="flex gap-1.5 overflow-x-auto scrollbar-none">
-            <button @click="tagFilter = 'all'" class="shrink-0 border bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+            <button @click="tagFilter = 'all'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
               :class="tagFilter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
               Todos
             </button>
             <button v-for="t in availableTags" :key="t" @click="tagFilter = t"
-              class="shrink-0 border bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+              class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
               :class="tagFilter === t ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
               {{ t }}
             </button>

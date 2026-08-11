@@ -401,28 +401,28 @@
               <!-- Pestañas por plataforma -->
               <div class="mt-2.5 flex gap-1.5 overflow-x-auto scrollbar-none">
                 <button @click="platformFilter = 'all'"
-                  class="flex shrink-0 items-center gap-1.5 border bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  class="flex shrink-0 items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
                   :class="platformFilter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   Todas
                 </button>
                 <button v-for="p in presentPlatforms" :key="p.id" @click="platformFilter = p.id"
-                  class="flex shrink-0 items-center gap-1.5 border bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  class="flex shrink-0 items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
                   :class="platformFilter === p.id ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   <ui-icon :name="p.icon" class="h-3.5 w-3.5"></ui-icon>
                   {{ p.nombre }}
                 </button>
               </div>
               <div class="mt-2 flex gap-1.5 overflow-x-auto scrollbar-none">
-                <button @click="filter = 'all'" class="shrink-0 border bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                <button @click="filter = 'all'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
                   :class="filter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   Todas ({{ conversations.length }})
                 </button>
-                <button @click="filter = 'unread'" class="shrink-0 border bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                <button @click="filter = 'unread'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
                   :class="filter === 'unread' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   No leídas ({{ unreadTotal }})
                 </button>
                 <button v-for="t in niche.tags" :key="t" @click="filter = t"
-                  class="shrink-0 border bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
                   :class="filter === t ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   {{ t }}
                 </button>

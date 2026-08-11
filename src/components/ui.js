@@ -38,6 +38,21 @@
   components['ui-drawer'] = {
     props: { open: { type: Boolean, default: false }, title: { type: String, default: '' } },
     emits: ['close'],
+    setup(props, { emit }) {
+      // Accesibilidad: Escape cierra el drawer mientras esté abierto
+      function onKeydown(e) {
+        if (e.key === 'Escape' && props.open) emit('close');
+      }
+      Vue.watch(
+        () => props.open,
+        (open) => {
+          if (open) document.addEventListener('keydown', onKeydown);
+          else document.removeEventListener('keydown', onKeydown);
+        }
+      );
+      Vue.onUnmounted(() => document.removeEventListener('keydown', onKeydown));
+      return {};
+    },
     template: `
       <teleport to="body">
         <transition name="fade">

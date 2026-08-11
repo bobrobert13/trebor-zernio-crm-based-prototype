@@ -391,6 +391,10 @@
         inputRef.value = '';
         toast('Etiqueta agregada', 'success');
       }
+      // Wrappers para el template: Vue auto-desenvuelve los refs en expresiones,
+      // así que el template NO puede pasar la ref (llega el string ya desenvuelto)
+      const addLeadTag = () => addTag('leadTags', leadInput);
+      const addContactTag = () => addTag('contactTags', contactInput);
 
       function removeTag(listKey, index) {
         workspace.value[listKey] = (workspace.value[listKey] || []).filter((_, i) => i !== index);
@@ -418,6 +422,10 @@
         next[index] = tag;
         workspace.value[listKey] = next;
         if (listKey === 'leadTags') {
+          // Propaga el renombrado a los contactos (etapa del pipeline) y conversaciones
+          (workspace.value.contacts || []).forEach((c) => {
+            if (c.leadTag === old) c.leadTag = tag;
+          });
           (workspace.value.conversations || []).forEach((c) => {
             if (c.tags && c.tags.includes(old)) c.tags = c.tags.map((t) => (t === old ? tag : t));
           });
@@ -526,7 +534,7 @@
         subKey, subKeyBusy, maskKey, rotateSubKey, revokeSubKey,
         advancedOpen, isAdvanced, adminKeyInput, adminKeyBusy, validateAdminKey,
         leadTags, contactTags, leadInput, contactInput,
-        addTag, removeTag, moveTag, renameTag,
+        addTag, addLeadTag, addContactTag, removeTag, moveTag, renameTag,
         canEdit, saveBranding, saveApiKey, testConnection,
         disconnectWhatsApp, reconnectWhatsApp, exportData, resetDemo, deleteWorkspace,
         saveWebhooks, deleteWebhooks, testWebhook, openLogs, simulateWebhook, toggleWhEvent,
@@ -600,9 +608,9 @@
             </div>
           </div>
           <div class="mt-3 flex max-w-md items-end gap-2">
-            <input v-model.trim="leadInput" type="text" placeholder="Nueva etapa (ej: cotizacion)" @keydown.enter="addTag('leadTags', leadInput)"
+            <input v-model.trim="leadInput" type="text" placeholder="Nueva etapa (ej: cotizacion)" @keydown.enter="addLeadTag"
               class="w-full border-2 border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none focus:border-neutral-900" />
-            <button @click="addTag('leadTags', leadInput)" :disabled="!leadInput.trim()"
+            <button @click="addLeadTag" :disabled="!leadInput.trim()"
               class="shrink-0 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
               Agregar
             </button>
@@ -636,9 +644,9 @@
             </div>
           </div>
           <div class="mt-3 flex max-w-md items-end gap-2">
-            <input v-model.trim="contactInput" type="text" placeholder="Nueva etiqueta (ej: vip)" @keydown.enter="addTag('contactTags', contactInput)"
+            <input v-model.trim="contactInput" type="text" placeholder="Nueva etiqueta (ej: vip)" @keydown.enter="addContactTag"
               class="w-full border-2 border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none focus:border-neutral-900" />
-            <button @click="addTag('contactTags', contactInput)" :disabled="!contactInput.trim()"
+            <button @click="addContactTag" :disabled="!contactInput.trim()"
               class="shrink-0 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
               Agregar
             </button>

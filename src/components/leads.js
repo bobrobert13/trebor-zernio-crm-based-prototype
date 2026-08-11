@@ -82,9 +82,19 @@
       // ── Drag & drop nativo HTML5 + botones ─────────────────────────────────
       const dragContactId = Vue.ref(null);
 
-      function onDragStart(contact) {
-        if (!canEdit('leads')) return;
+      function onDragStart(event, contact) {
+        if (!canEdit('leads')) {
+          event.preventDefault();
+          return;
+        }
+        // Firefox exige datos en dataTransfer para iniciar el arrastre
+        event.dataTransfer.setData('text/plain', contact.id);
+        event.dataTransfer.effectAllowed = 'move';
         dragContactId.value = contact.id;
+      }
+
+      function onDragEnd() {
+        dragContactId.value = null;
       }
 
       function onDragOver(event) {
@@ -177,7 +187,7 @@
             </header>
             <div class="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-2.5">
               <article v-for="c in cardsOf(col)" :key="c.id" draggable="true"
-                @dragstart="onDragStart(c)" @click="openDetail(c)"
+                @dragstart="onDragStart($event, c)" @dragend="onDragEnd" @click="openDetail(c)"
                 class="cursor-grab border-2 border-neutral-900 bg-white p-3 shadow-brutal-sm transition hover:-translate-y-0.5 active:cursor-grabbing">
                 <div class="flex items-start justify-between gap-2">
                   <p class="min-w-0 truncate text-sm font-semibold">{{ c.name }}</p>

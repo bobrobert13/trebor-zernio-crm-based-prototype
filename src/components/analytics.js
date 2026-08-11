@@ -60,16 +60,19 @@
         const avg = daily.value.length ? Math.round(total / daily.value.length) : 0;
         const seed = workspace.value.id;
         // Tendencia pseudo-determinista por KPI: up/down/flat + %
+        // Para "resp" (minutos) bajar es MEJOR: el color se invierte en el template
         const trendOf = (id) => {
           const h = hashSeed(seed + id + range.value);
           const pct = 4 + (h % 18);
           return h % 3 === 0 ? { dir: 'flat', pct: 0 } : { dir: h % 2 === 0 ? 'up' : 'down', pct };
         };
+        // true = la dirección es positiva para el negocio (subir es bueno)
+        const positiveUp = (id) => id !== 'resp';
         return [
-          { id: 'total', label: 'Conversaciones', value: total, unit: '', icon: 'message', trend: trendOf('total') },
-          { id: 'avg', label: 'Promedio diario', value: avg, unit: '', icon: 'chart', trend: trendOf('avg') },
-          { id: 'resp', label: 'Respuesta promedio', value: pseudo(seed, 'resp', 3, 12), unit: 'min', icon: 'zap', trend: trendOf('resp') },
-          { id: 'sat', label: 'Satisfacción', value: pseudo(seed, 'sat', 85, 99), unit: '%', icon: 'star', trend: trendOf('sat') },
+          { id: 'total', label: 'Conversaciones', value: total, unit: '', icon: 'message', trend: trendOf('total'), positiveUp: positiveUp('total') },
+          { id: 'avg', label: 'Promedio diario', value: avg, unit: '', icon: 'chart', trend: trendOf('avg'), positiveUp: positiveUp('avg') },
+          { id: 'resp', label: 'Respuesta promedio', value: pseudo(seed, 'resp', 3, 12), unit: 'min', icon: 'zap', trend: trendOf('resp'), positiveUp: positiveUp('resp') },
+          { id: 'sat', label: 'Satisfacción', value: pseudo(seed, 'sat', 85, 99), unit: '%', icon: 'star', trend: trendOf('sat'), positiveUp: positiveUp('sat') },
         ];
       });
 
@@ -284,11 +287,11 @@
                 <p class="text-3xl font-bold tabular-nums">
                   {{ k.value }}<span v-if="k.unit" class="ml-1 text-base font-medium text-neutral-400">{{ k.unit }}</span>
                 </p>
-                <!-- Indicativo semántico de tendencia -->
+                <!-- Indicativo semántico de tendencia (para 'resp' bajar es mejorar) -->
                 <span class="flex items-center gap-0.5 font-mono text-[10px] tabular-nums"
-                  :class="k.trend.dir === 'up' ? 'text-emerald-700' : k.trend.dir === 'down' ? 'text-red-700' : 'text-neutral-400'">
-                  <ui-icon :name="k.trend.dir === 'up' ? 'arrow-right' : k.trend.dir === 'down' ? 'arrow-right' : 'minus'"
-                    class="h-3 w-3" :class="k.trend.dir === 'down' ? 'rotate-90' : k.trend.dir === 'up' ? '-rotate-90' : ''"></ui-icon>
+                  :class="(k.positiveUp ? k.trend.dir === 'up' : k.trend.dir === 'down') ? 'text-emerald-700' : k.trend.dir === 'flat' ? 'text-neutral-400' : 'text-red-700'">
+                  <ui-icon :name="k.trend.dir === 'flat' ? 'minus' : 'arrow-right'"
+                    class="h-3 w-3" :class="k.positiveUp ? (k.trend.dir === 'down' ? 'rotate-90' : k.trend.dir === 'up' ? '-rotate-90' : '') : (k.trend.dir === 'up' ? 'rotate-90' : k.trend.dir === 'down' ? '-rotate-90' : '')"></ui-icon>
                   {{ k.trend.dir === 'flat' ? 'estable' : k.trend.pct + '%' }}
                 </span>
               </div>

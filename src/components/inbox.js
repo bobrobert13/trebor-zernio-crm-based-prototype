@@ -344,15 +344,20 @@
     },
 
     template: `
-      <div class="flex h-[calc(100vh-140px)] min-h-[560px] flex-col">
-        <!-- Barra superior -->
-        <header class="flex flex-wrap items-center justify-between gap-3 border-2 border-b-0 border-neutral-900 bg-white px-5 py-3">
-          <div>
-            <h2 class="text-xl font-bold leading-tight">Bandeja de WhatsApp</h2>
-            <p class="text-sm text-neutral-500">
-              {{ workspace.whatsapp.phone }}
-              <span v-if="!workspace.whatsapp.connected" class="font-semibold text-red-700">· desconectado</span>
-            </p>
+      <div class="-mx-5 -my-5 flex h-[calc(100vh-40px)] flex-col lg:-mx-8 lg:-my-8 lg:h-[calc(100vh-64px)]">
+        <!-- Barra superior integrada (full-bleed, sin marco) -->
+        <header class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-stone-100/80 px-5 py-3.5 backdrop-blur lg:px-6">
+          <div class="flex items-center gap-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
+              <ui-icon name="whatsapp" class="h-5 w-5"></ui-icon>
+            </span>
+            <div>
+              <h2 class="text-lg font-bold leading-tight">Bandeja</h2>
+              <p class="text-xs text-neutral-500">
+                {{ workspace.whatsapp.phone }}
+                <span v-if="!workspace.whatsapp.connected" class="font-semibold text-red-700">· desconectado</span>
+              </p>
+            </div>
           </div>
           <div class="flex items-center gap-2">
             <ui-badge v-if="isLive" variant="warn" dot>Modo live</ui-badge>
@@ -370,25 +375,25 @@
           </div>
         </header>
 
-        <!-- Carga simulada -->
-        <div v-if="loading" class="flex flex-1 border-2 border-neutral-900 bg-white">
-          <div class="w-[380px] space-y-3 border-r-2 border-neutral-200 p-4">
+        <!-- Carga simulada (integrada) -->
+        <div v-if="loading" class="flex min-h-0 flex-1 bg-white">
+          <div class="hidden w-[340px] space-y-3 border-r border-neutral-200 p-4 lg:block">
             <ui-skeleton h="h-10"></ui-skeleton>
-            <ui-skeleton v-for="i in 6" :key="i" h="h-20"></ui-skeleton>
+            <ui-skeleton v-for="i in 6" :key="i" h="h-16"></ui-skeleton>
           </div>
-          <div class="flex-1 space-y-3 p-4">
+          <div class="flex-1 space-y-3 bg-stone-50 p-4">
             <ui-skeleton h="h-10"></ui-skeleton>
             <ui-skeleton h="h-72"></ui-skeleton>
             <ui-skeleton h="h-14"></ui-skeleton>
           </div>
         </div>
 
-        <!-- Cuerpo de la bandeja -->
-        <div v-else class="grid min-h-0 flex-1 grid-cols-1 overflow-hidden border-2 border-neutral-900 bg-white lg:grid-cols-[380px_1fr]">
+        <!-- Cuerpo de la bandeja (sin marco exterior) -->
+        <div v-else class="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-white lg:grid-cols-[340px_1fr]">
           <!-- Lista de conversaciones -->
-          <aside :class="['min-h-0 border-b-2 border-neutral-200 lg:border-b-0 lg:border-r-2', selected ? 'hidden lg:block' : 'block']">
-            <div class="border-b-2 border-neutral-200 p-3">
-              <div class="flex items-center gap-2 border-2 border-neutral-300 px-3 py-2.5 focus-within:border-neutral-900">
+          <aside :class="['flex min-h-0 flex-col lg:border-r lg:border-neutral-200', selected ? 'hidden lg:flex' : 'flex']">
+            <div class="shrink-0 border-b border-neutral-200 p-3">
+              <div class="flex items-center gap-2 border border-neutral-300 bg-stone-50 px-3 py-2.5 focus-within:border-neutral-900 focus-within:bg-white">
                 <ui-icon name="search" class="h-4 w-4 text-neutral-400"></ui-icon>
                 <input v-model.trim="search" type="search" placeholder="Buscar conversación…"
                   class="w-full bg-transparent text-sm outline-none" />
@@ -396,34 +401,34 @@
               <!-- Pestañas por plataforma -->
               <div class="mt-2.5 flex gap-1.5 overflow-x-auto scrollbar-none">
                 <button @click="platformFilter = 'all'"
-                  class="flex shrink-0 items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="platformFilter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300'">
+                  class="flex shrink-0 items-center gap-1.5 border bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="platformFilter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   Todas
                 </button>
                 <button v-for="p in presentPlatforms" :key="p.id" @click="platformFilter = p.id"
-                  class="flex shrink-0 items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="platformFilter === p.id ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300'">
+                  class="flex shrink-0 items-center gap-1.5 border bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="platformFilter === p.id ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   <ui-icon :name="p.icon" class="h-3.5 w-3.5"></ui-icon>
                   {{ p.nombre }}
                 </button>
               </div>
               <div class="mt-2 flex gap-1.5 overflow-x-auto scrollbar-none">
-                <button @click="filter = 'all'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="filter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300'">
+                <button @click="filter = 'all'" class="shrink-0 border bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="filter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   Todas ({{ conversations.length }})
                 </button>
-                <button @click="filter = 'unread'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="filter === 'unread' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300'">
+                <button @click="filter = 'unread'" class="shrink-0 border bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="filter === 'unread' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   No leídas ({{ unreadTotal }})
                 </button>
                 <button v-for="t in niche.tags" :key="t" @click="filter = t"
-                  class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="filter === t ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300'">
+                  class="shrink-0 border bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="filter === t ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   {{ t }}
                 </button>
               </div>
             </div>
-            <ul class="h-[calc(100%-158px)] overflow-y-auto">
+            <ul class="min-h-0 flex-1 overflow-y-auto">
               <!-- TikTok no tiene mensajería en Zernio -->
               <ui-empty v-if="tiktokEmpty" icon="tiktok" title="TikTok no tiene mensajería en Zernio"
                 desc="Zernio solo expone publicación para TikTok. Responde a tus DM desde la app de TikTok." class="m-4">
@@ -435,8 +440,11 @@
               <ui-empty v-else-if="filtered.length === 0" icon="message" title="Sin conversaciones"
                 desc="Prueba con otro filtro o inicia una conversación nueva." class="m-4"></ui-empty>
               <li v-for="conv in filtered" :key="conv.id">
-                <button @click="selectConversation(conv)" class="flex w-full items-center gap-3 border-b border-neutral-100 px-4 py-4 text-left transition hover:bg-stone-50"
-                  :class="conv.id === selectedId ? 'bg-[var(--accent-soft)]' : ''">
+                <button @click="selectConversation(conv)"
+                  class="flex w-full items-center gap-3 border-b border-l-2 border-neutral-100 px-4 py-3.5 text-left transition"
+                  :class="conv.id === selectedId
+                    ? 'border-l-[var(--accent)] bg-[var(--accent-soft)]'
+                    : 'border-l-transparent hover:bg-stone-100'">
                   <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
                     :class="(getPlatform(conv.platform || 'whatsapp') || {}).tone">
                     <ui-icon :name="(getPlatform(conv.platform || 'whatsapp') || {}).icon" class="h-3 w-3"></ui-icon>
@@ -457,20 +465,20 @@
             </ul>
           </aside>
 
-          <!-- Panel de chat -->
-          <section :class="['flex min-h-0 flex-col', selected ? 'flex' : 'hidden lg:flex']">
+          <!-- Panel de chat (integrado sobre stone-50, separación sutil) -->
+          <section :class="['flex min-h-0 flex-col bg-stone-50', selected ? 'flex' : 'hidden lg:flex']">
             <!-- Estado vacío sin conversación seleccionada -->
             <div v-if="!selected" class="flex flex-1 flex-col items-center justify-center gap-4 p-10 text-center">
-              <span class="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
-                <ui-icon name="whatsapp" class="h-10 w-10"></ui-icon>
+              <span class="flex h-16 w-16 items-center justify-center rounded-full bg-white text-emerald-700 shadow-sm">
+                <ui-icon name="whatsapp" class="h-8 w-8"></ui-icon>
               </span>
-              <h3 class="text-xl font-semibold">Selecciona una conversación</h3>
-              <p class="max-w-md text-neutral-500">Las consultas de tus clientes por WhatsApp aparecerán aquí.</p>
+              <h3 class="text-lg font-semibold">Selecciona una conversación</h3>
+              <p class="max-w-md text-sm text-neutral-500">Las consultas de tus clientes por WhatsApp aparecerán aquí.</p>
             </div>
 
             <template v-else>
               <!-- Header del chat -->
-              <header class="flex items-center justify-between border-b-2 border-neutral-200 px-5 py-3.5">
+              <header class="flex shrink-0 items-center justify-between border-b border-neutral-200 bg-white px-5 py-3">
                 <div class="flex items-center gap-3">
                   <button class="lg:hidden" @click="backToList" aria-label="Volver a la lista">
                     <ui-icon name="chevron-left" class="h-5 w-5"></ui-icon>
@@ -496,12 +504,12 @@
               </header>
 
               <!-- Mensajes -->
-              <div class="flex-1 space-y-3 overflow-y-auto bg-stone-50 p-5">
+              <div class="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5">
                 <div v-for="m in selected.messages" :key="m.id" class="flex" :class="m.from === 'out' ? 'justify-end' : 'justify-start'">
-                  <div class="max-w-[70%] border-2 px-4 py-2.5 shadow-sm"
+                  <div class="max-w-[70%] px-4 py-2.5 shadow-sm"
                     :class="m.from === 'out'
-                      ? 'border-neutral-900 bg-[var(--accent)] text-white'
-                      : 'border-neutral-300 bg-white'">
+                      ? 'bg-[var(--accent)] text-white'
+                      : 'border border-neutral-200 bg-white'">
                     <p class="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{{ m.text }}</p>
                     <div class="mt-1 flex items-center justify-end gap-1.5">
                       <span class="font-mono text-[10px] uppercase tracking-wider opacity-60">{{ formatTime(m.ts) }}</span>
@@ -513,24 +521,24 @@
               </div>
 
               <!-- Composer -->
-              <footer class="border-t-2 border-neutral-200 p-3.5">
-                <div v-if="canHumanAgent" class="mb-2.5 flex items-center gap-2.5 border-2 border-amber-700 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <footer class="shrink-0 border-t border-neutral-200 bg-white p-3.5">
+                <div v-if="canHumanAgent" class="mb-2.5 flex items-center gap-2.5 border border-amber-600 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                   <ui-toggle v-model="humanAgent" class="shrink-0"></ui-toggle>
                   <span>Conversación fuera de la ventana de 24h: enviar como agente humano (HUMAN_AGENT).</span>
                 </div>
-                <div v-if="blockedByWindow" class="mb-2.5 border-2 border-red-800 bg-red-50 px-3 py-2 text-xs text-red-800">
+                <div v-if="blockedByWindow" class="mb-2.5 border border-red-700 bg-red-50 px-3 py-2 text-xs text-red-800">
                   WhatsApp fuera de la ventana de 24h: usa una plantilla aprobada desde Campañas.
                 </div>
                 <div class="mb-2.5 flex gap-1.5 overflow-x-auto scrollbar-none">
                   <button v-for="qr in QUICK_REPLIES" :key="qr" @click="draft = qr"
-                    class="shrink-0 border border-neutral-300 px-3 py-1.5 text-sm transition hover:border-neutral-900">
+                    class="shrink-0 border border-neutral-300 bg-white px-3 py-1.5 text-sm transition hover:border-neutral-900">
                     {{ qr }}
                   </button>
                 </div>
                 <div class="flex items-end gap-2">
                   <textarea v-model="draft" rows="2" placeholder="Escribe un mensaje… (Enter para enviar)"
                     @keydown.enter.exact.prevent="send"
-                    class="flex-1 resize-none border-2 border-neutral-300 px-3 py-2.5 text-sm outline-none transition focus:border-neutral-900"></textarea>
+                    class="flex-1 resize-none border border-neutral-300 bg-stone-50 px-3 py-2.5 text-sm outline-none transition focus:border-neutral-900 focus:bg-white"></textarea>
                   <button @click="send" :disabled="sending || !draft.trim()"
                     class="flex h-11 w-11 shrink-0 items-center justify-center border-2 border-neutral-900 bg-[var(--accent)] text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40"
                     aria-label="Enviar mensaje">

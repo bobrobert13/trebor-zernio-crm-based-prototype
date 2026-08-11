@@ -15,6 +15,7 @@
   components['channels-view'] = {
     setup() {
       const connectPlatform = Vue.ref(null);
+      const whatsappReplace = Vue.ref(false); // confirmación de reemplazo (1 número por negocio)
       const healthMap = Vue.reactive({});
       const busyMap = Vue.reactive({});
 
@@ -33,6 +34,7 @@
             username: ws.zernio.phone || '',
             connected: true,
             since: ws.zernio.since || Date.now(),
+            health: ws.zernio.health || null, // hereda alerta de reconexión
           });
         }
       }
@@ -46,27 +48,43 @@
       }
 
       /** Recibe la conexión de live-connect y actualiza el canal. */
-      function onConnected(result) {
+      async function onConnected(result) {
         const ws = workspace.value;
         const platform = result.platform || 'whatsapp';
+        // Límite: 1 número por negocio — desconecta el anterior antes de reemplazar
+        if (platform === 'whatsapp' && isLive.value) {
+          const prev = ws.zernio && ws.zernio.accountId;
+          if (prev && prev !== result.accountId) {
+            try {
+              await api.deleteAccount(prev);
+              toast('Número anterior desconectado (límite 1 por negocio)', 'info');
+            } catch (err) {
+              // No conmutar: el perfil quedaría con 2 números facturables
+              toast('No se pudo desconectar el número anterior: ' + (err.message || '') + '. La conexión nueva se canceló.', 'error', 6000);
+              return;
+            }
+          }
+        }
         const entry = {
           platform,
           accountId: result.accountId || '',
           username: result.username || result.phone || '',
           connected: true,
           since: Date.now(),
+          health: null,
         };
         const existing = ws.channels.find((c) => c.platform === platform);
         if (existing) Object.assign(existing, entry);
         else ws.channels.push(entry);
 
-        // WhatsApp primario: mantiene workspace.zernio sincronizado
+        // WhatsApp primario: mantiene workspace.zernio sincronizado SIN borrar subKey/health
         if (platform === 'whatsapp') {
-          ws.zernio = {
+          ws.zernio = Object.assign(ws.zernio || {}, {
             profileId: result.profileId,
             accountId: result.accountId,
             phone: result.phone || entry.username,
-          };
+            health: null,
+          });
           ws.whatsapp = {
             connected: true,
             modality: 'live',
@@ -81,6 +99,15 @@
         connectPlatform.value = null;
         const nombre = (getPlatform(platform) || {}).nombre || platform;
         toast(`${nombre} conectado`, 'success');
+      }
+
+      /** Abre la conexión de WhatsApp respetando el límite de 1 número. */
+      function openConnect(p) {
+        if (p.id === 'whatsapp' && channelOf(p.id) && channelOf(p.id).connected) {
+          whatsappReplace.value = true; // pedir confirmación antes de reemplazar
+          return;
+        }
+        connectPlatform.value = p.id;
       }
 
       /** Health check de un canal conectado. */
@@ -116,8 +143,8 @@
       }
 
       return {
-        connectPlatform, healthMap, busyMap, workspace, isLive, channels,
-        PLATFORMS, channelOf, onConnected, checkHealth, disconnect,
+        connectPlatform, whatsappReplace, healthMap, busyMap, workspace, isLive, channels,
+        PLATFORMS, channelOf, onConnected, openConnect, checkHealth, disconnect,
         canEdit,
       };
     },
@@ -152,11 +179,16 @@
               {{ channelOf(p.id).username || channelOf(p.id).accountId }}
             </p>
             <p v-else class="mt-1 text-sm text-neutral-400">Sin cuenta vinculada</p>
+            <ui-badge v-if="channelOf(p.id) && channelOf(p.id).health === 'reconnect'" variant="danger" dot class="mt-2">
+              Reconectar (token expirado)
+            </ui-badge>
 
             <div class="mt-3 flex flex-wrap items-center gap-1.5">
               <ui-badge v-if="p.inbox" variant="success">Mensajería</ui-badge>
               <ui-badge v-else variant="warn">Sin bandeja</ui-badge>
+              <ui-badge v-if="p.id === 'whatsapp'" variant="neutral">1/1 número</ui-badge>
             </div>
+            <p v-if="p.id === 'whatsapp'" class="mt-2 text-xs text-neutral-400">Límite del plan: un número por negocio.</p>
             <p v-if="p.nota" class="mt-2 text-xs text-neutral-400">{{ p.nota }}</p>
 
             <!-- Health -->
@@ -167,9 +199,9 @@
 
             <div class="mt-auto flex flex-wrap gap-2 pt-4">
               <template v-if="channelOf(p.id) && channelOf(p.id).connected">
-                <button v-if="canEdit('channels')" @click="connectPlatform = p.id"
+                <button v-if="canEdit('channels')" @click="openConnect(p)"
                   class="flex-1 border-2 border-neutral-900 bg-white px-3 py-2 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
-                  Reconectar
+                  {{ p.id === 'whatsapp' ? 'Reemplazar número' : 'Reconectar' }}
                 </button>
                 <button v-if="canEdit('channels')" @click="checkHealth(channelOf(p.id))" :disabled="busyMap[p.id]"
                   class="flex flex-1 items-center justify-center gap-1.5 border-2 border-neutral-900 bg-white px-3 py-2 text-xs font-medium shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
@@ -185,7 +217,7 @@
                   Gestionar
                 </button>
               </template>
-              <button v-else-if="canEdit('channels')" @click="connectPlatform = p.id"
+              <button v-else-if="canEdit('channels')" @click="openConnect(p)"
                 class="flex w-full items-center justify-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
                 <ui-icon name="plus" class="h-3.5 w-3.5"></ui-icon>
                 Conectar {{ p.nombre }}
@@ -198,6 +230,21 @@
         <ui-modal :open="Boolean(connectPlatform)" :title="'Conectar ' + ((PLATFORMS.find(p => p.id === connectPlatform) || {}).nombre || '')"
           @close="connectPlatform = null">
           <live-connect v-if="connectPlatform" :platform="connectPlatform" @connected="onConnected"></live-connect>
+        </ui-modal>
+
+        <!-- Modal: reemplazo del número WhatsApp (límite 1 por negocio) -->
+        <ui-modal :open="whatsappReplace" title="Reemplazar número de WhatsApp" width="max-w-md" @close="whatsappReplace = false">
+          <p class="text-sm text-neutral-600">
+            Cada negocio tiene <span class="font-semibold">1 número vinculado</span>. Al conectar otro número,
+            el actual se desconectará automáticamente en Zernio.
+          </p>
+          <div class="mt-5 flex justify-end gap-2">
+            <button @click="whatsappReplace = false" class="border-2 border-neutral-900 bg-white px-4 py-2 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">Cancelar</button>
+            <button @click="whatsappReplace = false; connectPlatform = 'whatsapp'"
+              class="border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+              Reemplazar número
+            </button>
+          </div>
         </ui-modal>
       </div>`,
   };

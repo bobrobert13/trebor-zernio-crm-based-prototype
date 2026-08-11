@@ -32,6 +32,12 @@
       const creds = Vue.reactive({ wabaId: '', phoneNumberId: '', token: '' });
       const showCreds = Vue.ref(false);
 
+      /** OAuth amigable de WhatsApp (Embedded Signup de Meta). */
+      const waOAuthStarted = Vue.ref(false);
+      const waPhoneNumbers = Vue.ref([]); // WABA multi-número
+      const waTempToken = Vue.ref('');
+      const waSelectBusy = Vue.ref(false);
+
       const result = Vue.ref(null);
       const oauthUrl = Vue.ref(null);
 
@@ -41,13 +47,29 @@
       /** Cuentas de la plataforma seleccionada en el perfil. */
       const platformAccounts = Vue.computed(() => accounts.value.filter((a) => a.platform === props.platform));
 
-      /** Valida la key listando perfiles. */
+      /**
+       * Valida la key listando perfiles. Solo promueve a master (centro) si la
+       * key supera el probe admin (listApiKeys); de lo contrario se usa como
+       * key operativa (sub-key del negocio).
+       */
       async function validateKey() {
         const key = apiKey.value.trim();
         if (!key || busy.value) return;
         busy.value = true;
         try {
           store.apiKey = key;
+          // Probe admin: si la key puede listar/crear sub-keys es la master del centro
+          let isMaster = false;
+          try {
+            await api.listApiKeys();
+            isMaster = true;
+          } catch {
+            isMaster = false;
+          }
+          if (isMaster) {
+            store.masterKey = key;
+            sessionStorage.setItem('tzcrm.masterKey', key); // solo sesión, nunca en workspace/export
+          }
           const data = await api.getProfiles();
           profiles.value = asArray(data);
           if (profiles.value.length === 0) {
@@ -63,7 +85,41 @@
         }
       }
 
-      /** Crea un perfil en Zernio con el nombre del workspace. */
+      /**
+       * Crea la sub-key scoped al perfil (una por negocio) y la activa como
+       * key operativa. Si ya existe (workspace.zernio.subKey) la reutiliza.
+       * La master key NUNCA se persiste en el workspace (solo en sesión).
+       * @param {string} profileId — id del perfil del negocio.
+       * @returns {Promise<string|null>} Sub-key activa o null si no se pudo crear.
+       */
+      async function ensureSubKey(profileId) {
+        if (!profileId) return null;
+        const z = store.workspace && store.workspace.zernio;
+        if (z && z.subKey) {
+          if (store.apiKey !== z.subKey) store.apiKey = z.subKey;
+          return z.subKey;
+        }
+        try {
+          const data = await api.createApiKey({
+            name: `negocio-${((store.workspace && store.workspace.name) || 'mvp').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`,
+            profileIds: [profileId],
+          });
+          const subKey = (data.apiKey && data.apiKey.key) || data.key;
+          if (!subKey) throw new Error('el API no devolvió la sub-key');
+          if (store.workspace) {
+            store.workspace.zernio = store.workspace.zernio || {};
+            store.workspace.zernio.subKey = subKey;
+          }
+          store.apiKey = subKey;
+          toast('Sub-key del negocio creada (aislamiento por perfil)', 'success');
+          return subKey;
+        } catch (err) {
+          toast(`No se pudo crear la sub-key (${err.message}). Se continúa con la key actual.`, 'error', 6000);
+          return null;
+        }
+      }
+
+      /** Crea un perfil en Zernio con el nombre del workspace y su sub-key. */
       async function createProfile() {
         busy.value = true;
         try {
@@ -73,6 +129,7 @@
           selectedProfileId.value = profile.id || profile._id;
           step.value = 'profile';
           toast('Perfil creado en Zernio', 'success');
+          await ensureSubKey(selectedProfileId.value);
           await loadChannelOptions(selectedProfileId.value);
         } catch (err) {
           toast(err.message || 'No se pudo crear el perfil', 'error');
@@ -88,6 +145,7 @@
         selectedProfileId.value = id;
         busy.value = true;
         try {
+          await ensureSubKey(id); // activa la sub-key del negocio antes de operar
           const [accData, phoneData] = await Promise.all([
             api.getAccounts(id),
             isWhatsApp.value ? api.listPhoneNumbers(id) : Promise.resolve([]),
@@ -209,6 +267,130 @@
         }
       }
 
+      /**
+       * Inicia el flujo guiado de Meta (Embedded Signup) para conectar el
+       * número del cliente SIN datos técnicos. Si hay túnel activo, Zernio
+       * devuelve el resultado al MVP (callback automático); si no, el cliente
+       * vuelve y pulsa "Ya autoricé, verificar".
+       */
+      async function startWhatsAppOAuth() {
+        const profileId = selectedProfileId.value;
+        if (!profileId || busy.value) return;
+        busy.value = true;
+        try {
+          let redirectUrl = '';
+          if (store.serverMode) {
+            try {
+              const res = await fetch('/api/tunnel', { cache: 'no-store' });
+              const t = await res.json();
+              if (t.url) redirectUrl = `${t.url}/index.html?cb=wa`;
+            } catch {
+              redirectUrl = '';
+            }
+          }
+          const data = await api.getWhatsAppConnectUrl(profileId, redirectUrl || undefined);
+          const url = data.authUrl || data.url;
+          if (url) {
+            oauthUrl.value = url;
+            waOAuthStarted.value = true;
+            window.open(url, '_blank');
+            toast('Meta te guiará: autoriza con tu cuenta y verifica tu número con el código SMS', 'info', 8000);
+          } else {
+            toast('El API no devolvió URL de autorización', 'error');
+          }
+        } catch (err) {
+          toast(err.message || 'No se pudo iniciar la autorización de Meta', 'error');
+        } finally {
+          busy.value = false;
+        }
+      }
+
+      /** Procesa el callback del túnel (redirect_url) al volver de Meta. */
+      async function consumeCallback() {
+        if (!isWhatsApp.value) return;
+        let raw = null;
+        try {
+          raw = sessionStorage.getItem('tzcrm.wa-callback');
+        } catch {
+          raw = null;
+        }
+        if (!raw) return;
+        sessionStorage.removeItem('tzcrm.wa-callback');
+        const params = JSON.parse(raw);
+        if (!params || params.connected !== 'whatsapp') return;
+        // WABA multi-número: pedir la selección amigable del número
+        if (params.step === 'select_phone_number' || params.tempToken) {
+          waTempToken.value = params.tempToken || '';
+          await loadWaPhoneNumbers(params.profileId || selectedProfileId.value);
+          return;
+        }
+        // Conexión directa: accountId viene en el callback
+        if (params.accountId) {
+          result.value = {
+            platform: 'whatsapp',
+            profileId: params.profileId || selectedProfileId.value,
+            accountId: params.accountId,
+            phone: params.username || params.displayName || 'Número vinculado',
+            username: params.username || '',
+          };
+          step.value = 'done';
+          toast('WhatsApp conectado desde Meta', 'success');
+          emit('connected', result.value);
+        }
+      }
+
+      /** Lista los números de la WABA multi-número para elegir. */
+      async function loadWaPhoneNumbers(profileId) {
+        const id = profileId || selectedProfileId.value;
+        if (!id || !waTempToken.value || waSelectBusy.value) return;
+        waSelectBusy.value = true;
+        try {
+          const data = await api.listConnectPhoneNumbers(id, waTempToken.value);
+          waPhoneNumbers.value = asArray(data.phoneNumbers || data);
+          if (waPhoneNumbers.value.length === 1) {
+            await selectWaPhone(waPhoneNumbers.value[0]);
+          } else if (waPhoneNumbers.value.length === 0) {
+            toast('No se encontraron números en la cuenta de Meta. Revisa en Meta que el número esté registrado.', 'error', 6000);
+          } else {
+            step.value = 'wa-select';
+            toast('Elige el número de WhatsApp de tu negocio', 'info');
+          }
+        } catch (err) {
+          toast(err.message || 'No se pudo listar los números de la WABA', 'error');
+        } finally {
+          waSelectBusy.value = false;
+        }
+      }
+
+      /** Vincula el número elegido de la WABA al perfil. */
+      async function selectWaPhone(phone) {
+        if (!phone || waSelectBusy.value) return;
+        waSelectBusy.value = true;
+        try {
+          const account = await api.selectConnectPhoneNumber({
+            profileId: selectedProfileId.value,
+            tempToken: waTempToken.value,
+            phoneNumberId: phone.id || phone.phoneNumberId || '',
+          });
+          result.value = {
+            platform: 'whatsapp',
+            profileId: selectedProfileId.value,
+            accountId: account.id || account._id || account.accountId || '',
+            phone: phone.display_phone_number || phone.displayPhoneNumber || account.username || 'Número vinculado',
+            username: phone.display_phone_number || '',
+          };
+          step.value = 'done';
+          toast(`Número ${result.value.phone} conectado`, 'success');
+          emit('connected', result.value);
+        } catch (err) {
+          toast(err.message || 'No se pudo vincular el número', 'error');
+        } finally {
+          waSelectBusy.value = false;
+        }
+      }
+
+      Vue.onMounted(consumeCallback);
+
       /** Reinicia el flujo para probar con otra key. */
       function reset() {
         step.value = 'key';
@@ -225,8 +407,10 @@
         step, busy, apiKey, profiles, selectedProfileId, accounts, phones,
         selectedAccountId, selectedPhoneId, creds, showCreds, result, waAccounts: platformAccounts,
         isWhatsApp, oauthUrl,
-        validateKey, createProfile, loadChannelOptions, connectWithAccount,
+        waOAuthStarted, waPhoneNumbers, waSelectBusy,
+        validateKey, createProfile, ensureSubKey, loadChannelOptions, connectWithAccount,
         connectWithPhone, connectCredentials, startOAuth, verifyOAuth, reset,
+        startWhatsAppOAuth, loadWaPhoneNumbers, selectWaPhone,
       };
     },
 
@@ -274,11 +458,62 @@
                 + Crear perfil nuevo con el nombre del negocio
               </button>
             </div>
+            <p class="border-t-2 border-neutral-900 px-4 py-2.5 text-xs text-neutral-500">
+              Al elegir un perfil se crea y activa la sub-key del negocio (scope limitado a este perfil, expiración 90 días).
+            </p>
           </div>
 
           <!-- Paso 3 · Cuenta o número -->
-          <div v-if="step === 'account'" class="space-y-4">
+          <div v-if="step === 'account' || step === 'wa-select'" class="space-y-4">
             <template v-if="isWhatsApp">
+              <!-- Conexión guiada con Meta (recomendado, sin datos técnicos) -->
+              <div class="border-2 border-neutral-900 bg-white p-4">
+                <p class="font-semibold">Conecta tu número con Meta (recomendado)</p>
+                <p class="mt-1 text-xs text-neutral-500">
+                  Entra con tu cuenta de Facebook, elige tu negocio y verifica tu número con el código SMS que Meta te envía.
+                  Sin configuraciones técnicas.
+                </p>
+                <div class="mt-3 flex flex-wrap items-center gap-2">
+                  <button v-if="!waOAuthStarted" @click="startWhatsAppOAuth" :disabled="busy"
+                    class="flex items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                    <ui-spinner v-if="busy" size="h-4 w-4"></ui-spinner>
+                    Conectar con mi cuenta de Meta
+                  </button>
+                  <template v-else>
+                    <ui-badge variant="warn" dot>Autorización iniciada</ui-badge>
+                    <button @click="verifyOAuth" :disabled="busy"
+                      class="flex items-center gap-2 border-2 border-neutral-900 bg-white px-4 py-2 text-sm font-medium shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                      <ui-spinner v-if="busy" size="h-4 w-4"></ui-spinner>
+                      Ya autoricé, verificar
+                    </button>
+                    <button @click="waOAuthStarted = false" class="text-xs font-medium text-neutral-500 underline">Reiniciar</button>
+                  </template>
+                </div>
+              </div>
+
+              <!-- WABA multi-número: elegir el número del negocio -->
+              <div v-if="step === 'wa-select'" class="border-2 border-neutral-900 bg-white p-4">
+                <span class="block font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-500">
+                  Tu cuenta de Meta tiene varios números — elige el de tu negocio
+                </span>
+                <div class="mt-2 space-y-2">
+                  <button v-for="ph in waPhoneNumbers" :key="ph.id || ph.phoneNumberId" @click="selectWaPhone(ph)" :disabled="waSelectBusy"
+                    class="flex w-full items-center justify-between gap-3 border-2 border-neutral-900 bg-white p-3.5 text-left transition hover:bg-stone-50">
+                    <div class="min-w-0">
+                      <p class="font-semibold">{{ ph.display_phone_number || ph.displayPhoneNumber }}</p>
+                      <p class="truncate font-mono text-[11px] text-neutral-400">
+                        {{ ph.verified_name || '—' }}
+                        <span v-if="ph.quality_rating" class="ml-1 border px-1 py-px font-mono text-[9px] uppercase"
+                          :class="ph.quality_rating === 'GREEN' ? 'border-emerald-800 text-emerald-800' : ph.quality_rating === 'YELLOW' ? 'border-amber-700 text-amber-800' : 'border-red-800 text-red-800'">
+                          {{ ph.quality_rating }}
+                        </span>
+                      </p>
+                    </div>
+                    <ui-badge variant="accent">Elegir</ui-badge>
+                  </button>
+                </div>
+              </div>
+
               <div v-if="waAccounts.length > 0">
                 <span class="mb-2 block font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-500">
                   Cuenta WhatsApp existente ({{ waAccounts.length }})
@@ -317,9 +552,9 @@
                 No hay cuentas WhatsApp ni números provisionados en este perfil. Usa el acceso por credenciales de Meta o conecta un número desde Zernio.
               </div>
 
-              <!-- Fallback: credenciales Meta -->
+              <!-- Fallback: credenciales Meta (opción avanzada) -->
               <button @click="showCreds = !showCreds" class="text-sm font-medium text-[var(--accent)]">
-                {{ showCreds ? '− Ocultar credenciales Meta' : '+ Conectar con credenciales de Meta (wabaId, phoneNumberId, token)' }}
+                {{ showCreds ? '− Ocultar opción avanzada' : '+ Opción avanzada: tengo los datos técnicos (wabaId, phoneNumberId, token)' }}
               </button>
               <div v-if="showCreds" class="space-y-3 border-2 border-neutral-900 bg-white p-4">
                 <ui-field label="WABA ID">

@@ -271,6 +271,18 @@
         { platform: 'instagram', accountId: 'demo_ig', username: 'mi.negocio.ve', connected: true, since: Date.now() - 864e5 },
         { platform: 'tiktok', accountId: 'demo_tt', username: 'minegociove', connected: true, since: Date.now() - 2 * 864e5 },
       ],
+      // Seed del medidor local para el panel Billing en modo demo (sin llamadas reales)
+      usage: {
+        total: 342,
+        updatedAt: Date.now(),
+        byEndpoint: { '/inbox/conversations': 128, '/inbox/conversations/:id/messages': 96, '/contacts': 61, '/whatsapp/templates': 57 },
+        byDay: Object.fromEntries(
+          Array.from({ length: 30 }, (_, i) => {
+            const d = new Date(Date.now() - (29 - i) * 864e5).toISOString().slice(0, 10);
+            return [d, 4 + Math.round(Math.random() * 22)];
+          })
+        ),
+      },
     };
   }
 

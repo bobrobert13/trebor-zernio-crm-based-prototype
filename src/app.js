@@ -17,6 +17,8 @@
     channels: 'channels-view',
     team: 'team-view',
     broadcasts: 'broadcasts-view',
+    billing: 'billing-view',
+    system: 'system-view',
     settings: 'settings-view',
   };
 
@@ -55,6 +57,11 @@
         store.workspace = workspace;
         store.currentUser =
           workspace.users.find((u) => u.id === session.userId) || workspace.users[0] || null;
+        // La master key del centro vive solo en sessionStorage (nunca en el workspace/export)
+        const master = sessionStorage.getItem('tzcrm.masterKey');
+        if (master) store.masterKey = master;
+        // La sub-key operativa se restaura desde el workspace
+        if (workspace.zernio && workspace.zernio.subKey && store.mode === 'live') store.apiKey = workspace.zernio.subKey;
       }
     }
     // Saneamiento: modo live con conexión Zernio incompleta → degradar a demo con aviso
@@ -64,6 +71,21 @@
         store.mode = 'demo';
         ZernioCrm.toast('Conexión Zernio incompleta: se cambió a modo demo. Revisa Configuración → Canal WhatsApp', 'error', 6000);
       }
+    }
+    // Callback del OAuth de WhatsApp (redirect_url del túnel): se guarda para
+    // que live-connect complete la conexión (accountId o selección de número)
+    const waCb = new URLSearchParams(location.search);
+    if (waCb.get('connected') === 'whatsapp') {
+      sessionStorage.setItem('tzcrm.wa-callback', JSON.stringify({
+        connected: 'whatsapp',
+        profileId: waCb.get('profileId') || '',
+        accountId: waCb.get('accountId') || '',
+        username: waCb.get('username') || '',
+        step: waCb.get('step') || '',
+        tempToken: waCb.get('tempToken') || '',
+      }));
+      history.replaceState({}, '', location.pathname + location.hash);
+      ZernioCrm.toast('Conexión de Meta detectada: confírmala en la pantalla de conexión', 'success', 6000);
     }
     ZernioCrm.applyAccent(store.workspace);
     window.addEventListener('hashchange', syncRoute);
@@ -94,6 +116,16 @@
           if (seenWebhooks.size > 500) seenWebhooks.delete(seenWebhooks.values().next().value);
           ZernioCrm.pushWebhookEvent(entry.event);
           ZernioCrm.reflectIncomingMessage(entry.event);
+          // Cuenta desconectada (token expirado): marcar el canal para reconectar
+          if (entry.event && entry.event.event === 'account.disconnected' && store.workspace) {
+            const accId = entry.event.account && (entry.event.account.id || entry.event.account.accountId);
+            if (accId) {
+              const channel = (store.workspace.channels || []).find((c) => c.accountId === accId);
+              if (channel) channel.health = 'reconnect';
+              if (store.workspace.zernio && store.workspace.zernio.accountId === accId) store.workspace.zernio.health = 'reconnect';
+            }
+            ZernioCrm.toast('Alerta: una cuenta se desconectó en Zernio (token expirado). Revisa Canales.', 'error', 6000);
+          }
         });
       } catch {
         // servidor caído: se ignora hasta el próximo tick

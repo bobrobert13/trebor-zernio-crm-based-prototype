@@ -113,3 +113,15 @@ docs/POLICIES.md            → políticas y cumplimiento de la documentación d
 ## Datos demo
 
 localStorage (`tzcrm.workspaces`, `tzcrm.session`). Reset desde Configuración → Datos; exportación JSON disponible. Los eventos de webhook viven solo en memoria del servidor (se pierden al reiniciarlo) — suficiente para el prototipo.
+
+## Iteración 4 — Camino B multi-negocio: sub-keys, billing y estados
+
+**Nuevo flujo de registro (live-connect):** pegas la master key del centro → se elige o crea el perfil del negocio (`POST /profiles`) → se crea y activa una sub-key scoped a ese perfil (`POST /api-keys`, expiración 90 días) → conexión WhatsApp por credenciales de Meta (Camino B, bring-your-own). La sub-key aísla el negocio: solo ve su perfil, y se puede revocar individualmente.
+
+**Módulos nuevos:**
+- `#/billing` (src/components/billing.js): snapshot de la cuenta Zernio con la master (plan, gasto del período vs límite, llamadas por operación con precios de `/billing/x-pricing`, statement de `/billing`) + medidor local por negocio (server.mjs cuenta cada request del proxy en `data/usage.json` por hash de key; gráfico de 30 días y tabla por endpoint).
+- `#/system` (src/components/system.js): números WhatsApp del centro (comprados facturables vs bring-your-own sin facturar), salud de cuentas (`/accounts/health`) y logs de entrega de webhooks (`/webhooks/logs`).
+
+**Seguridad anti-abuso:** límite de 1 número por negocio (modal de reemplazo que desconecta el anterior), rotación/revocación de sub-key en Configuración → Credenciales del centro, evento `account.disconnected` marca el canal "Reconectar", y la master key nunca se expone completa ni en demo-data.
+
+**Servidor:** `GET /api/usage?ws=<hash>` devuelve el medidor del workspace; `GET /api/usage` (sin query) devuelve todos (centro). El medidor persiste con debounce de 2 s y se escribe en `data/usage.json` (ignorado por git).

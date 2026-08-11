@@ -72,6 +72,21 @@
         ZernioCrm.toast('Conexión Zernio incompleta: se cambió a modo demo. Revisa Configuración → Canal WhatsApp', 'error', 6000);
       }
     }
+    // Callback del OAuth de WhatsApp (redirect_url del túnel): se guarda para
+    // que live-connect complete la conexión (accountId o selección de número)
+    const waCb = new URLSearchParams(location.search);
+    if (waCb.get('connected') === 'whatsapp') {
+      sessionStorage.setItem('tzcrm.wa-callback', JSON.stringify({
+        connected: 'whatsapp',
+        profileId: waCb.get('profileId') || '',
+        accountId: waCb.get('accountId') || '',
+        username: waCb.get('username') || '',
+        step: waCb.get('step') || '',
+        tempToken: waCb.get('tempToken') || '',
+      }));
+      history.replaceState({}, '', location.pathname + location.hash);
+      ZernioCrm.toast('Conexión de Meta detectada: confírmala en la pantalla de conexión', 'success', 6000);
+    }
     ZernioCrm.applyAccent(store.workspace);
     window.addEventListener('hashchange', syncRoute);
     // Espera la detección del servidor para que las primeras llamadas live usen el proxy

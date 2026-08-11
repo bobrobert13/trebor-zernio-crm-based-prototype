@@ -136,12 +136,15 @@
     }
 
     /**
-     * Inicia el flujo OAuth de WhatsApp (Meta Cloud API / Embedded Signup).
+     * Inicia el flujo OAuth de WhatsApp (Embedded Signup de Meta, guiado y
+     * sin configuración técnica para el cliente).
      * @param {string} profileId — id del perfil.
-     * @returns {Promise<{url:string}>} URL de autorización.
+     * @param {string} [redirectUrl] — URL absoluta donde Zernio devuelve el
+     *   resultado (connected=whatsapp&accountId=…) al completar.
+     * @returns {Promise<{authUrl?:string, url?:string}>} URL de autorización.
      */
-    getWhatsAppConnectUrl(profileId) {
-      return this.request('/connect/whatsapp', { query: { profileId, headless: true } });
+    getWhatsAppConnectUrl(profileId, redirectUrl) {
+      return this.request('/connect/whatsapp', { query: { profileId, ...(redirectUrl ? { redirect_url: redirectUrl } : {}) } });
     }
 
     /**
@@ -171,6 +174,26 @@
      */
     listPhoneNumbers(profileId) {
       return this.request('/whatsapp/phone-numbers', { query: { profileId }, admin: true });
+    }
+
+    /**
+     * Números disponibles de una WABA multi-número (tras OAuth de WhatsApp).
+     * Solo llega a este paso cuando el callback trae step=select_phone_number.
+     * @param {string} profileId — id del perfil.
+     * @param {string} tempToken — token temporal del callback headless.
+     * @returns {Promise<Array<object>>} Números con display_phone_number, verified_name, quality_rating.
+     */
+    listConnectPhoneNumbers(profileId, tempToken) {
+      return this.request('/connect/whatsapp/select-phone-number', { query: { profileId, tempToken } });
+    }
+
+    /**
+     * Vincula un número elegido de la WABA al perfil de Zernio.
+     * @param {{profileId:string, tempToken:string, phoneNumberId:string}} payload — selección.
+     * @returns {Promise<object>} Cuenta social creada.
+     */
+    selectConnectPhoneNumber({ profileId, tempToken, phoneNumberId }) {
+      return this.request('/connect/whatsapp/select-phone-number', { method: 'POST', body: { profileId, tempToken, phoneNumberId } });
     }
 
     // ── Admin: sub-keys por negocio (centro) ────────────────────────────────

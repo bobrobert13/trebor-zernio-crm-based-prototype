@@ -277,7 +277,7 @@
             tunnelUrl.value = data.url;
             if (!whForm.secret) whForm.secret = randomSecret();
             whForm.url = `${data.url}/webhooks/zernio?secret=${encodeURIComponent(whForm.secret)}`;
-            toast('URL pública aplicada — guarda para suscribir en Zernio', 'success');
+            toast('URL pública aplicada — guarda para suscribir webhooks', 'success');
           } else {
             toast('No hay túnel activo. Ejecuta: node tunnel.mjs', 'error', 6000);
           }
@@ -312,7 +312,7 @@
           if (accountId && store.mode === 'live') await ZernioCrm.api.deleteAccount(accountId);
           workspace.value.zernio = null;
           workspace.value.whatsapp.connected = false;
-          toast('Cuenta desconectada de Zernio', 'info');
+          toast('Cuenta desconectada de la plataforma', 'info');
         } catch (err) {
           toast(err.message || 'No se pudo desconectar', 'error');
         }
@@ -333,12 +333,12 @@
           phone: result.phone || '',
           status: 'connected',
           since: Date.now(),
-          about: 'Conexión real con Zernio',
+          about: 'Conexión real',
           accountId: result.accountId,
         };
         store.mode = 'live';
         reconnectOpen.value = false;
-        toast('Reconectado con Zernio', 'success');
+        toast('Reconectado con la plataforma', 'success');
       }
 
       Vue.onMounted(loadWebhooks);
@@ -446,7 +446,7 @@
       <div class="grid items-start gap-6 xl:grid-cols-2">
         <header class="xl:col-span-2">
           <h2 class="text-2xl font-bold">Configuración</h2>
-          <p class="mt-1 text-sm text-neutral-500">Branding, integración con Zernio y datos del espacio de trabajo.</p>
+          <p class="mt-1 text-sm text-neutral-500">Branding, canales y datos del espacio de trabajo.</p>
         </header>
 
         <!-- Branding -->
@@ -481,12 +481,12 @@
           </button>
         </section>
 
-        <!-- Integración Zernio -->
+        <!-- Integración de canales -->
         <section class="border-2 border-neutral-900 bg-white p-5">
-          <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Integración Zernio</h3>
+          <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Integración de canales</h3>
           <div v-if="store.corsBlocked" class="mb-4 flex items-start gap-3 border-2 border-amber-700 bg-amber-50 p-3 text-sm text-amber-900">
             <ui-icon name="alert" class="mt-0.5 h-4 w-4 shrink-0"></ui-icon>
-            <p>El navegador no puede alcanzar el API de Zernio (CORS). El prototipo opera en modo demo; para producción usa un backend proxy (ver docs/POST-IMPLEMENTATION.md).</p>
+            <p>El navegador no puede alcanzar el API de la plataforma (CORS). El prototipo opera en modo demo; para producción usa el servidor local (node server.mjs).</p>
           </div>
           <div class="grid gap-4 sm:grid-cols-2">
             <ui-field label="API key" hint="Se guarda en localStorage — solo para prototipo.">
@@ -574,7 +574,7 @@
         <section class="border-2 border-neutral-900 bg-white p-5">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Credenciales del centro</h3>
           <p class="text-sm text-neutral-600">
-            Este negocio opera con una sub-key de Zernio limitada a su perfil (expiración 90 días).
+            Este negocio opera con una sub-key de acceso limitada a su perfil (expiración 90 días).
             Si un cliente abusa o deja de pagar, revocas solo su acceso sin afectar a los demás.
           </p>
           <div class="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">

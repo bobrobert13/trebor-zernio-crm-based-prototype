@@ -69,6 +69,41 @@
     .fade-leave-to {
       opacity: 0;
     }
+    /* Transición de pasos del onboarding (fade + deslizamiento sutil) */
+    .step-enter-active {
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }
+    .step-leave-active {
+      transition: opacity 0.14s ease, transform 0.14s ease;
+    }
+    .step-enter-from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    .step-leave-to {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+    /* Entrada escalonada de tarjetas (stagger) */
+    .stagger-in {
+      opacity: 0;
+      transform: translateY(10px);
+      animation: stagger-in 0.3s ease forwards;
+    }
+    @keyframes stagger-in {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    /* Hero del onboarding: imagen de fondo con fallback de acento */
+    .hero-bg {
+      background-color: var(--accent);
+      background-image: linear-gradient(rgba(24, 24, 27, 0.82), rgba(24, 24, 27, 0.94)),
+        url('https://images.unsplash.com/photo-1556745757-8d76bdb6984b?w=1600&q=80');
+      background-size: cover;
+      background-position: center;
+    }
   </style>
 </head>
 
@@ -86,26 +121,26 @@
   -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 
-  <script src="src/constants.js?v=26"></script>
-  <script src="src/store.js?v=26"></script>
-  <script src="src/data/storage.js?v=26"></script>
-  <script src="src/data/demo-data.js?v=26"></script>
-  <script src="src/services/zernio-api.js?v=26"></script>
+  <script src="src/constants.js?v=28"></script>
+  <script src="src/store.js?v=28"></script>
+  <script src="src/data/storage.js?v=28"></script>
+  <script src="src/data/demo-data.js?v=28"></script>
+  <script src="src/services/zernio-api.js?v=28"></script>
 
-  <script src="src/components/ui.js?v=26"></script>
-  <script src="src/components/live-connect.js?v=26"></script>
-  <script src="src/components/onboarding.js?v=26"></script>
-  <script src="src/components/dashboard.js?v=26"></script>
-  <script src="src/components/inbox.js?v=26"></script>
-  <script src="src/components/contacts.js?v=26"></script>
-  <script src="src/components/channels.js?v=26"></script>
-  <script src="src/components/team.js?v=26"></script>
-  <script src="src/components/broadcasts.js?v=26"></script>
-  <script src="src/components/settings.js?v=26"></script>
-  <script src="src/components/analytics.js?v=26"></script>
-  <script src="src/components/billing.js?v=26"></script>
-  <script src="src/components/system.js?v=26"></script>
+  <script src="src/components/ui.js?v=28"></script>
+  <script src="src/components/live-connect.js?v=28"></script>
+  <script src="src/components/onboarding.js?v=28"></script>
+  <script src="src/components/dashboard.js?v=28"></script>
+  <script src="src/components/inbox.js?v=28"></script>
+  <script src="src/components/contacts.js?v=28"></script>
+  <script src="src/components/channels.js?v=28"></script>
+  <script src="src/components/team.js?v=28"></script>
+  <script src="src/components/broadcasts.js?v=28"></script>
+  <script src="src/components/settings.js?v=28"></script>
+  <script src="src/components/analytics.js?v=28"></script>
+  <script src="src/components/billing.js?v=28"></script>
+  <script src="src/components/system.js?v=28"></script>
 
-  <script src="src/app.js?v=26"></script>
+  <script src="src/app.js?v=28"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 /**
- * @file live-connect.js — Conexión real con Zernio (reutilizable).
+ * @file live-connect.js — Conexión real de canales (reutilizable).
  * Flujo: API key → validar perfiles → elegir/crear perfil → detectar cuenta
  * WhatsApp existente o números provisionados → vincular. Fallback por
  * credenciales de Meta (wabaId + phoneNumberId + token).
@@ -119,7 +119,7 @@
         }
       }
 
-      /** Crea un perfil en Zernio con el nombre del workspace y su sub-key. */
+      /** Crea un perfil de negocio con su sub-key. */
       async function createProfile() {
         busy.value = true;
         try {
@@ -128,7 +128,7 @@
           profiles.value.unshift(profile);
           selectedProfileId.value = profile.id || profile._id;
           step.value = 'profile';
-          toast('Perfil creado en Zernio', 'success');
+          toast('Perfil del negocio creado', 'success');
           await ensureSubKey(selectedProfileId.value);
           await loadChannelOptions(selectedProfileId.value);
         } catch (err) {
@@ -181,7 +181,7 @@
         emit('connected', result.value);
       }
 
-      /** Vincula un número provisionado (Zernio/Telnyx). */
+      /** Vincula un número disponible de la plataforma. */
       async function connectWithPhone(phone) {
         const accountId = phone.accountId || phone.ownerAccountId || '';
         if (!accountId) {
@@ -191,10 +191,10 @@
         result.value = {
           profileId: selectedProfileId.value,
           accountId,
-          phone: phone.phoneNumber || phone.displayName || 'Número Zernio',
+          phone: phone.phoneNumber || phone.displayName || 'Número de la plataforma',
         };
         step.value = 'done';
-        toast('Número Zernio seleccionado', 'success');
+        toast('Número seleccionado', 'success');
         emit('connected', result.value);
       }
 
@@ -269,7 +269,7 @@
 
       /**
        * Inicia el flujo guiado de Meta (Embedded Signup) para conectar el
-       * número del cliente SIN datos técnicos. Si hay túnel activo, Zernio
+       * número del cliente SIN datos técnicos. Si hay túnel activo, el sistema
        * devuelve el resultado al MVP (callback automático); si no, el cliente
        * vuelve y pulsa "Ya autoricé, verificar".
        */
@@ -420,7 +420,7 @@
         <div v-if="step === 'done' && result" class="flex items-center gap-3 border-2 border-emerald-800 bg-emerald-50 p-4">
           <ui-icon name="check-circle" class="h-6 w-6 shrink-0 text-emerald-700"></ui-icon>
           <div class="min-w-0">
-            <p class="font-semibold text-emerald-900">Conectado con Zernio</p>
+            <p class="font-semibold text-emerald-900">Conectado</p>
             <p class="truncate font-mono text-xs text-emerald-800">{{ result.phone }} · perfil {{ result.profileId }}</p>
           </div>
           <button @click="reset" class="ml-auto shrink-0 border-2 border-emerald-900 bg-white px-2.5 py-1 text-xs font-medium transition hover:shadow-brutal-sm">Cambiar</button>
@@ -428,7 +428,7 @@
 
         <template v-else>
           <!-- Paso 1 · API key -->
-          <ui-field label="API key de Zernio" hint="sk_… — se guarda en localStorage (prototipo).">
+          <ui-field label="Clave de acceso de la plataforma" hint="sk_… — la proporciona tu proveedor.">
             <div class="flex items-end gap-2">
               <input v-model.trim="apiKey" type="password" placeholder="sk_…" autocomplete="off"
                 class="w-full border-2 border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none focus:border-neutral-900" />
@@ -443,7 +443,7 @@
           <!-- Paso 2 · Perfil -->
           <div v-if="step === 'profile'" class="border-2 border-neutral-900 bg-white">
             <div class="border-b-2 border-neutral-900 px-4 py-2.5 font-mono text-[11px] uppercase tracking-widest text-neutral-500">
-              Perfil en Zernio (marca/proyecto)
+              Perfil del negocio
             </div>
             <div class="divide-y divide-neutral-100">
               <button v-for="p in profiles" :key="p.id || p._id" @click="loadChannelOptions(p.id || p._id)"
@@ -534,7 +534,7 @@
 
               <div v-if="phones.length > 0">
                 <span class="mb-2 block font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-500">
-                  Números Zernio provisionados ({{ phones.length }})
+                  Números disponibles ({{ phones.length }})
                 </span>
                 <div class="grid gap-2 sm:grid-cols-2">
                   <button v-for="ph in phones" :key="ph.id || ph.phoneNumber" @click="connectWithPhone(ph)"
@@ -549,7 +549,7 @@
               </div>
 
               <div v-if="waAccounts.length === 0 && phones.length === 0" class="border-2 border-dashed border-neutral-300 bg-white p-4 text-sm text-neutral-500">
-                No hay cuentas WhatsApp ni números provisionados en este perfil. Usa el acceso por credenciales de Meta o conecta un número desde Zernio.
+                No hay cuentas WhatsApp ni números provisionados en este perfil. Usa el acceso por credenciales de Meta o conecta un número.
               </div>
 
               <!-- Fallback: credenciales Meta (opción avanzada) -->
@@ -581,7 +581,7 @@
             <div v-else class="space-y-4">
               <div class="border-2 border-neutral-900 bg-white p-4">
                 <p class="text-sm text-neutral-600">
-                  Zernio inicia el flujo OAuth de {{ platform === 'instagram' ? 'Instagram' : 'TikTok' }}.
+                  Se abre la autorización de {{ platform === 'instagram' ? 'Instagram' : 'TikTok' }}.
                   Autoriza en la ventana que se abre y vuelve a verificar.
                 </p>
                 <div class="mt-3 flex flex-wrap gap-2">

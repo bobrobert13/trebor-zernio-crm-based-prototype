@@ -461,7 +461,7 @@
           slug: slugify(name),
           name,
           type: fieldInput.type,
-          ...(fieldInput.type === 'select' && fieldInput.options.trim()
+          ...(fieldInput.type === 'select'
             ? { options: fieldInput.options.split(',').map((o) => o.trim()).filter(Boolean) }
             : {}),
         };
@@ -770,13 +770,13 @@
             <select v-model="fieldInput.type" class="border-2 border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-900">
               <option v-for="t in fieldTypeOptions" :key="t" :value="t">{{ t }}</option>
             </select>
-            <input v-if="fieldInput.type === 'select'" v-model.trim="fieldInput.options" type="text" placeholder="Opciones (coma)"
-              class="w-full border-2 border-neutral-300 px-3 py-2.5 text-sm outline-none focus:border-neutral-900" />
-            <button v-else @click="addField" :disabled="!fieldInput.name.trim()"
+            <button @click="addField" :disabled="!fieldInput.name.trim()"
               class="shrink-0 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
               Agregar campo
             </button>
           </div>
+          <input v-if="fieldInput.type === 'select'" v-model.trim="fieldInput.options" type="text" placeholder="Opciones separadas por coma (ej: Local, Para llevar, Delivery)"
+            class="mt-2 w-full border-2 border-neutral-300 px-3 py-2.5 text-sm outline-none focus:border-neutral-900" />
           <p class="mt-3 text-xs text-neutral-400">
             Renombrar no pierde los datos ya registrados. Los campos aparecen en la ficha del cliente y en Contactos.
           </p>

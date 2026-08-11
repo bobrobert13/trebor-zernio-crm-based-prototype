@@ -98,6 +98,7 @@
         const id = confirmDelete.value;
         workspace.value.contacts = workspace.value.contacts.filter((c) => c.id !== id);
         workspace.value.conversations = workspace.value.conversations.filter((c) => c.contactId !== id);
+        workspace.value.reminders = (workspace.value.reminders || []).filter((r) => r.contactId !== id);
         confirmDelete.value = null;
         toast('Contacto eliminado', 'info');
       }

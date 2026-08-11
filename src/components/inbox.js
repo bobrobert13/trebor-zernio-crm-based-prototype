@@ -425,7 +425,10 @@
 
       /** Asigna la etapa del lead al contacto (centralizado en store.applyLeadTag). */
       function setLeadTag(tag) {
-        ZernioCrm.applyLeadTag(selectedContact.value, tag || null);
+        const contact = selectedContact.value;
+        const wasClosed = Boolean(contact && contact.leadClosed);
+        ZernioCrm.applyLeadTag(contact, tag || null);
+        if (wasClosed) toast('Lead reabierto al cambiar de etapa', 'info');
       }
 
       /** Registra un contacto desde una conversación huérfana (sin ficha). */
@@ -541,8 +544,14 @@
         (id) => {
           if (!id) return;
           const conv = conversations.value.find((c) => c.id === id);
+          if (!conv) {
+            // La conversación pedida ya no existe: no se consume el pendiente
+            // (otro módulo podría recrearla) y se avisa para no perder la intención.
+            toast('La conversación solicitada ya no está disponible', 'error');
+            return;
+          }
           store.pendingConversationId = null;
-          if (conv) selectConversation(conv);
+          selectConversation(conv);
         },
         { immediate: true }
       );

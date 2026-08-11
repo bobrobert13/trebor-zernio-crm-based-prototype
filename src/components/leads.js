@@ -99,6 +99,9 @@
         const contact = closeTarget.value;
         if (!contact) return;
         contact.leadClosed = { at: Date.now(), outcome: closeForm.outcome, note: closeForm.note.trim() };
+        // El cierre queda registrado en el historial de etapas (timeline del drawer)
+        contact.leadHistory = contact.leadHistory || [];
+        contact.leadHistory.push({ tag: `finalizada:${closeForm.outcome}`, at: contact.leadClosed.at, note: closeForm.note.trim() || undefined });
         closeOpen.value = false;
         closeTarget.value = null;
         detailOpen.value = false;
@@ -107,6 +110,8 @@
 
       function reopenLead(contact) {
         if (!contact) return;
+        contact.leadHistory = contact.leadHistory || [];
+        contact.leadHistory.push({ tag: 'reabierta', at: Date.now() });
         delete contact.leadClosed;
         toast('Lead reabierto: vuelve al tablero activo', 'success');
       }
@@ -221,7 +226,7 @@
         closeOpen, closeTarget, closeForm, openCloseModal, confirmClose, reopenLead,
         remInput, remPanelOpen, pendingReminders, hasOverdue, addReminderFor, upcomingReminders,
         remindersOf, toggleReminder, removeReminder,
-        getPlatform, timeAgo, canEdit,
+        getPlatform, timeAgo, canEdit, ZernioCrm,
       };
     },
 
@@ -455,7 +460,7 @@
                   <span class="absolute -left-[21.5px] top-1 h-2.5 w-2.5 rounded-full border-2 border-neutral-900 bg-white"
                     :class="i === 0 ? 'bg-[var(--accent)]' : ''"></span>
                   <p class="text-xs">
-                    <span class="font-semibold">{{ h.tag || 'Sin asignar' }}</span>
+                    <span class="font-semibold">{{ h.tag === 'reabierta' || h.tag === 'reabierto' ? 'Reabierta' : h.tag && h.tag.startsWith('finalizada:') ? 'Finalizada · ' + h.tag.split(':')[1] : (h.tag || 'Sin asignar') }}</span>
                     <span class="ml-1 font-mono text-[9px] uppercase text-neutral-400">{{ new Date(h.at).toLocaleString('es-VE') }}</span>
                   </p>
                 </li>
@@ -526,7 +531,7 @@
         <ui-drawer :open="remPanelOpen" title="Recordatorios próximos" width="max-w-md" @close="remPanelOpen = false">
           <div class="space-y-2">
             <div v-for="r in upcomingReminders" :key="r.id">
-              <button @click="remPanelOpen = false; openDetail(r.contact)"
+              <button v-if="r.contact" @click="remPanelOpen = false; openDetail(r.contact)"
                 class="w-full border border-neutral-200 p-3 text-left transition hover:border-neutral-900 hover:bg-stone-50"
                 :class="r.dueAt && Date.parse(r.dueAt) < Date.now() ? 'border-red-700 bg-red-50' : ''">
                 <div class="flex items-center justify-between gap-2">

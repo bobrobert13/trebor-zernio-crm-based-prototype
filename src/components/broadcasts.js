@@ -1026,8 +1026,8 @@
         const m = String(props.tpl.body || body.text || '').match(/\{\{\d+\}\}/g) || [];
         return [...new Set(m)];
       });
-      /** Envelope sin componentes: no hay nada que renderizar (ni header ni body). */
-      const noComponents = Vue.computed(() => !props.tpl.components || !props.tpl.components.length);
+      /** Envelope sin componentes ni body: no hay nada que renderizar. */
+      const noComponents = Vue.computed(() => !comps.length && !props.tpl.body);
       return { bodyText, headerText, footerText, buttons, fill, hasBody, headerFormat, variables, noComponents };
     },
     template: `

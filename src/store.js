@@ -188,6 +188,11 @@
     const next = tag || null;
     if (contact.leadTag === next) return;
     contact.leadHistory = contact.leadHistory || [];
+    // Si el lead estaba finalizado, el cambio de etapa lo reabre: se conserva
+    // el registro de cierre en el historial antes de descartarlo.
+    if (contact.leadClosed) {
+      contact.leadHistory.push({ tag: 'reabierto', at: Date.now(), prev: contact.leadClosed });
+    }
     contact.leadHistory.push({ tag: next, at: Date.now() });
     if (contact.leadHistory.length > 50) contact.leadHistory.shift();
     contact.leadTag = next;

@@ -34,6 +34,7 @@
             username: ws.zernio.phone || '',
             connected: true,
             since: ws.zernio.since || Date.now(),
+            health: ws.zernio.health || null, // hereda alerta de reconexión
           });
         }
       }
@@ -58,7 +59,9 @@
               await api.deleteAccount(prev);
               toast('Número anterior desconectado (límite 1 por negocio)', 'info');
             } catch (err) {
-              toast('No se pudo desconectar el número anterior: ' + (err.message || ''), 'error');
+              // No conmutar: el perfil quedaría con 2 números facturables
+              toast('No se pudo desconectar el número anterior: ' + (err.message || '') + '. La conexión nueva se canceló.', 'error', 6000);
+              return;
             }
           }
         }
@@ -68,18 +71,20 @@
           username: result.username || result.phone || '',
           connected: true,
           since: Date.now(),
+          health: null,
         };
         const existing = ws.channels.find((c) => c.platform === platform);
         if (existing) Object.assign(existing, entry);
         else ws.channels.push(entry);
 
-        // WhatsApp primario: mantiene workspace.zernio sincronizado
+        // WhatsApp primario: mantiene workspace.zernio sincronizado SIN borrar subKey/health
         if (platform === 'whatsapp') {
-          ws.zernio = {
+          ws.zernio = Object.assign(ws.zernio || {}, {
             profileId: result.profileId,
             accountId: result.accountId,
             phone: result.phone || entry.username,
-          };
+            health: null,
+          });
           ws.whatsapp = {
             connected: true,
             modality: 'live',

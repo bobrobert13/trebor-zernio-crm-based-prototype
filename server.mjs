@@ -61,13 +61,34 @@ function keyHash(key) {
   return createHash('sha256').update(String(key || '')).digest('hex').slice(0, 16);
 }
 
-/** Carga lazy del medidor desde disco. */
+/** Carga lazy del medidor desde disco (merge: nunca descarta contadores en memoria). */
 async function loadUsage() {
   try {
     const raw = await readFile(USAGE_FILE, 'utf8');
-    Object.assign(usageStore, JSON.parse(raw));
+    const parsed = JSON.parse(raw);
+    for (const [hash, entry] of Object.entries(parsed.byKey || {})) {
+      if (!usageStore.byKey[hash] || (entry.updatedAt || 0) > (usageStore.byKey[hash].updatedAt || 0)) {
+        usageStore.byKey[hash] = entry;
+      }
+    }
   } catch {
-    usageStore.byKey = {};
+    // sin archivo aún o corrupto: se mantiene lo que haya en memoria
+  }
+}
+
+/** Poda entradas inactivas y días viejos (retención 90 días). */
+function pruneUsage() {
+  const cutoff = Date.now() - 90 * 864e5;
+  for (const [hash, entry] of Object.entries(usageStore.byKey)) {
+    if ((entry.updatedAt || 0) < cutoff) {
+      delete usageStore.byKey[hash];
+      continue;
+    }
+    if (entry.byDay) {
+      for (const day of Object.keys(entry.byDay)) {
+        if (day < new Date(cutoff).toISOString().slice(0, 10)) delete entry.byDay[day];
+      }
+    }
   }
 }
 
@@ -77,19 +98,28 @@ function scheduleUsageWrite() {
   if (usageTimer) return;
   usageTimer = setTimeout(async () => {
     usageTimer = null;
-    await flushUsage();
+    if (!(await flushUsage())) {
+      // reintenta en 5s si la escritura falló
+      usageTimer = setTimeout(async () => {
+        usageTimer = null;
+        await flushUsage();
+      }, 5000);
+    }
   }, 2000);
 }
 
 async function flushUsage() {
-  if (!usageDirty) return;
+  if (!usageDirty) return true;
   usageDirty = false;
   try {
+    pruneUsage();
     await mkdir(join(ROOT, 'data'), { recursive: true });
     await writeFile(USAGE_FILE, JSON.stringify(usageStore), 'utf8');
+    return true;
   } catch (err) {
     usageDirty = true; // reintenta en el próximo flush
     console.error('[usage] no se pudo persistir:', err.message);
+    return false;
   }
 }
 
@@ -310,6 +340,19 @@ const server = createServer(async (req, res) => {
 
     if (pathname === '/api/usage') {
       const ws = url.searchParams.get('ws');
+      const apiKey = req.headers['x-zernio-key'] || '';
+      // Sin ws: snapshot completo del centro — solo desde la propia máquina
+      if (!ws && !isLoopback(req)) {
+        res.writeHead(403, { ...corsHeaders(req), 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Snapshot global solo disponible en localhost' }));
+        return;
+      }
+      // Con ws: solo el dueño de esa key (el hash debe coincidir con la key del request)
+      if (ws && keyHash(apiKey) !== ws) {
+        res.writeHead(403, { ...corsHeaders(req), 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Medidor: hash de key no coincide' }));
+        return;
+      }
       res.setHeader('Vary', 'Origin');
       res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
       res.end(JSON.stringify(await usageSnapshot(ws)));
@@ -339,8 +382,22 @@ const server = createServer(async (req, res) => {
   }
 });
 
+/** ¿El request viene de la propia máquina? (protege el snapshot global del medidor). */
+function isLoopback(req) {
+  const addr = req.socket && req.socket.remoteAddress;
+  return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+}
+
 server.listen(PORT, () => {
   console.log(`[zernio-mvp] http://localhost:${PORT}`);
   console.log(`[zernio-mvp] proxy /zernio/* → https://${ZERNIO.host}${ZERNIO.base}/*`);
   console.log(`[zernio-mvp] webhooks  POST /webhooks/zernio?secret=...  (GET /webhooks/events)`);
 });
+
+// Flush del medidor al apagar (no perder los últimos 2s de conteos)
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, async () => {
+    await flushUsage();
+    process.exit(0);
+  });
+}

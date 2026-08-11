@@ -57,10 +57,11 @@
         store.workspace = workspace;
         store.currentUser =
           workspace.users.find((u) => u.id === session.userId) || workspace.users[0] || null;
-        // Restaura las claves del centro/sub-key persistidas en el workspace
-        const z = workspace.zernio || {};
-        store.masterKey = z.masterKey || store.masterKey;
-        if (z.subKey && store.mode === 'live') store.apiKey = z.subKey;
+        // La master key del centro vive solo en sessionStorage (nunca en el workspace/export)
+        const master = sessionStorage.getItem('tzcrm.masterKey');
+        if (master) store.masterKey = master;
+        // La sub-key operativa se restaura desde el workspace
+        if (workspace.zernio && workspace.zernio.subKey && store.mode === 'live') store.apiKey = workspace.zernio.subKey;
       }
     }
     // Saneamiento: modo live con conexión Zernio incompleta → degradar a demo con aviso
@@ -103,9 +104,11 @@
           // Cuenta desconectada (token expirado): marcar el canal para reconectar
           if (entry.event && entry.event.event === 'account.disconnected' && store.workspace) {
             const accId = entry.event.account && (entry.event.account.id || entry.event.account.accountId);
-            const channel = (store.workspace.channels || []).find((c) => !accId || c.accountId === accId);
-            if (channel) channel.health = 'reconnect';
-            if (store.workspace.zernio) store.workspace.zernio.health = 'reconnect';
+            if (accId) {
+              const channel = (store.workspace.channels || []).find((c) => c.accountId === accId);
+              if (channel) channel.health = 'reconnect';
+              if (store.workspace.zernio && store.workspace.zernio.accountId === accId) store.workspace.zernio.health = 'reconnect';
+            }
             ZernioCrm.toast('Alerta: una cuenta se desconectó en Zernio (token expirado). Revisa Canales.', 'error', 6000);
           }
         });

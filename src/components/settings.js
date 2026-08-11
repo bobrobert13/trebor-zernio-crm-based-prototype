@@ -320,11 +320,17 @@
 
       /** Recibe la reconexión de live-connect y actualiza el canal. */
       function onLiveConnected(result) {
-        workspace.value.zernio = { profileId: result.profileId, accountId: result.accountId, phone: result.phone };
+        // Merge: conserva subKey/health persistidos en zernio (nunca borrar)
+        workspace.value.zernio = Object.assign(workspace.value.zernio || {}, {
+          profileId: result.profileId,
+          accountId: result.accountId,
+          phone: result.phone || '',
+          health: null,
+        });
         workspace.value.whatsapp = {
           connected: true,
           modality: 'live',
-          phone: result.phone,
+          phone: result.phone || '',
           status: 'connected',
           since: Date.now(),
           about: 'Conexión real con Zernio',
@@ -365,7 +371,11 @@
         }
       }
 
-      /** Rota la sub-key: crea una nueva, la activa y revoca la anterior. */
+      /**
+       * Rota la sub-key de forma atómica: crea la nueva, revoca la anterior y
+       * solo entonces conmuta el estado. Si la revocación falla, revoca la
+       * nueva y no toca la activa.
+       */
       async function rotateSubKey() {
         const z = workspace.value.zernio;
         if (!z || !z.subKey || !z.profileId || subKeyBusy.value) return;
@@ -377,17 +387,19 @@
           });
           const newKey = (data.apiKey && data.apiKey.key) || data.key;
           if (!newKey) throw new Error('El API no devolvió la sub-key');
+          const newKeyId = (data.apiKey && (data.apiKey.id || data.apiKey._id)) || '';
           const oldKeyId = await findKeyId(z.subKey);
+          if (!oldKeyId) {
+            // No se pudo identificar la anterior: abortar y revocar la recién creada
+            if (newKeyId) await api.revokeApiKey(newKeyId).catch(() => {});
+            throw new Error('No se pudo localizar la sub-key anterior para revocarla. La rotación se canceló.');
+          }
+          await api.revokeApiKey(oldKeyId); // falla aquí → no conmuta y la nueva queda pendiente de limpiar
           z.subKey = newKey;
           store.apiKey = newKey;
-          if (oldKeyId) {
-            await api.revokeApiKey(oldKeyId);
-            toast('Sub-key rotada: la anterior quedó revocada', 'success');
-          } else {
-            toast('Sub-key rotada (no se encontró la anterior para revocar)', 'info');
-          }
+          toast('Sub-key rotada: la anterior quedó revocada', 'success');
         } catch (err) {
-          toast(err.message || 'No se pudo rotar la sub-key', 'error');
+          toast(err.message || 'No se pudo rotar la sub-key', 'error', 6000);
         } finally {
           subKeyBusy.value = false;
         }
@@ -400,12 +412,14 @@
         subKeyBusy.value = true;
         try {
           const keyId = await findKeyId(z.subKey);
-          if (keyId) await api.revokeApiKey(keyId);
+          if (!keyId) throw new Error('No se pudo localizar la sub-key para revocar');
+          await api.revokeApiKey(keyId);
           z.subKey = '';
           z.accountId = '';
           z.phone = '';
+          z.health = 'revoked';
           workspace.value.whatsapp.connected = false;
-          store.apiKey = store.masterKey || '';
+          store.apiKey = ''; // sin key operativa: el negocio queda en demo hasta reconectar
           store.mode = 'demo';
           toast('Acceso revocado: el negocio quedó desconectado (401 en la próxima llamada)', 'info', 6000);
         } catch (err) {

@@ -41,14 +41,29 @@
       /** Cuentas de la plataforma seleccionada en el perfil. */
       const platformAccounts = Vue.computed(() => accounts.value.filter((a) => a.platform === props.platform));
 
-      /** Valida la key listando perfiles. Guarda la key del centro (master). */
+      /**
+       * Valida la key listando perfiles. Solo promueve a master (centro) si la
+       * key supera el probe admin (listApiKeys); de lo contrario se usa como
+       * key operativa (sub-key del negocio).
+       */
       async function validateKey() {
         const key = apiKey.value.trim();
         if (!key || busy.value) return;
         busy.value = true;
         try {
-          store.masterKey = key;
           store.apiKey = key;
+          // Probe admin: si la key puede listar/crear sub-keys es la master del centro
+          let isMaster = false;
+          try {
+            await api.listApiKeys();
+            isMaster = true;
+          } catch {
+            isMaster = false;
+          }
+          if (isMaster) {
+            store.masterKey = key;
+            sessionStorage.setItem('tzcrm.masterKey', key); // solo sesión, nunca en workspace/export
+          }
           const data = await api.getProfiles();
           profiles.value = asArray(data);
           if (profiles.value.length === 0) {
@@ -67,6 +82,7 @@
       /**
        * Crea la sub-key scoped al perfil (una por negocio) y la activa como
        * key operativa. Si ya existe (workspace.zernio.subKey) la reutiliza.
+       * La master key NUNCA se persiste en el workspace (solo en sesión).
        * @param {string} profileId — id del perfil del negocio.
        * @returns {Promise<string|null>} Sub-key activa o null si no se pudo crear.
        */
@@ -77,7 +93,6 @@
           if (store.apiKey !== z.subKey) store.apiKey = z.subKey;
           return z.subKey;
         }
-        if (!store.masterKey) store.masterKey = store.apiKey;
         try {
           const data = await api.createApiKey({
             name: `negocio-${((store.workspace && store.workspace.name) || 'mvp').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`,
@@ -88,7 +103,6 @@
           if (store.workspace) {
             store.workspace.zernio = store.workspace.zernio || {};
             store.workspace.zernio.subKey = subKey;
-            store.workspace.zernio.masterKey = store.masterKey;
           }
           store.apiKey = subKey;
           toast('Sub-key del negocio creada (aislamiento por perfil)', 'success');

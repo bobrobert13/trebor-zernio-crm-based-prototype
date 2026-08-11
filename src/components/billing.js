@@ -167,8 +167,12 @@
           if (store.serverMode) {
             try {
               const key = (workspace.value.zernio && workspace.value.zernio.subKey) || store.apiKey;
-              localHash.value = await sha256Hex(key);
-              const res = await fetch(`/api/usage?ws=${localHash.value}`, { cache: 'no-store' });
+              // Mismo truncado que server.mjs (sha256 slice 16) para que el hash coincida
+              localHash.value = (await sha256Hex(key)).slice(0, 16);
+              const res = await fetch(`/api/usage?ws=${localHash.value}`, {
+                cache: 'no-store',
+                headers: { 'X-Zernio-Key': key }, // el server exige que el hash coincida con la key
+              });
               if (res.ok) local.value = await res.json();
             } catch {
               local.value = null;

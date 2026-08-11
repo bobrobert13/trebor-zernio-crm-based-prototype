@@ -54,20 +54,24 @@
      * Ejecuta una petición autenticada al API.
      * En modo servidor (server.mjs) la key viaja en X-Zernio-Key hacia el
      * proxy local; en modo directo va en Authorization hacia zernio.com.
+     * Por defecto usa la key operativa (sub-key del negocio); las llamadas
+     * admin ({ admin: true }) usan la master key del centro.
      * @param {string} path — ruta (ej. '/profiles').
-     * @param {{method?:string, query?:object, body?:object}} [options={}] — opciones.
+     * @param {{method?:string, query?:object, body?:object, admin?:boolean}} [options={}] — opciones.
      * @returns {Promise<object>} Respuesta JSON.
      * @throws {ApiError} Error tipado (CORS_BLOCKED o SERVER_UNREACHABLE según modo).
      */
-    async request(path, { method = 'GET', query, body } = {}) {
+    async request(path, { method = 'GET', query, body, admin = false } = {}) {
       const serverMode = ZernioCrm.store.serverMode;
+      // Admin (master del centro) o key operativa (sub-key del negocio)
+      const key = admin ? (ZernioCrm.store.masterKey || ZernioCrm.store.apiKey) : ZernioCrm.store.apiKey;
       const url = new URL(serverMode ? `${location.origin}/zernio${path}` : `${this.baseUrl}${path}`);
       // Nunca mandar query params vacíos (el API los rechaza como formato inválido)
       if (query) Object.entries(query).forEach(([k, v]) => v != null && v !== '' && url.searchParams.set(k, v));
     
       const headers = serverMode
-        ? { 'X-Zernio-Key': ZernioCrm.store.apiKey }
-        : { Authorization: `Bearer ${ZernioCrm.store.apiKey}` };
+        ? { 'X-Zernio-Key': key }
+        : { Authorization: `Bearer ${key}` };
       if (body) headers['Content-Type'] = 'application/json';
       
       let response;
@@ -113,12 +117,13 @@
     }
 
     /**
-     * Crea un perfil (marca) en Zernio.
+     * Crea un perfil (marca) en Zernio. Solo la master key del centro puede
+     * crear perfiles (cada negocio = un perfil aislado).
      * @param {string} name — nombre del perfil.
      * @returns {Promise<object>} Perfil creado.
      */
     createProfile(name) {
-      return this.request('/profiles', { method: 'POST', body: { name } });
+      return this.request('/profiles', { method: 'POST', admin: true, body: { name } });
     }
 
     /**
@@ -165,7 +170,68 @@
      * @returns {Promise<Array<object>>} Números provisionados.
      */
     listPhoneNumbers(profileId) {
-      return this.request('/whatsapp/phone-numbers', { query: { profileId } });
+      return this.request('/whatsapp/phone-numbers', { query: { profileId }, admin: true });
+    }
+
+    // ── Admin: sub-keys por negocio (centro) ────────────────────────────────
+
+    /** @returns {Promise<Array<object>>} Sub-keys creadas (solo previews). */
+    listApiKeys() {
+      return this.request('/api-keys', { admin: true });
+    }
+
+    /**
+     * Crea una sub-key scoped a un perfil (aislamiento por negocio).
+     * El valor completo se devuelve UNA sola vez (guardarlo inmediatamente).
+     * @param {{name:string, profileIds:Array<string>, permission?:string, expiresIn?:number}} opts — opciones.
+     * @returns {Promise<object>} Sub-key creada (apiKey.key único).
+     */
+    createApiKey({ name, profileIds = [], permission = 'read-write', expiresIn = 90 }) {
+      return this.request('/api-keys', {
+        method: 'POST',
+        admin: true,
+        body: { name, scope: 'profiles', profileIds, permission, expiresIn },
+      });
+    }
+
+    /**
+     * Revoca una sub-key de forma permanente (efecto inmediato).
+     * @param {string} keyId — id de la sub-key.
+     * @returns {Promise<object>} Confirmación.
+     */
+    revokeApiKey(keyId) {
+      return this.request(`/api-keys/${keyId}`, { method: 'DELETE', admin: true });
+    }
+
+    // ── Admin: billing y consumo (master key del centro) ────────────────────
+
+    /**
+     * Snapshot de plan, límites y gasto (endpoint moderno con rango).
+     * @param {string} [range='30d'] — rango (ej. '7d', '30d').
+     * @returns {Promise<object>} Plan, límites, uso por operación y spend.
+     */
+    getUsage(range = '30d') {
+      return this.request('/usage', { query: { range }, admin: true });
+    }
+
+    /** @returns {Promise<object>} Statement de billing (balance, créditos, caps, estado de pago). */
+    getBilling() {
+      return this.request('/billing', { admin: true });
+    }
+
+    /** @returns {Promise<object>} Precios por operación (resuelve claves de xApiCallsByOperation). */
+    getBillingPricing() {
+      return this.request('/billing/x-pricing', { admin: true });
+    }
+
+    /** @returns {Promise<object>} Snapshot legado (deprecado; fallback de getUsage). */
+    getUsageStatsLegacy() {
+      return this.request('/usage-stats', { admin: true });
+    }
+
+    /** @returns {Promise<Array<object>>} Health de todas las cuentas del workspace Zernio (master). */
+    getAccountsHealth() {
+      return this.request('/accounts/health', { admin: true });
     }
 
     /**
@@ -319,9 +385,9 @@
       return this.request('/webhooks/test', { method: 'POST' });
     }
 
-    /** @returns {Promise<Array<object>>} Logs de entrega de webhooks. */
+    /** @returns {Promise<Array<object>>} Logs de entrega de webhooks (master del centro). */
     getWebhookLogs() {
-      return this.request('/webhooks/logs');
+      return this.request('/webhooks/logs', { admin: true });
     }
 
     // ── Broadcasts ───────────────────────────────────────────────────────────

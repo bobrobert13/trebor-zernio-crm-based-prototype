@@ -29,22 +29,21 @@
         ownerEmail: '',
         inviteAgent: true,
         inviteVendor: true,
+        skipConnect: false, // "Configurar después": termina sin canal conectado
       });
 
       const current = Vue.ref(0);
       const enterLoading = Vue.ref(false);
       const creating = Vue.ref(false);
 
+      /** Sección colapsada de clave de administración (solo si el centro no la dejó en sesión). */
+      const adminKeyOpen = Vue.ref(false);
+
       /** Pasos del roadmap copiados (con estado de simulación local). */
       const roadmapItems = Vue.ref([]);
       const roadmapSim = Vue.reactive({ running: false, current: null, progress: 0, done: 0 });
 
-      /** Simulación de conexión WhatsApp. */
-      const waSim = Vue.reactive({ running: false, stepIndex: 0, done: false });
-      const waModal = Vue.ref(false);
-      const waModality = Vue.ref(null);
-
-      /** Resultado de la conexión real con Zernio (live-connect). */
+      /** Resultado de la conexión real (live-connect). */
       const liveResult = Vue.ref(null);
 
       /** Temporizadores activos (limpieza en onUnmounted). */
@@ -61,6 +60,9 @@
       const niche = Vue.computed(() => ZernioCrm.getNiche(form.nicheId));
       const accent = Vue.computed(() => ZernioCrm.ACCENTS.find((a) => a.id === form.accentId) || ZernioCrm.ACCENTS[0]);
 
+      /** Nicho seleccionado (para la preview del paso 1). */
+      const selectedNiche = Vue.computed(() => ZernioCrm.getNiche(form.nicheId));
+
       /** Items del roadmap incluidos en la configuración (obligatorios + opcionales marcados). */
       const selectedRoadmap = Vue.computed(() => roadmapItems.value.filter((r) => !r.optional || r.checked));
 
@@ -70,7 +72,7 @@
           case 1: return Boolean(form.nicheId);
           case 3: return form.name.trim().length > 0;
           case 4: return Boolean(form.referrer);
-          case 6: return (Boolean(waModality.value) && waSim.done) || Boolean(liveResult.value);
+          case 6: return Boolean(liveResult.value) || form.skipConnect;
           case 7: return !creating.value;
           default: return true;
         }
@@ -101,7 +103,7 @@
       }
 
       function jumpTo(i) {
-        if (i < current.value && !roadmapSim.running && !waSim.running) current.value = i;
+        if (i < current.value && !roadmapSim.running) current.value = i;
       }
 
       function next() {
@@ -117,7 +119,7 @@
       }
 
       function back() {
-        if (current.value > 0 && !roadmapSim.running && !waSim.running && !creating.value) current.value -= 1;
+        if (current.value > 0 && !roadmapSim.running && !creating.value) current.value -= 1;
       }
 
       /**
@@ -150,33 +152,10 @@
         toast('Roadmap del negocio configurado', 'success');
       }
 
-      function openWaCard(id) {
-        waModality.value = id;
-        waSim.stepIndex = 0;
-        waSim.done = false;
-        waModal.value = true;
-      }
-
-      /** Simula el flujo de conexión de la modalidad elegida. */
-      function connectWhatsApp() {
-        const modality = ZernioCrm.WHATSAPP_MODALITIES.find((m) => m.id === waModality.value);
-        if (!modality || waSim.running) return;
-        waSim.running = true;
-        modality.pasos.forEach((_, i) => {
-          later(() => { waSim.stepIndex = i + 1; }, (i + 1) * 1100);
-        });
-        later(() => {
-          waSim.running = false;
-          waSim.done = true;
-          toast('Número WhatsApp conectado (simulación)', 'success');
-        }, (modality.pasos.length + 1) * 1100);
-      }
-
       /** Recibe la conexión real de live-connect y habilita el siguiente paso. */
       function onLiveConnected(result) {
         liveResult.value = result;
-        waModality.value = 'live';
-        waSim.done = true;
+        form.skipConnect = false;
       }
 
       /** Crea el workspace, inicia sesión como propietario y entra al dashboard. */
@@ -197,6 +176,13 @@
           });
           if (!form.inviteAgent) ws.users = ws.users.filter((u) => u.role !== 'agente');
           if (!form.inviteVendor) ws.users = ws.users.filter((u) => u.role !== 'vendedor');
+          // "Configurar después": workspace sin canal conectado (conecta luego desde Canales)
+          if (form.skipConnect && !liveResult.value) {
+            ws.zernio = null;
+            ws.whatsapp = { connected: false, modality: 'pending', phone: '', status: 'disconnected', since: Date.now(), about: 'Canal pendiente de conexión' };
+            ws.channels = (ws.channels || []).filter((c) => c.platform !== 'whatsapp');
+            store.mode = 'demo';
+          }
           // Conexión real con Zernio (si el cliente la eligió)
           if (liveResult.value) {
             ws.zernio = {
@@ -224,10 +210,10 @@
       }
 
       return {
-        STEPS, form, current, enterLoading, creating, niche, accent,
+        STEPS, form, current, enterLoading, creating, niche, accent, selectedNiche,
         roadmapItems, roadmapSim, selectedRoadmap, progressPercent,
-        waSim, waModal, waModality, liveResult,
-        selectNiche, jumpTo, next, back, openWaCard, connectWhatsApp, onLiveConnected, finish,
+        adminKeyOpen, liveResult,
+        selectNiche, jumpTo, next, back, onLiveConnected, finish,
         canContinue,
         ui: ZernioCrm,
       };
@@ -265,7 +251,7 @@
             </li>
           </ol>
 
-          <p class="font-mono text-[11px] uppercase tracking-widest opacity-60">MVP · integración Zernio</p>
+          <p class="font-mono text-[11px] uppercase tracking-widest opacity-60">Configuración guiada</p>
         </aside>
 
         <!-- Panel derecho -->
@@ -280,10 +266,20 @@
             <ui-stepper v-if="current > 0" :steps="STEPS" :current="current" @jump="jumpTo"></ui-stepper>
           </header>
 
-          <main class="flex-1 px-5 py-8 lg:px-12">
-            <div class="mx-auto w-full max-w-2xl">
+          <main class="flex-1 px-5 py-8 lg:px-16">
+            <div class="mx-auto w-full max-w-4xl">
+              <!-- Encabezado del paso (pipeline) -->
+              <div v-if="current > 0 && !enterLoading" class="mb-6">
+                <p class="font-mono text-[11px] uppercase tracking-widest text-neutral-400">Paso {{ current }} de {{ STEPS.length - 1 }} · {{ STEPS[current] }}</p>
+                <div class="mt-2 h-1 w-full bg-neutral-200">
+                  <div class="h-full bg-[var(--accent)] transition-all duration-500" :style="{ width: (current / (STEPS.length - 1)) * 100 + '%' }"></div>
+                </div>
+              </div>
+
+          <!-- Transición entre pasos (fade + deslizamiento sutil) -->
+          <transition name="step" mode="out-in">
           <!-- Pantalla de carga al pasar de bienvenida a nicho -->
-          <div v-if="enterLoading" class="border-2 border-neutral-900 bg-white p-8 shadow-brutal">
+          <div v-if="enterLoading" class="bg-white p-8">
             <div class="mb-6 flex items-center gap-2">
               <ui-spinner class="text-[var(--accent)]"></ui-spinner>
               <span class="font-mono text-xs uppercase tracking-widest">Preparando tu espacio…</span>
@@ -296,47 +292,96 @@
           </div>
 
           <!-- 0 · Bienvenida -->
-          <section v-else-if="current === 0" class="border-2 border-neutral-900 bg-white p-10 text-center shadow-brutal">
-            <span class="mx-auto mb-6 flex h-16 w-16 items-center justify-center bg-[var(--accent)] text-white shadow-brutal">
-              <ui-icon name="whatsapp" class="h-8 w-8"></ui-icon>
-            </span>
-            <h2 class="text-3xl font-bold">Tu atención al cliente por WhatsApp</h2>
-            <p class="mx-auto mt-3 max-w-md text-neutral-500">
-              Configura tu espacio de trabajo en minutos: elige tu tipo de negocio, tu marca y
-              conecta WhatsApp. Sin fricción, sin módulos que no necesitas.
-            </p>
-            <button @click="next" class="mt-8 border-2 border-neutral-900 bg-[var(--accent)] px-8 py-3 font-semibold text-white shadow-brutal transition hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none">
-              Comenzar →
-            </button>
+          <section v-else-if="current === 0" class="hero-bg relative overflow-hidden text-white">
+            <div class="px-8 py-16 sm:px-14 lg:py-24">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="flex items-center gap-1.5 border border-white/30 bg-white/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest backdrop-blur">
+                  <ui-icon name="whatsapp" class="h-3.5 w-3.5"></ui-icon> WhatsApp
+                </span>
+                <span class="flex items-center gap-1.5 border border-white/30 bg-white/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest backdrop-blur">
+                  <ui-icon name="instagram" class="h-3.5 w-3.5"></ui-icon> Instagram
+                </span>
+                <span class="border border-white/20 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest opacity-70">+ más canales próximamente</span>
+              </div>
+              <h2 class="mt-6 max-w-xl text-4xl font-bold leading-tight lg:text-5xl">Tu atención al cliente, lista en minutos.</h2>
+              <p class="mt-4 max-w-lg text-lg text-white/80">
+                Responde por WhatsApp e Instagram desde un solo lugar: tu negocio, tu equipo y tus clientes conectados sin fricción.
+              </p>
+              <button @click="next" class="mt-8 bg-white px-8 py-3.5 font-semibold text-neutral-900 shadow-brutal transition hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none">
+                Comenzar mi configuración →
+              </button>
+              <div class="mt-12 grid gap-4 border-t border-white/20 pt-6 sm:grid-cols-3">
+                <div>
+                  <p class="text-2xl font-bold">≈5 min</p>
+                  <p class="text-sm text-white/70">de configuración guiada</p>
+                </div>
+                <div>
+                  <p class="text-2xl font-bold">2 canales</p>
+                  <p class="text-sm text-white/70">WhatsApp hoy · Instagram pronto</p>
+                </div>
+                <div>
+                  <p class="text-2xl font-bold">Tu equipo</p>
+                  <p class="text-sm text-white/70">roles y permisos incluidos</p>
+                </div>
+              </div>
+            </div>
           </section>
 
           <!-- 1 · Nicho -->
-          <section v-else-if="current === 1" class="border-2 border-neutral-900 bg-white p-8 shadow-brutal">
+          <section v-else-if="current === 1" class="bg-white p-8">
             <h2 class="text-2xl font-bold">¿A qué se dedica tu negocio?</h2>
             <p class="mt-1 text-sm text-neutral-500">Elige el modelo más parecido: ajustamos campos, plantillas y roadmap de configuración.</p>
-            <div class="mt-6 grid gap-3 sm:grid-cols-2">
-              <button v-for="n in ui.NICHES" :key="n.id" @click="selectNiche(n.id)"
-                class="border-2 p-4 text-left transition"
+            <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <button v-for="(n, ni) in ui.NICHES" :key="n.id" @click="selectNiche(n.id)"
+                class="stagger-in border-2 p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-brutal-sm"
+                :style="{ animationDelay: (ni * 40) + 'ms' }"
                 :class="form.nicheId === n.id ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-brutal-sm' : 'border-neutral-200 bg-white hover:border-neutral-900'">
-                <div class="flex items-center justify-between">
-                  <span class="text-2xl">{{ n.emoji }}</span>
+                <div class="flex items-start justify-between gap-2">
+                  <span class="flex h-11 w-11 items-center justify-center bg-[var(--accent)] text-xl shadow-brutal-sm" :class="form.nicheId === n.id ? 'text-white' : 'bg-stone-100'">{{ n.emoji }}</span>
                   <ui-icon v-if="form.nicheId === n.id" name="check-circle" class="h-5 w-5 text-[var(--accent)]"></ui-icon>
                 </div>
                 <h3 class="mt-3 font-semibold">{{ n.nombre }}</h3>
-                <p class="mt-1 text-xs text-neutral-500">{{ n.descripcion }}</p>
+                <p class="mt-1 text-xs leading-relaxed text-neutral-500">{{ n.descripcion }}</p>
+                <div class="mt-3 flex flex-wrap gap-1.5">
+                  <span class="border border-neutral-300 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">{{ (n.customFields || []).length }} campos</span>
+                  <span class="border border-neutral-300 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">{{ (n.roadmap || []).length }} pasos</span>
+                  <span class="border border-neutral-300 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">WhatsApp + IG</span>
+                </div>
               </button>
               <button @click="selectNiche('personalizado')"
-                class="border-2 border-dashed p-4 text-left transition hover:border-neutral-900"
-                :class="form.nicheId === 'personalizado' ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-brutal-sm' : 'border-neutral-300'">
-                <span class="text-2xl">✨</span>
+                class="stagger-in border-2 border-dashed p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-brutal-sm"
+                :style="{ animationDelay: (ui.NICHES.length * 40) + 'ms' }"
+                :class="form.nicheId === 'personalizado' ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-brutal-sm' : 'border-neutral-300 hover:border-neutral-900'">
+                <span class="flex h-11 w-11 items-center justify-center bg-stone-100 text-xl">✨</span>
                 <h3 class="mt-3 font-semibold">Otro / Personalizado</h3>
                 <p class="mt-1 text-xs text-neutral-500">Configuración genérica adaptable a cualquier negocio.</p>
               </button>
             </div>
+
+            <!-- Preview del nicho seleccionado (atracción psicológica) -->
+            <div v-if="selectedNiche && selectedNiche.id !== 'personalizado'" class="mt-6 grid gap-4 border border-neutral-200 bg-stone-50 p-5 sm:grid-cols-2">
+              <div>
+                <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Campos del cliente que registrarás</p>
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                  <span v-for="f in selectedNiche.customFields" :key="f.slug" class="border border-neutral-300 bg-white px-2 py-1 text-xs">
+                    {{ f.name }}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Lo que configuraremos por ti</p>
+                <ul class="mt-2 space-y-1">
+                  <li v-for="r in selectedNiche.roadmap.slice(0, 5)" :key="r.id" class="flex items-center gap-2 text-sm text-neutral-600">
+                    <ui-icon :name="ui.ROADMAP_TYPES[r.type].icon" class="h-3.5 w-3.5 text-neutral-400"></ui-icon>
+                    {{ r.title }}
+                  </li>
+                </ul>
+              </div>
+            </div>
           </section>
 
           <!-- 2 · Foco -->
-          <section v-else-if="current === 2" class="border-2 border-neutral-900 bg-white p-8 shadow-brutal">
+          <section v-else-if="current === 2" class="bg-white p-8">
             <h2 class="text-2xl font-bold">¿En qué se enfocará tu equipo?</h2>
             <p class="mt-1 text-sm text-neutral-500">Pre-seleccionamos la mejor opción para {{ niche.nombre.toLowerCase() }}, puedes cambiarla.</p>
             <div class="mt-6 grid gap-3 sm:grid-cols-3">
@@ -351,7 +396,7 @@
           </section>
 
           <!-- 3 · Branding -->
-          <section v-else-if="current === 3" class="border-2 border-neutral-900 bg-white p-8 shadow-brutal">
+          <section v-else-if="current === 3" class="bg-white p-8">
             <h2 class="text-2xl font-bold">Dale identidad a tu espacio</h2>
             <p class="mt-1 text-sm text-neutral-500">Nombre, slogan y color de marca. Siempre podrás cambiarlo en Configuración.</p>
             <div class="mt-6 grid gap-6 sm:grid-cols-2">
@@ -387,7 +432,7 @@
           </section>
 
           <!-- 4 · Referencia -->
-          <section v-else-if="current === 4" class="border-2 border-neutral-900 bg-white p-8 shadow-brutal">
+          <section v-else-if="current === 4" class="bg-white p-8">
             <h2 class="text-2xl font-bold">¿Quién nos recomendó?</h2>
             <p class="mt-1 text-sm text-neutral-500">Nos ayuda a mejorar nuestro servicio. Tus datos nunca se comparten.</p>
             <div class="mt-6 grid gap-3 sm:grid-cols-3">
@@ -405,7 +450,7 @@
           </section>
 
           <!-- 5 · Roadmap (simulación de configuración) -->
-          <section v-else-if="current === 5" class="border-2 border-neutral-900 bg-white p-8 shadow-brutal">
+          <section v-else-if="current === 5" class="bg-white p-8">
             <div class="flex items-center justify-between gap-4">
               <div>
                 <h2 class="text-2xl font-bold">Roadmap de {{ niche.nombre }}</h2>
@@ -453,36 +498,23 @@
               <div class="mt-3 h-2 border border-white/30 bg-white/10">
                 <div class="h-full bg-[var(--accent)] transition-all duration-150" :style="{ width: progressPercent + '%' }"></div>
               </div>
-              <p class="mt-3 text-xs text-neutral-300">Simulación de configuración del entorno. En producción esto llama a la API de Zernio.</p>
+              <p class="mt-3 text-xs text-neutral-300">Preparando la configuración de tu negocio…</p>
             </div>
           </section>
 
-          <!-- 6 · WhatsApp -->
-          <section v-else-if="current === 6" class="border-2 border-neutral-900 bg-white p-8 shadow-brutal">
-            <h2 class="text-2xl font-bold">Conecta tu WhatsApp</h2>
-            <p class="mt-1 text-sm text-neutral-500">Elige la modalidad que Zernio ofrece para tu número. En este prototipo todas se simulan.</p>
-            <div class="mt-6 grid gap-3 sm:grid-cols-2">
-              <button v-for="m in ui.WHATSAPP_MODALITIES" :key="m.id" @click="openWaCard(m.id)"
-                class="border-2 p-4 text-left transition"
-                :class="waModality === m.id ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-brutal-sm' : 'border-neutral-200 hover:border-neutral-900'">
-                <div class="flex items-center justify-between">
-                  <ui-icon :name="m.icon" class="h-6 w-6 text-[var(--accent)]"></ui-icon>
-                  <ui-badge v-if="m.id === 'demo'" variant="success" dot>Recomendado</ui-badge>
-                </div>
-                <h3 class="mt-3 font-semibold">{{ m.nombre }}</h3>
-                <p class="mt-1 text-xs text-neutral-500">{{ m.desc }}</p>
-              </button>
-            </div>
+          <!-- 6 · Canales -->
+          <section v-else-if="current === 6" class="bg-white p-8">
+            <h2 class="text-2xl font-bold">Conecta tus canales</h2>
+            <p class="mt-1 text-sm text-neutral-500">WhatsApp ahora · Instagram próximamente. Todo desde un solo lugar.</p>
 
-            <!-- Conexión real con Zernio -->
-            <div class="mt-8 border-2 border-neutral-900 bg-white p-5">
+            <div class="mt-6 border border-neutral-200 bg-white p-5">
               <div class="mb-4 flex items-center gap-3">
-                <span class="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-900 text-white">
-                  <ui-icon name="key" class="h-4 w-4"></ui-icon>
+                <span class="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
+                  <ui-icon name="whatsapp" class="h-5 w-5"></ui-icon>
                 </span>
                 <div>
-                  <h3 class="font-semibold">¿Ya usas Zernio? Conecta tu API key</h3>
-                  <p class="text-sm text-neutral-500">Vincula tu número real: detectamos tu perfil, cuentas WhatsApp y números provisionados.</p>
+                  <h3 class="font-semibold">Conecta el número de tu negocio</h3>
+                  <p class="text-sm text-neutral-500">Meta te guía: autoriza con tu cuenta y verifica tu número con un código SMS. Sin pasos técnicos.</p>
                 </div>
               </div>
               <live-connect @connected="onLiveConnected"></live-connect>
@@ -490,10 +522,39 @@
                 ✓ Número vinculado: {{ liveResult.phone }}
               </p>
             </div>
+
+            <div class="mt-4 flex items-center gap-3 border border-dashed border-neutral-300 bg-stone-50 p-4">
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-pink-100 text-pink-700">
+                <ui-icon name="instagram" class="h-5 w-5"></ui-icon>
+              </span>
+              <div class="min-w-0">
+                <p class="font-semibold">Instagram</p>
+                <p class="text-sm text-neutral-500">Disponible próximamente en la configuración. Ya puedes gestionarlo desde Canales.</p>
+              </div>
+              <ui-badge variant="neutral" class="ml-auto shrink-0">Próximamente</ui-badge>
+            </div>
+
+            <!-- Clave de administración (solo si el centro no la dejó en sesión) -->
+            <div v-if="!liveResult" class="mt-4">
+              <button @click="adminKeyOpen = !adminKeyOpen" class="text-sm font-medium text-neutral-500 underline">
+                {{ adminKeyOpen ? '− Ocultar acceso de administración' : '+ Acceso de administración' }}
+              </button>
+              <div v-if="adminKeyOpen" class="mt-3 border border-neutral-200 bg-stone-50 p-4">
+                <p class="text-xs text-neutral-500">
+                  Clave de acceso de la plataforma (la proporciona tu proveedor). Sin ella no se puede crear el perfil del negocio.
+                </p>
+                <live-connect @connected="onLiveConnected"></live-connect>
+              </div>
+            </div>
+
+            <button @click="form.skipConnect = true; finish()" :disabled="creating"
+              class="mt-6 text-sm font-medium text-neutral-500 underline transition hover:text-neutral-900">
+              Configurar después (conectaré mi número desde Canales)
+            </button>
           </section>
 
           <!-- 7 · Equipo -->
-          <section v-else class="border-2 border-neutral-900 bg-white p-8 shadow-brutal">
+          <section v-else class="bg-white p-8">
             <h2 class="text-2xl font-bold">Tu equipo inicial</h2>
             <p class="mt-1 text-sm text-neutral-500">Crea tu cuenta de propietario y añade miembros sugeridos. Los permisos se gestionan después en Equipo.</p>
             <div class="mt-6 grid gap-4 sm:grid-cols-2">
@@ -552,47 +613,24 @@
               <span v-else>Crear mi espacio de trabajo →</span>
             </button>
           </section>
+          </transition>
 
-          <!-- Navegación inferior -->
-          <footer v-if="current > 0 && current < 7" class="mt-6 flex items-center justify-between">
+          <!-- Navegación inferior (sticky) -->
+          <footer v-if="current > 0 && current < 7" class="sticky bottom-0 z-10 -mx-5 mt-8 flex items-center justify-between gap-3 border-t border-neutral-200 bg-stone-100/95 px-5 py-4 backdrop-blur lg:-mx-16 lg:px-16">
             <button @click="back" class="border-2 border-neutral-900 bg-white px-5 py-2.5 font-medium shadow-brutal-sm transition hover:shadow-none">
               ← Volver
             </button>
-            <button @click="next" :disabled="!canContinue"
-              class="border-2 border-neutral-900 bg-neutral-900 px-6 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
-              Continuar →
-            </button>
+            <div class="flex items-center gap-3">
+              <span class="hidden font-mono text-[10px] uppercase tracking-widest text-neutral-400 sm:block">Paso {{ current }}/{{ STEPS.length - 1 }}</span>
+              <button @click="next" :disabled="!canContinue"
+                class="border-2 border-neutral-900 bg-neutral-900 px-6 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                Continuar →
+              </button>
+            </div>
           </footer>
             </div>
           </main>
         </div>
-
-        <!-- Modal de conexión WhatsApp -->
-        <ui-modal :open="waModal" :title="'Conectar · ' + (waModality ? (ui.WHATSAPP_MODALITIES.find(m => m.id === waModality) || {}).nombre : '')" @close="waModal = false">
-          <div v-if="waModality" class="space-y-4">
-            <div class="space-y-2">
-              <div v-for="(paso, i) in (ui.WHATSAPP_MODALITIES.find(m => m.id === waModality) || {}).pasos" :key="i"
-                class="flex items-center gap-3 border-2 p-3 transition"
-                :class="waSim.stepIndex > i ? 'border-emerald-800 bg-emerald-50' : waSim.stepIndex === i ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-neutral-200'">
-                <ui-spinner v-if="waSim.running && waSim.stepIndex === i" size="h-4 w-4" class="text-[var(--accent)]"></ui-spinner>
-                <ui-icon v-else-if="waSim.stepIndex > i" name="check" class="h-4 w-4 text-emerald-700"></ui-icon>
-                <span v-else class="font-mono text-xs tabular-nums text-neutral-400">{{ i + 1 }}</span>
-                <span class="text-sm" :class="waSim.stepIndex > i ? 'text-emerald-900' : ''">{{ paso }}</span>
-              </div>
-            </div>
-            <div v-if="waSim.done" class="flex items-center gap-2 border-2 border-emerald-800 bg-emerald-50 p-3 text-sm font-medium text-emerald-900">
-              <ui-icon name="check-circle" class="h-5 w-5"></ui-icon>
-              Número conectado: {{ ui.DEMO_PHONE }}
-            </div>
-            <button v-if="!waSim.done" @click="connectWhatsApp" :disabled="waSim.running"
-              class="w-full border-2 border-neutral-900 bg-[var(--accent)] px-6 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-60">
-              {{ waSim.running ? 'Conectando…' : 'Conectar' }}
-            </button>
-            <p class="text-xs text-neutral-400">
-              Prototipo: el flujo se simula. En modo live se abre la autorización de Meta o se validan credenciales contra la API de Zernio.
-            </p>
-          </div>
-        </ui-modal>
       </div>`,
   };
 

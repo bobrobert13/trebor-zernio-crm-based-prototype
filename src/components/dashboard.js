@@ -60,18 +60,10 @@
       // ── Personalización del panel ──────────────────────────────────────────
       const prefsOpen = Vue.ref(false);
 
-      /** Preferencias del panel (secciones y KPIs), con migración por defecto. */
+      /** Preferencias del panel (secciones y KPIs); la migración vive en app.js. */
       const prefs = Vue.computed({
         get() {
-          const ws = store.workspace;
-          if (!ws) return { sections: {}, kpis: [] };
-          if (!ws.dashboardPrefs) {
-            ws.dashboardPrefs = {
-              sections: { kpis: true, canal: true, acciones: true, roadmap: true, actividad: true },
-              kpis: (niche.value.kpis || []).map((k) => k.id),
-            };
-          }
-          return ws.dashboardPrefs;
+          return (store.workspace && store.workspace.dashboardPrefs) || { sections: {}, kpis: [] };
         },
         set(v) {
           store.workspace.dashboardPrefs = v;

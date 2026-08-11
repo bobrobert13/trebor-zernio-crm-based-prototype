@@ -294,6 +294,8 @@
      * Envía una plantilla aprobada DENTRO de una conversación existente.
      * Es la única vía para re-enganchar un hilo de WhatsApp fuera de la
      * ventana de 24 h (payload `template.elements[]` del endpoint de mensajes).
+     * Verificado en zernio-api-openapi.yaml (sendInboxMessage): el campo
+     * `template` con `elements[]` transporta la plantilla de WhatsApp.
      * @param {string} conversationId — id de la conversación.
      * @param {{accountId:string, template:{elements:Array<object>}}} payload — plantilla.
      * @returns {Promise<object>} Mensaje creado.
@@ -305,6 +307,9 @@
     /**
      * Abre una conversación NUEVA de WhatsApp con una plantilla aprobada
      * (WhatsApp no permite mensajes libres para iniciar un hilo).
+     * Verificado en zernio-api-openapi.yaml (createInboxConversation): el
+     * endpoint acepta templateName/templateLanguage/templateParams con el
+     * teléfono en participantId; sin plantilla devuelve TEMPLATE_REQUIRED.
      * @param {{accountId:string, participantId:string, templateName:string, templateLanguage?:string, templateParams?:Array<string>}} payload — datos.
      * @returns {Promise<object>} Conversación creada.
      */

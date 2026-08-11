@@ -57,14 +57,16 @@
         const key = adminKeyInput.value.trim();
         if (!key || adminKeyBusy.value) return;
         adminKeyBusy.value = true;
+        // Nunca tocar store.apiKey (key operativa del negocio): solo masterKey
+        const prev = store.masterKey;
+        store.masterKey = key;
         try {
-          store.apiKey = key;
           await api.listApiKeys(); // solo la master puede listar/crear sub-keys
-          store.masterKey = key;
           sessionStorage.setItem('tzcrm.masterKey', key);
           adminKeyInput.value = '';
           toast('Clave de administración válida: opciones avanzadas habilitadas', 'success');
         } catch (err) {
+          store.masterKey = prev; // revertir: la key operativa nunca se contamina
           toast(err.message || 'La clave no es válida para administración', 'error');
         } finally {
           adminKeyBusy.value = false;

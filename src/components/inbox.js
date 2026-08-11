@@ -448,13 +448,20 @@
           } else {
             // Re-enganche >24h: plantilla dentro del hilo existente
             const conv = tplTarget.value;
+            // Resuelve las variables {{n}} con los valores del usuario (y el body
+            // puede vivir en components[].text en plantillas reales de Meta)
+            const bodyText = t.body || ((t.components || []).find((c) => c.type === 'body') || {}).text || '';
+            let resolved = bodyText;
+            params.forEach((val, i) => {
+              resolved = String(resolved).split(`{{${i + 1}}}`).join(val);
+            });
             if (isLive.value) {
               await api.sendTemplate(conv.id, {
                 accountId,
-                template: { elements: [{ name, language: t.language || 'es', components: [{ type: 'body', text: t.body || '' }] }] },
+                template: { elements: [{ name, language: t.language || 'es', components: [{ type: 'body', text: resolved }] }] },
               });
             }
-            conv.messages.push({ id: uid('msg'), from: 'out', text: `[Plantilla ${name}] ${t.body || ''}`, ts: Date.now(), status: 'delivered' });
+            conv.messages.push({ id: uid('msg'), from: 'out', text: `[Plantilla ${name}] ${resolved}`, ts: Date.now(), status: 'delivered' });
             conv.lastTs = Date.now();
             closeTemplatePicker();
             toast('Plantilla enviada: el cliente debe responder para abrir la ventana de 24 h', 'info', 6000);

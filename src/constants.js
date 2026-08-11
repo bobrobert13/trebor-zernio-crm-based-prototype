@@ -369,17 +369,7 @@
     {
       id: 'credentials', nombre: 'Credenciales Meta', icon: 'key',
       desc: 'Alternativa headless: pega los datos de tu WABA (wabaId, phoneNumberId y token) obtenidos en Meta Business.',
-      pasos: ['Obtener credenciales en Meta Business', 'Pegar wabaId, phoneNumberId y token', 'Zernio valida y vincula el número'],
-    },
-    {
-      id: 'provisioned', nombre: 'Número Zernio', icon: 'credit-card',
-      desc: 'Zernio compra y pre-verifica un número nuevo vía Telnyx. Pago con Stripe, aprovisionamiento automático.',
-      pasos: ['Iniciar compra (Stripe Checkout)', 'Telnyx provisiona el número', 'Meta pre-verifica y queda activo'],
-    },
-    {
-      id: 'demo', nombre: 'Modo demo', icon: 'check-circle',
-      desc: 'Simula una conexión completa con un número de prueba venezolano. Ideal para validar el flujo sin API key.',
-      pasos: ['Simular perfil en Zernio', 'Vincular número de prueba', 'Activar bandeja de demostración'],
+      pasos: ['Obtener credenciales en Meta Business', 'Pegar wabaId, phoneNumberId y token', 'Se valida y vincula el número'],
     },
   ];
 

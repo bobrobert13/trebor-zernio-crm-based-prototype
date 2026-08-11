@@ -49,6 +49,33 @@
   };
 
   /**
+   * Herramientas del módulo Campañas: para qué sirven, cuándo usarlas y si
+   * requieren aprobación externa (Meta). Alimenta el pipeline educativo.
+   */
+  const CAMPAIGN_TOOLS = [
+    {
+      id: 'plantillas', nombre: 'Plantillas de mensaje', icon: 'message', disponible: true, aprobacion: true,
+      para: 'Mensajes pre-aprobados por WhatsApp para abrir conversaciones, confirmar pedidos o re-enganchar clientes fuera de la ventana de 24 h.',
+      cuando: ['Primer mensaje a un cliente nuevo', 'Conversación con más de 24 h sin respuesta', 'Confirmaciones y recordatorios automáticos'],
+    },
+    {
+      id: 'broadcasts', nombre: 'Broadcasts (campañas masivas)', icon: 'megaphone', disponible: true, aprobacion: false,
+      para: 'Envía una plantilla aprobada a muchos contactos suscritos a la vez, con métricas de entrega por destinatario.',
+      cuando: ['Promociones y novedades', 'Avisos masivos (cambio de horario, cierre)', 'Campañas estacionales'],
+    },
+    {
+      id: 'secuencias', nombre: 'Secuencias (drip)', icon: 'zap', disponible: true, aprobacion: false,
+      para: 'Cadenas de mensajes automáticos en el tiempo: cada paso usa una plantilla aprobada y se detiene si el cliente responde.',
+      cuando: ['Seguimiento de cotizaciones', 'Onboarding de clientes nuevos', 'Recordatorios escalonados de pago'],
+    },
+    {
+      id: 'flows', nombre: 'Flows (formularios)', icon: 'edit', disponible: true, aprobacion: false,
+      para: 'Formularios nativos dentro del chat de WhatsApp para capturar leads, agendar citas o hacer encuestas sin salir de la conversación.',
+      cuando: ['Captura de leads (nombre, teléfono, interés)', 'Agendar citas', 'Encuestas de satisfacción'],
+    },
+  ];
+
+  /**
    * Nichos de negocio. Cada nicho define campos personalizados, KPIs,
    * tags de conversación y un roadmap específico de configuración.
    */
@@ -504,6 +531,7 @@
     MODULES,
     PERMISSIONS,
     WHATSAPP_MODALITIES,
+    CAMPAIGN_TOOLS,
     ICONS,
     getNiche,
     permOf,

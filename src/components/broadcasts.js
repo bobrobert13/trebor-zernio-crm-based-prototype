@@ -235,7 +235,7 @@
             const created = await api.createTemplate(payload);
             const createdTpl = asArray(created)[0] || created.template || created;
             templates.value.unshift(createdTpl);
-            toast('Plantilla creada (en revisión de Meta)', 'success');
+            toast('Plantilla enviada a Meta: la revisión puede tardar hasta 24 h', 'success', 6000);
           } else {
             templates.value.unshift({
               id: uid('tpl'),
@@ -244,16 +244,96 @@
               language: 'es',
               status: 'PENDING',
             });
-            toast('Plantilla creada (simulación)', 'success');
+            toast('Plantilla enviada a revisión (simulación): estado PENDING', 'success');
           }
           tplOpen.value = false;
           Object.assign(tplForm, { mode: 'custom', name: '', category: 'UTILITY', body: '', libraryName: '' });
         } catch (err) {
-          toast(err.message || 'No se pudo crear la plantilla', 'error');
+          toast(err.message || 'No se pudo enviar la plantilla a aprobación', 'error');
         } finally {
           tplSaving.value = false;
         }
       }
+
+      // ── Plantillas: borradores + consentimiento ────────────────────────────
+
+      /** Borradores de plantillas locales (nunca se envían a Meta sin consentimiento). */
+      const draftTemplates = Vue.computed(() => workspace.value.draftTemplates || []);
+
+      /** Guarda la plantilla como borrador local (sin llamar al API). */
+      function saveDraftTemplate() {
+        const name = tplForm.name.trim();
+        if (!name || tplSaving.value) return;
+        if (tplForm.mode === 'custom' && !tplForm.body.trim()) return;
+        if (tplForm.mode === 'library' && !tplForm.libraryName.trim()) return;
+        workspace.value.draftTemplates = workspace.value.draftTemplates || [];
+        workspace.value.draftTemplates.unshift({
+          id: uid('tpl'),
+          name,
+          category: tplForm.category,
+          language: 'es',
+          status: 'draft',
+          body: tplForm.mode === 'custom' ? tplForm.body.trim() : '',
+          libraryName: tplForm.mode === 'library' ? tplForm.libraryName.trim() : '',
+        });
+        tplOpen.value = false;
+        Object.assign(tplForm, { mode: 'custom', name: '', category: 'UTILITY', body: '', libraryName: '' });
+        toast('Borrador guardado: aún no se envió a Meta', 'info');
+      }
+
+      /** Envía un borrador a aprobación de Meta (consentimiento explícito). */
+      async function submitTemplateForApproval(draft) {
+        if (tplSaving.value || !draft) return;
+        tplSaving.value = true;
+        try {
+          if (isLive.value) {
+            const payload = draft.libraryName
+              ? { accountId: accountId.value, name: draft.name, category: draft.category, language: 'es', library_template_name: draft.libraryName }
+              : { accountId: accountId.value, name: draft.name, category: draft.category, language: 'es', components: [{ type: 'body', text: draft.body }] };
+            const created = await api.createTemplate(payload);
+            const createdTpl = asArray(created)[0] || created.template || created;
+            templates.value.unshift(createdTpl);
+            toast('Plantilla enviada a Meta: la revisión puede tardar hasta 24 h', 'success', 6000);
+          } else {
+            templates.value.unshift({
+              id: uid('tpl'),
+              name: draft.name,
+              category: draft.category,
+              language: 'es',
+              status: 'PENDING',
+              body: draft.body,
+              libraryName: draft.libraryName,
+            });
+            toast('Plantilla enviada a revisión (simulación): estado PENDING', 'success');
+          }
+          workspace.value.draftTemplates = (workspace.value.draftTemplates || []).filter((d) => d.id !== draft.id);
+          previewOpen.value = false;
+        } catch (err) {
+          toast(err.message || 'No se pudo enviar la plantilla a aprobación', 'error');
+        } finally {
+          tplSaving.value = false;
+        }
+      }
+
+      /** Descarta un borrador local. */
+      function discardDraft(draft) {
+        workspace.value.draftTemplates = (workspace.value.draftTemplates || []).filter((d) => d.id !== draft.id);
+        toast('Borrador descartado', 'info');
+      }
+
+      /** Preview de una plantilla (borrador o real). */
+      const previewTpl = Vue.ref(null);
+      const previewOpen = Vue.ref(false);
+      function openPreview(t) {
+        previewTpl.value = t;
+        previewOpen.value = true;
+      }
+
+      /** Todas las plantillas visibles: borradores primero, luego las de Meta. */
+      const allTemplates = Vue.computed(() => [...draftTemplates.value, ...templates.value]);
+
+      /** Guía educativa de campañas (pipeline). */
+      const guideOpen = Vue.ref(false);
 
       /** Lista destinatarios de un broadcast con su estado de entrega. */
       async function openRecipients(broadcast) {
@@ -455,10 +535,13 @@
         seqOpen, seqSaving, seqForm, seqEnrollOpen, seqEnrollTarget, enrolling,
         flowOpen, flowSaving, flowForm, flowSendOpen, flowSendTarget, flowPhone,
         workspace, niche, isLive, broadcasts, templates, sequences, flows, TEMPLATE_TONES,
-        approvedTemplates,
+        approvedTemplates, draftTemplates, allTemplates,
+        saveDraftTemplate, submitTemplateForApproval, discardDraft,
+        previewTpl, previewOpen, openPreview, guideOpen,
         canEdit, createBroadcast, createTemplate, openRecipients, tplId,
         addSeqStep, removeSeqStep, createSequence, toggleSequence, enrollSequence,
         createFlow, sendFlow, seqStatusTone, formatDate, formatTime,
+        ui: ZernioCrm,
       };
     },
 
@@ -483,6 +566,48 @@
             </button>
           </div>
         </header>
+
+        <!-- Pipeline educativo: para qué sirve cada herramienta -->
+        <section class="border-2 border-neutral-900 bg-white">
+          <button @click="guideOpen = !guideOpen" class="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left">
+            <div class="flex items-center gap-3">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]">
+                <ui-icon name="book" class="h-4 w-4"></ui-icon>
+              </span>
+              <div>
+                <p class="font-semibold">¿Qué puedes hacer aquí?</p>
+                <p class="text-xs text-neutral-500">Guía rápida: para qué sirve cada herramienta y cuándo usarla.</p>
+              </div>
+            </div>
+            <ui-icon name="chevron-down" class="h-4 w-4 shrink-0 text-neutral-400 transition-transform" :class="guideOpen ? 'rotate-180' : ''"></ui-icon>
+          </button>
+          <div v-if="guideOpen" class="border-t border-neutral-200 p-5">
+            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <article v-for="tool in ui.CAMPAIGN_TOOLS" :key="tool.id" class="flex flex-col border border-neutral-200 p-4">
+                <div class="flex items-center justify-between gap-2">
+                  <ui-icon :name="tool.icon" class="h-5 w-5 text-[var(--accent)]"></ui-icon>
+                  <ui-badge :variant="tool.aprobacion ? 'warn' : 'success'">{{ tool.aprobacion ? 'Requiere aprobación' : 'Inmediato' }}</ui-badge>
+                </div>
+                <h4 class="mt-2 font-semibold">{{ tool.nombre }}</h4>
+                <p class="mt-1 text-xs leading-relaxed text-neutral-500">{{ tool.para }}</p>
+                <p class="mt-3 font-mono text-[9px] uppercase tracking-widest text-neutral-400">Cuándo usarlo</p>
+                <ul class="mt-1.5 space-y-1">
+                  <li v-for="c in tool.cuando" :key="c" class="flex items-start gap-1.5 text-xs text-neutral-600">
+                    <ui-icon name="check" class="mt-0.5 h-3 w-3 shrink-0 text-emerald-700"></ui-icon>
+                    {{ c }}
+                  </li>
+                </ul>
+              </article>
+            </div>
+            <div class="mt-4 flex flex-wrap items-center gap-2 border border-neutral-200 bg-stone-50 p-4 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+              <span class="flex items-center gap-1.5"><ui-icon name="message" class="h-4 w-4"></ui-icon> Plantilla aprobada</span>
+              <ui-icon name="arrow-right" class="h-3.5 w-3.5"></ui-icon>
+              <span class="flex items-center gap-1.5"><ui-icon name="megaphone" class="h-4 w-4"></ui-icon> Broadcast / Secuencia</span>
+              <ui-icon name="arrow-right" class="h-3.5 w-3.5"></ui-icon>
+              <span class="flex items-center gap-1.5"><ui-icon name="users" class="h-4 w-4"></ui-icon> Contacto suscrito</span>
+            </div>
+          </div>
+        </section>
 
         <!-- Tabs -->
         <div class="flex gap-1.5 border-b-2 border-neutral-900">
@@ -547,25 +672,41 @@
                 </button>
               </div>
               <div class="overflow-x-auto border-2 border-neutral-900 bg-white">
-                <table class="w-full min-w-[560px] text-left text-sm">
+                <table class="w-full min-w-[640px] text-left text-sm">
                   <thead class="border-b-2 border-neutral-900 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
                     <tr>
                       <th class="px-4 py-3">Nombre</th>
                       <th class="px-4 py-3">Categoría</th>
                       <th class="px-4 py-3">Idioma</th>
                       <th class="px-4 py-3">Estado</th>
+                      <th class="px-4 py-3 text-right">Acciones</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-neutral-100">
-                    <tr v-for="t in templates" :key="tplId(t)" class="hover:bg-stone-50">
+                    <tr v-for="t in allTemplates" :key="tplId(t)" class="hover:bg-stone-50">
                       <td class="px-4 py-3 font-mono text-xs">{{ t.name }}</td>
                       <td class="px-4 py-3"><ui-badge variant="neutral">{{ t.category }}</ui-badge></td>
                       <td class="px-4 py-3 font-mono text-xs uppercase text-neutral-500">{{ t.language }}</td>
-                      <td class="px-4 py-3"><ui-badge :variant="TEMPLATE_TONES[t.status] || 'neutral'" dot>{{ t.status }}</ui-badge></td>
+                      <td class="px-4 py-3"><ui-badge :variant="t.status === 'draft' ? 'neutral' : TEMPLATE_TONES[t.status] || 'neutral'" dot>{{ t.status }}</ui-badge></td>
+                      <td class="px-4 py-3">
+                        <div class="flex justify-end gap-1.5">
+                          <button @click="openPreview(t)" class="border border-neutral-300 px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition hover:border-neutral-900">Ver preview</button>
+                          <template v-if="t.status === 'draft' && canEdit('broadcasts')">
+                            <button @click="submitTemplateForApproval(t)" :disabled="tplSaving"
+                              class="border border-[var(--accent)] bg-[var(--accent)] px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white transition hover:shadow-brutal-sm disabled:opacity-40">
+                              {{ tplSaving ? 'Enviando…' : 'Enviar a aprobación' }}
+                            </button>
+                            <button @click="discardDraft(t)" class="border border-red-800 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-red-800 transition hover:shadow-brutal-sm">Descartar</button>
+                          </template>
+                        </div>
+                      </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
+              <p class="mt-2 text-xs text-neutral-500">
+                Los borradores no se envían a Meta: pulsa "Enviar a aprobación" cuando estés listo. La revisión puede tardar hasta 24 h.
+              </p>
             </section>
           </section>
 
@@ -671,7 +812,7 @@
           </div>
         </ui-modal>
 
-        <!-- Modal: nueva plantilla -->
+        <!-- Modal: nueva plantilla (guarda borrador; no envía a Meta) -->
         <ui-modal :open="tplOpen" title="Nueva plantilla de WhatsApp" @close="tplOpen = false">
           <div class="space-y-4">
             <div class="flex gap-1.5">
@@ -701,12 +842,29 @@
               <input v-model.trim="tplForm.libraryName" type="text" placeholder="appointment_reminder"
                 class="w-full border-2 border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none focus:border-neutral-900" />
             </ui-field>
-            <button @click="createTemplate" :disabled="tplSaving || !tplForm.name.trim()"
+            <p class="border border-neutral-200 bg-stone-50 px-3 py-2 text-xs text-neutral-600">
+              Se guardará como borrador local. Nada se envía a Meta hasta que pulses "Enviar a aprobación" en la lista.
+            </p>
+            <button @click="saveDraftTemplate" :disabled="tplSaving || !tplForm.name.trim()"
               class="flex w-full items-center justify-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
-              <ui-spinner v-if="tplSaving" size="h-4 w-4"></ui-spinner>
-              {{ tplSaving ? 'Creando…' : 'Crear plantilla' }}
+              Guardar borrador
             </button>
           </div>
+        </ui-modal>
+
+        <!-- Modal: preview de plantilla -->
+        <ui-modal :open="previewOpen" :title="'Plantilla · ' + (previewTpl ? previewTpl.name : '')" width="max-w-3xl" @close="previewOpen = false">
+          <template v-if="previewTpl">
+            <template-preview :tpl="previewTpl"></template-preview>
+            <div v-if="previewTpl.status === 'draft'" class="mt-4 flex justify-end gap-2">
+              <button @click="discardDraft(previewTpl); previewOpen = false" class="border-2 border-red-800 bg-red-50 px-4 py-2 text-sm font-medium text-red-800 transition hover:shadow-brutal-sm">Descartar</button>
+              <button @click="submitTemplateForApproval(previewTpl)" :disabled="tplSaving"
+                class="flex items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                <ui-spinner v-if="tplSaving" size="h-4 w-4"></ui-spinner>
+                Enviar a aprobación (Meta revisa hasta 24 h)
+              </button>
+            </div>
+          </template>
         </ui-modal>
 
         <!-- Modal: nueva secuencia -->
@@ -836,6 +994,93 @@
             </table>
           </div>
         </ui-modal>
+      </div>`,
+  };
+
+  /**
+   * Preview gráfico de una plantilla de WhatsApp: burbuja simulada con
+   * header/body/footer/botones y panel de información de la plantilla.
+   */
+  components['template-preview'] = {
+    props: { tpl: { type: Object, required: true } },
+    setup(props) {
+      const components = props.tpl.components || [];
+      const body = components.find((c) => c.type === 'body') || {};
+      const header = components.find((c) => c.type === 'header') || {};
+      const footer = components.find((c) => c.type === 'footer') || {};
+      const buttons = (components.find((c) => c.type === 'buttons') || {}).buttons || [];
+
+      /** Sustituye {{n}} por los ejemplos de Meta (o deja la variable visible). */
+      function fill(text, example) {
+        const list = Array.isArray(example) ? example : [];
+        return String(text || '').replace(/\{\{(\d+)\}\}/g, (_, n) => list[Number(n) - 1] || `{{${n}}}`);
+      }
+
+      const bodyText = Vue.computed(() => fill(props.tpl.body || body.text || '', (body.example || {}).body_text?.[0]));
+      const headerText = Vue.computed(() => fill(header.text || '', (header.example || {}).header_text?.[0]));
+      const footerText = Vue.computed(() => fill(footer.text || '', null));
+      const variables = Vue.computed(() => {
+        const m = String(props.tpl.body || body.text || '').match(/\{\{\d+\}\}/g) || [];
+        return [...new Set(m)];
+      });
+      return { bodyText, headerText, footerText, variables, buttons, fill };
+    },
+    template: `
+      <div class="grid gap-5 sm:grid-cols-2">
+        <!-- Burbuja de WhatsApp simulada -->
+        <div class="rounded-lg bg-[#efeae2] p-4">
+          <div class="mx-auto max-w-[300px]">
+            <div class="mb-1.5 text-center font-mono text-[9px] uppercase tracking-widest text-neutral-400">Vista previa en WhatsApp</div>
+            <div class="rounded-lg border border-neutral-200 bg-white px-3.5 py-2.5 shadow-sm">
+              <p v-if="headerText" class="border-b border-neutral-100 pb-1.5 text-xs font-semibold text-neutral-500">{{ headerText }}</p>
+              <p class="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed">{{ bodyText }}</p>
+              <p v-if="footerText" class="mt-1 text-[11px] text-neutral-400">{{ footerText }}</p>
+              <div v-if="buttons.length" class="mt-2 space-y-1.5 border-t border-neutral-100 pt-2">
+                <div v-for="(b, i) in buttons" :key="i" class="rounded-md border px-3 py-1.5 text-center text-xs font-medium"
+                  :class="b.type === 'url' ? 'border-sky-600 text-sky-700' : b.type === 'phone_number' ? 'border-emerald-700 text-emerald-800' : 'border-neutral-300 text-neutral-700'">
+                  {{ b.text || b.url || b.phone_number || 'Botón' }}
+                </div>
+              </div>
+            </div>
+            <p class="mt-1.5 text-right font-mono text-[9px] text-neutral-400">WhatsApp · ahora</p>
+          </div>
+        </div>
+        <!-- Información de la plantilla -->
+        <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="border border-neutral-200 p-3">
+              <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Nombre</p>
+              <p class="mt-0.5 break-all font-mono text-xs font-semibold">{{ tpl.name }}</p>
+            </div>
+            <div class="border border-neutral-200 p-3">
+              <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Categoría</p>
+              <p class="mt-0.5 text-xs font-semibold">{{ tpl.category }}</p>
+            </div>
+            <div class="border border-neutral-200 p-3">
+              <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Idioma</p>
+              <p class="mt-0.5 text-xs font-semibold">{{ tpl.language }}</p>
+            </div>
+            <div class="border border-neutral-200 p-3">
+              <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Estado</p>
+              <p class="mt-0.5 text-xs font-semibold" :class="tpl.status === 'APPROVED' ? 'text-emerald-700' : tpl.status === 'draft' ? 'text-neutral-500' : 'text-amber-700'">{{ tpl.status }}</p>
+            </div>
+          </div>
+          <div v-if="variables.length" class="border border-neutral-200 p-3">
+            <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Variables (se llenan al enviar)</p>
+            <div class="mt-1.5 flex flex-wrap gap-1.5">
+              <span v-for="v in variables" :key="v" class="border border-neutral-300 bg-stone-50 px-2 py-0.5 font-mono text-[10px]">{{ v }}</span>
+            </div>
+          </div>
+          <p v-if="tpl.status === 'draft'" class="border border-amber-600 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Borrador local: aún no fue enviado a Meta. Pulsa "Enviar a aprobación" para iniciar la revisión (hasta 24 h).
+          </p>
+          <p v-else-if="tpl.status === 'PENDING'" class="border border-amber-600 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            En revisión de Meta: puede tardar hasta 24 h. Podrás usarla cuando esté aprobada.
+          </p>
+          <p v-else-if="tpl.status === 'REJECTED'" class="border border-red-700 bg-red-50 px-3 py-2 text-xs text-red-800">
+            Rechazada por Meta: revisa el motivo y crea una nueva versión.
+          </p>
+        </div>
       </div>`,
   };
 

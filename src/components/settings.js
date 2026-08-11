@@ -224,10 +224,17 @@
 
       /** Simula un evento message.received firmado hacia el server local. */
       async function simulateWebhook() {
+        const firstConv = (workspace.value.conversations || [])[0];
         const payload = {
           event: 'message.received',
           timestamp: new Date().toISOString(),
-          message: { id: `demo_${Date.now()}`, text: 'Hola, ¿tienen disponibilidad?', from: '+58 412 000 0101' },
+          message: {
+            id: `demo_${Date.now()}`,
+            text: 'Hola, ¿tienen disponibilidad?',
+            platform: 'whatsapp',
+            conversationId: firstConv ? firstConv.id : null,
+            sender: { identifier: '+58 412 000 0101', name: 'Cliente demo' },
+          },
         };
         try {
           if (store.serverMode && crypto.subtle) {

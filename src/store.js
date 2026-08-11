@@ -59,6 +59,8 @@
     const sender = msg.sender || {};
     const channel = (ws.channels || []).find((c) => c.platform === platform);
     const accountId = channel ? channel.accountId : platform === 'whatsapp' ? (ws.zernio && ws.zernio.accountId) || '' : '';
+    // Sin canal conectado: no reflejar (quedaría una conversación huérfana sin respuesta)
+    if (!accountId) return;
 
     let conv = conversationId ? ws.conversations.find((c) => c.id === conversationId) : null;
     if (!conv) {
@@ -90,8 +92,11 @@
       ws.conversations.unshift(conv);
     }
 
+    // Dedupe por id de mensaje (entrega at-least-once + recargas de página)
+    const msgId = msg.id || null;
+    if (msgId && conv.messages.some((m) => m.id === msgId)) return;
     conv.messages.push({
-      id: msg.id || ZernioCrm.uid('msg'),
+      id: msgId || ZernioCrm.uid('msg'),
       from: 'in',
       text,
       ts: Date.parse(msg.timestamp || event.timestamp) || Date.now(),

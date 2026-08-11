@@ -54,6 +54,8 @@ const seenWebhookIds = new Set();
 async function tunnelUrl() {
   if (process.env.TUNNEL_URL) return process.env.TUNNEL_URL;
   try {
+    const info = await stat(TUNNEL_FILE);
+    if (Date.now() - info.mtimeMs > 10 * 60 * 1000) return null; // URL caducada (túnel muerto)
     const raw = await readFile(TUNNEL_FILE, 'utf8');
     const url = raw.trim();
     return url.startsWith('https://') ? url : null;
@@ -232,6 +234,7 @@ const server = createServer(async (req, res) => {
 
     if (pathname === '/api/tunnel') {
       const url = await tunnelUrl();
+      res.setHeader('Vary', 'Origin');
       res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ url }));
       return;

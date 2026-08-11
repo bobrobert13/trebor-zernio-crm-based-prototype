@@ -94,7 +94,10 @@
       /** ¿La conversación seleccionada está fuera de la ventana de 24h? */
       const outsideWindow = Vue.computed(() => {
         const conv = selected.value;
-        if (!conv || !conv.messages.length) return false;
+        if (!conv || !conv.messages.length) {
+          // Historial no disponible (carga fallida): tratar como fuera de ventana para no violar políticas
+          return isLive.value && conv && conv.messagesLoaded === false;
+        }
         return Date.now() - conv.messages[conv.messages.length - 1].ts > 24 * 3600 * 1000;
       });
 
@@ -120,6 +123,7 @@
           // Cada conversación pide sus mensajes con SU cuenta (puede haber varias por perfil)
           const accountId = conv.accountId || (workspace.value.zernio && workspace.value.zernio.accountId);
           if (!accountId) return;
+          conv.messagesLoaded = false;
           try {
             const data = await ZernioCrm.api.listMessages(conv.id, accountId);
             const list = Array.isArray(data) ? data : data.messages || [];
@@ -131,8 +135,10 @@
               status: m.status || m.deliveryStatus || 'delivered',
             }));
             conv.lastTs = conv.messages.length ? conv.messages[conv.messages.length - 1].ts : conv.lastTs;
+            conv.messagesLoaded = true;
           } catch (err) {
             toast(err.message || 'No se pudieron cargar los mensajes', 'error');
+            // messagesLoaded queda false → ventana de 24h se aplica de forma conservadora
           }
         }
       }
@@ -223,63 +229,83 @@
         syncing.value = true;
         try {
           let added = 0;
+          const errors = [];
           for (const p of PLATFORMS.filter((x) => x.inbox)) {
             const channel = (workspace.value.channels || []).find((c) => c.platform === p.id);
             const accountId = channel ? channel.accountId : p.id === 'whatsapp' ? (workspace.value.zernio && workspace.value.zernio.accountId) || '' : '';
             if (!accountId) continue; // canal no conectado: Zernio devolvería conversaciones de otras cuentas
-            const data = await ZernioCrm.api.listConversations({ profileId, platform: p.id });
-            let list = ZernioCrm.asArray(data);
-            list = list.filter((c) => c.accountId === accountId);
-            // Limpia conversaciones live huérfanas de ESTE canal (demo conv_* se mantienen)
-            const liveIds = new Set(list.map((c) => c.id));
-            workspace.value.conversations = workspace.value.conversations.filter(
-              (c) => c.id.startsWith('conv_') || (c.platform || 'whatsapp') !== p.id || liveIds.has(c.id)
-            );
-            list.forEach((conv) => {
-              const existing = conversations.value.find((c) => c.id === conv.id);
-              if (existing) {
-                // Conversaciones sincronizadas antes del fix por-cuenta: asignar accountId y refrescar
-                if (!existing.accountId && conv.accountId) {
-                  existing.accountId = conv.accountId;
-                  existing.platform = p.id;
-                  existing.lastTs = Date.parse(conv.updatedTime) || existing.lastTs;
+            try {
+              const data = await ZernioCrm.api.listConversations({ profileId, platform: p.id });
+              let list = ZernioCrm.asArray(data);
+              list = list.filter((c) => c.accountId === accountId);
+              // Limpia conversaciones live huérfanas de ESTE canal (demo conv_* se mantienen)
+              const liveIds = new Set(list.map((c) => c.id));
+              workspace.value.conversations = workspace.value.conversations.filter(
+                (c) => c.id.startsWith('conv_') || (c.platform || 'whatsapp') !== p.id || liveIds.has(c.id)
+              );
+              list.forEach((conv) => {
+                const existing = conversations.value.find((c) => c.id === conv.id);
+                if (existing) {
+                  // Conversaciones sincronizadas antes del fix por-cuenta: asignar accountId y refrescar
+                  if (!existing.accountId && conv.accountId) {
+                    existing.accountId = conv.accountId;
+                    existing.platform = p.id;
+                    existing.lastTs = Date.parse(conv.updatedTime) || existing.lastTs;
+                  }
+                  return;
                 }
-                return;
-              }
-              const name = conv.participantName || conv.participantUsername || 'Cliente Zernio';
-              const phone = conv.participantUsername || conv.participantId || '';
-              let contact = contacts.value.find((c) => digits(c.phone) === digits(phone));
-              if (contact && /^\d+$/.test(contact.name) && !/^\d+$/.test(name)) {
-                contact.name = name; // mejora el nombre numérico con el del participante
-              }
-              if (!contact) {
-                contact = {
-                  id: uid('ct'),
-                  name,
-                  phone,
+                const name = conv.participantName || conv.participantUsername || 'Cliente Zernio';
+                const phone = conv.participantUsername || conv.participantId || '';
+                let contact = contacts.value.find((c) => digits(c.phone) === digits(phone));
+                if (contact && /^\d+$/.test(contact.name) && !/^\d+$/.test(name)) {
+                  contact.name = name; // mejora el nombre numérico con el del participante
+                }
+                if (!contact) {
+                  contact = {
+                    id: uid('ct'),
+                    name,
+                    phone,
+                    platform: p.id,
+                    tags: ['cliente'],
+                    customFields: {},
+                    createdAt: Date.now(),
+                  };
+                  workspace.value.contacts.unshift(contact);
+                }
+                workspace.value.conversations.unshift({
+                  id: conv.id,
+                  contactId: contact.id,
                   platform: p.id,
-                  tags: ['cliente'],
-                  customFields: {},
-                  createdAt: Date.now(),
-                };
-                workspace.value.contacts.unshift(contact);
-              }
-              workspace.value.conversations.unshift({
-                id: conv.id,
-                contactId: contact.id,
-                platform: p.id,
-                status: conv.status || 'active',
-                unread: conv.unreadCount || 0,
-                tags: contact.tags.slice(0, 1),
-                messages: [],
-                lastTs: Date.parse(conv.updatedTime) || Date.now(),
-                accountId: conv.accountId,
-                igProfile: conv.participant && conv.participant.instagramProfile ? conv.participant.instagramProfile : conv.participantInstagramProfile || null,
+                  status: conv.status || 'active',
+                  unread: conv.unreadCount || 0,
+                  tags: contact.tags.slice(0, 1),
+                  messages: [],
+                  lastTs: Date.parse(conv.updatedTime) || Date.now(),
+                  accountId: conv.accountId,
+                  igProfile: conv.participant && conv.participant.instagramProfile ? conv.participant.instagramProfile : conv.participantInstagramProfile || null,
+                });
+                added += 1;
               });
-              added += 1;
-            });
+            } catch (err) {
+              errors.push(p.nombre);
+            }
           }
-          toast(added > 0 ? `${added} conversaciones sincronizadas` : 'Sin conversaciones nuevas', 'success');
+          // Limpia conversaciones live de plataformas sin canal conectado (fantasmas)
+          const connected = new Set(
+            PLATFORMS.filter((x) => x.inbox).map((x) => {
+              const ch = (workspace.value.channels || []).find((c) => c.platform === x.id);
+              const acc = ch ? ch.accountId : x.id === 'whatsapp' ? (workspace.value.zernio && workspace.value.zernio.accountId) || '' : '';
+              return acc ? x.id : null;
+            }).filter(Boolean)
+          );
+          workspace.value.conversations = workspace.value.conversations.filter(
+            (c) => c.id.startsWith('conv_') || connected.has(c.platform || 'whatsapp')
+          );
+          if (errors.length > 0) {
+            toast(`Sincronización parcial: errores en ${errors.join(', ')}`, 'error');
+          } else {
+            toast(added > 0 ? `${added} conversaciones sincronizadas` : 'Sin conversaciones nuevas', 'success');
+          }
         } catch (err) {
           toast(err.message || 'No se pudo sincronizar', 'error');
         } finally {

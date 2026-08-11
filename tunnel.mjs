@@ -14,7 +14,7 @@
  * Instalación cloudflared (1 línea): ver docs/POST-IMPLEMENTATION.md.
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { writeFile } from 'node:fs/promises';
+import { writeFile, unlink } from 'node:fs/promises';
 import { request } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
@@ -57,15 +57,40 @@ async function persist(url) {
   console.log(`[tunnel] REGISTRA EN ZERNIO → Configuración → Webhooks: ${url}/webhooks/zernio?secret=<tu-secret>`);
 }
 
+/** Elimina la URL persistida (el túnel ya no sirve). */
+async function clearTunnelFile() {
+  try {
+    await unlink(TUNNEL_FILE);
+  } catch {
+    // archivo inexistente: ok
+  }
+}
+
+/** Registra cleanup del child ante cualquier señal de terminación. */
+function wireSignals(child) {
+  const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+  signals.forEach((sig) => {
+    process.on(sig, () => {
+      child.kill(sig);
+      clearTunnelFile().finally(() => setTimeout(() => process.exit(0), 500));
+    });
+  });
+  child.on('exit', (code) => {
+    console.error(`[tunnel] proceso terminado (${code})`);
+    clearTunnelFile().finally(() => process.exit(code || 1));
+  });
+}
+
 async function main() {
   if (hasBinary('cloudflared')) {
     console.log(`[tunnel] cloudflared quick tunnel → http://localhost:${PORT}`);
     const child = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${PORT}`]);
     let buffer = '';
     let persisted = false;
+    wireSignals(child);
     child.stdout.on('data', async (chunk) => {
+      if (persisted) return; // no acumular más buffer
       buffer += chunk.toString();
-      if (persisted) return;
       const url = cloudflaredUrl(buffer);
       if (url) {
         persisted = true;
@@ -81,6 +106,7 @@ async function main() {
   if (hasBinary('ngrok')) {
     console.log(`[tunnel] ngrok → http://localhost:${PORT} (requiere authtoken configurado)`);
     const child = spawn('ngrok', ['http', String(PORT)]);
+    wireSignals(child);
     const timer = setInterval(async () => {
       const url = await ngrokUrl();
       if (url) {
@@ -89,7 +115,6 @@ async function main() {
         await persist(url);
       }
     }, 1500);
-    process.on('SIGINT', () => child.kill('SIGINT'));
     return;
   }
 

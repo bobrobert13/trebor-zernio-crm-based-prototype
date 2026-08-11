@@ -214,12 +214,13 @@
 
       return {
         workspace, isLive, leadTags, columns, cardsOf, metricsOf, lastMessageOf,
+        contacts, conversations,
         dragContactId, onDragStart, onDragOver, onDrop, moveContact,
         detailOpen, detailContact, openDetail, channelBars, openConversation,
         viewTab, activeContacts, closedContacts,
         closeOpen, closeTarget, closeForm, openCloseModal, confirmClose, reopenLead,
         remInput, remPanelOpen, pendingReminders, hasOverdue, addReminderFor, upcomingReminders,
-        toggleReminder, removeReminder,
+        remindersOf, toggleReminder, removeReminder,
         getPlatform, timeAgo, canEdit,
       };
     },

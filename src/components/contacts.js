@@ -211,7 +211,7 @@
               </ui-field>
             </div>
 
-            <ui-field label="Campos del nicho · {{ niche.nombre }}">
+            <ui-field :label="'Campos del nicho · ' + (niche.nombre || '')">
               <div class="grid gap-4 sm:grid-cols-2">
                 <template v-for="f in fields" :key="f.slug">
                   <input v-if="f.type === 'text'" v-model="form.customFields[f.slug]" type="text" :placeholder="f.name"

@@ -1026,7 +1026,9 @@
         const m = String(props.tpl.body || body.text || '').match(/\{\{\d+\}\}/g) || [];
         return [...new Set(m)];
       });
-      return { bodyText, headerText, footerText, buttons, fill, hasBody, headerFormat, variables };
+      /** Envelope sin componentes: no hay nada que renderizar (ni header ni body). */
+      const noComponents = Vue.computed(() => !props.tpl.components || !props.tpl.components.length);
+      return { bodyText, headerText, footerText, buttons, fill, hasBody, headerFormat, variables, noComponents };
     },
     template: `
       <div class="grid gap-5 sm:grid-cols-2">
@@ -1084,7 +1086,10 @@
             </div>
           </div>
           <!-- Desglose de componentes -->
-          <div class="flex flex-wrap gap-1.5">
+          <p v-if="noComponents" class="border border-dashed border-neutral-400 bg-stone-50 px-3 py-2 text-xs text-neutral-500">
+            Sin componentes definidos en esta plantilla.
+          </p>
+          <div v-else class="flex flex-wrap gap-1.5">
             <span v-if="headerFormat" class="border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider" :class="headerFormat === 'image' ? 'border-sky-700 text-sky-700' : headerFormat === 'video' ? 'border-violet-700 text-violet-700' : 'border-amber-700 text-amber-800'">
               Header {{ headerFormat === 'image' ? 'imagen' : headerFormat === 'video' ? 'video' : 'documento' }}
             </span>

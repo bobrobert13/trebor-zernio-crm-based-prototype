@@ -47,18 +47,6 @@
       }
       Vue.onUnmounted(() => timers.forEach(clearTimeout));
 
-      // Abre una conversación pedida desde otro módulo (ej. drawer de Leads)
-      Vue.watch(
-        () => store.pendingConversationId,
-        (id) => {
-          if (!id) return;
-          const conv = conversations.value.find((c) => c.id === id);
-          store.pendingConversationId = null;
-          if (conv) selectConversation(conv);
-        },
-        { immediate: true }
-      );
-
       const workspace = Vue.computed(() => store.workspace);
       const niche = Vue.computed(() => getNiche(workspace.value && workspace.value.nicheId));
       const contacts = Vue.computed(() => workspace.value.contacts || []);
@@ -80,7 +68,7 @@
             const convPlatform = c.platform || 'whatsapp';
             if (platformFilter.value !== 'all' && convPlatform !== platformFilter.value) return false;
             const contact = contacts.value.find((ct) => ct.id === c.contactId);
-            const haystack = `${contact ? contact.name : ''} ${c.messages.length ? c.messages[c.messages.length - 1].text : ''}`.toLowerCase();
+            const haystack = `${contact ? contact.name : ''} ${(c.messages && c.messages.length) ? c.messages[c.messages.length - 1].text : ''}`.toLowerCase();
             if (q && !haystack.includes(q)) return false;
             if (filter.value === 'unread') return c.unread > 0;
             if (filter.value !== 'all') return c.tags.includes(filter.value);
@@ -112,7 +100,7 @@
       /** ¿La conversación seleccionada está fuera de la ventana de 24h? */
       const outsideWindow = Vue.computed(() => {
         const conv = selected.value;
-        if (!conv || !conv.messages.length) {
+        if (!conv || !conv.messages || !conv.messages.length) {
           // Historial no disponible (carga fallida): tratar como fuera de ventana para no violar políticas
           return isLive.value && conv && conv.messagesLoaded === false;
         }
@@ -137,14 +125,14 @@
         selectedId.value = conv.id;
         humanAgent.value = false;
         if (conv.unread > 0) conv.unread = 0;
-        if (isLive.value && conv.messages.length === 0) {
+        if (isLive.value && (conv.messages || []).length === 0) {
           // Cada conversación pide sus mensajes con SU cuenta (puede haber varias por perfil)
           const accountId = conv.accountId || (workspace.value.zernio && workspace.value.zernio.accountId);
           if (!accountId) return;
           conv.messagesLoaded = false;
           try {
             const data = await ZernioCrm.api.listMessages(conv.id, accountId);
-            const list = Array.isArray(data) ? data : data.messages || [];
+            const list = Array.isArray(data) ? data : (data && data.messages) || [];
             conv.messages = list.map((m) => ({
               id: m.id || m.messageId,
               from: m.direction === 'outgoing' || m.from === 'me' ? 'out' : 'in',
@@ -167,7 +155,7 @@
 
       /** Último mensaje de una conversación (preview). */
       function lastMessage(conv) {
-        const m = conv.messages[conv.messages.length - 1];
+        const m = (conv.messages && conv.messages.length) ? conv.messages[conv.messages.length - 1] : null;
         return m ? `${m.from === 'out' ? 'Tú: ' : ''}${m.text}` : 'Sin mensajes';
       }
 
@@ -544,6 +532,20 @@
           tplSending.value = false;
         }
       }
+
+      // Abre una conversación pedida desde otro módulo (ej. drawer de Leads).
+      // Va al FINAL del setup: el watch immediate corre en setup y usa computeds
+      // y selectConversation, que deben estar inicializados (TDZ).
+      Vue.watch(
+        () => store.pendingConversationId,
+        (id) => {
+          if (!id) return;
+          const conv = conversations.value.find((c) => c.id === id);
+          store.pendingConversationId = null;
+          if (conv) selectConversation(conv);
+        },
+        { immediate: true }
+      );
 
       return {
         search, filter, platformFilter, selectedId, draft, sending, loading, syncing, newConvOpen, newContactId,

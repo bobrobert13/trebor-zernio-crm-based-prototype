@@ -229,6 +229,62 @@
         { id: 'broadcast_catalogo', title: 'Catálogo por campaña', desc: 'Envía tu catálogo nuevo a toda tu base.', type: 'automations', optional: true, estimated: '~20 min' },
       ],
     },
+    {
+      id: 'belleza', nombre: 'Salón de belleza', emoji: '💇‍♀️',
+      descripcion: 'Citas, recordatorios y venta de servicios y productos de estética.',
+      focusDefault: 'atencion+ventas',
+      tags: ['cita', 'reserva', 'reclamo', 'vip'],
+      customFields: [
+        { slug: 'servicios', name: 'Servicios de interés', type: 'select', options: ['Corte', 'Color', 'Manicure', 'Pedicure', 'Tratamientos', 'Peinado'] },
+        { slug: 'estilista', name: 'Estilista preferido', type: 'text' },
+        { slug: 'frecuencia', name: 'Frecuencia de visita', type: 'select', options: ['Semanal', 'Quincenal', 'Mensual', 'Ocasional'] },
+        { slug: 'aniversario', name: 'Aniversario (fecha)', type: 'date' },
+      ],
+      kpis: [
+        { id: 'citas_hoy', label: 'Citas de hoy', unit: '', icon: 'clock' },
+        { id: 'reservas', label: 'Reservas activas', unit: '', icon: 'message' },
+        { id: 'clientes', label: 'Clientes activos', unit: '', icon: 'users' },
+        { id: 't_respuesta', label: 'Respuesta promedio', unit: 'min', icon: 'zap' },
+      ],
+      roadmap: [
+        { id: 'wa_channel', title: 'Conectar número WhatsApp', desc: 'Vincula tu número vía Meta (guiado).', type: 'channel', optional: false, estimated: '~10 min' },
+        { id: 'wa_profile', title: 'Perfil comercial', desc: 'Nombre, descripción y horario de atención.', type: 'channel', optional: false, estimated: '~5 min' },
+        { id: 'tpl_cita', title: 'Plantilla de confirmación de cita', desc: 'Confirma citas con fecha, hora y servicios.', type: 'templates', optional: false, estimated: '~15 min' },
+        { id: 'tpl_recordatorio', title: 'Recordatorio de cita', desc: 'Aviso automático 24 h antes de la visita.', type: 'templates', optional: true, estimated: '~15 min' },
+        { id: 'fields_cliente', title: 'Campos de cliente', desc: 'Servicios, estilista preferido y frecuencia.', type: 'fields', optional: false, estimated: '~5 min' },
+        { id: 'roles_equipo', title: 'Roles del equipo', desc: 'Recepcionistas y estilistas con permisos propios.', type: 'roles', optional: false, estimated: '~10 min' },
+        { id: 'auto_respuestas', title: 'Respuestas rápidas', desc: 'Mensajes predefinidos para precios y horarios.', type: 'automations', optional: true, estimated: '~15 min' },
+        { id: 'catalogo', title: 'Catálogo de servicios', desc: 'Lista de servicios y precios para responder al instante.', type: 'templates', optional: true, estimated: '~10 min' },
+      ],
+    },
+    {
+      id: 'tienda', nombre: 'Tienda de ropa', emoji: '👗',
+      descripcion: 'Ventas por catálogo, tallas, pedidos y seguimiento de clientes.',
+      focusDefault: 'ventas',
+      tags: ['pedido', 'talla', 'reclamo', 'vip'],
+      customFields: [
+        { slug: 'talla', name: 'Talla', type: 'select', options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },
+        { slug: 'estilo', name: 'Preferencias de estilo', type: 'text' },
+        { slug: 'frecuencia', name: 'Frecuencia de compra', type: 'select', options: ['Semanal', 'Mensual', 'Temporada', 'Ocasional'] },
+        { slug: 'tallas_interes', name: 'Tallas de interés (niños)', type: 'text' },
+      ],
+      kpis: [
+        { id: 'pedidos_hoy', label: 'Pedidos hoy', unit: '', icon: 'message' },
+        { id: 'cotizaciones', label: 'Consultas de tallas', unit: '', icon: 'search' },
+        { id: 'clientes', label: 'Clientes activos', unit: '', icon: 'users' },
+        { id: 't_respuesta', label: 'Respuesta promedio', unit: 'min', icon: 'zap' },
+      ],
+      roadmap: [
+        { id: 'wa_channel', title: 'Conectar número WhatsApp', desc: 'Vincula tu número vía Meta (guiado).', type: 'channel', optional: false, estimated: '~10 min' },
+        { id: 'wa_profile', title: 'Perfil comercial', desc: 'Nombre, descripción y horario de atención.', type: 'channel', optional: false, estimated: '~5 min' },
+        { id: 'tpl_pedido', title: 'Plantilla de confirmación de pedido', desc: 'Confirma pedidos con talla, color y envío.', type: 'templates', optional: false, estimated: '~15 min' },
+        { id: 'tpl_novedades', title: 'Campaña de novedades', desc: 'Avisa sobre nueva colección y stock.', type: 'templates', optional: true, estimated: '~15 min' },
+        { id: 'fields_cliente', title: 'Campos de cliente', desc: 'Talla, estilo y frecuencia de compra.', type: 'fields', optional: false, estimated: '~5 min' },
+        { id: 'roles_equipo', title: 'Roles del equipo', desc: 'Vendedores y despacho con permisos propios.', type: 'roles', optional: false, estimated: '~10 min' },
+        { id: 'catalogo', title: 'Catálogo de productos', desc: 'Fotos y precios para responder consultas al instante.', type: 'templates', optional: true, estimated: '~10 min' },
+        { id: 'auto_respuestas', title: 'Respuestas rápidas', desc: 'Guía de tallas y políticas de cambio predefinidas.', type: 'automations', optional: true, estimated: '~15 min' },
+      ],
+    },
   ];
 
   /** Nicho genérico para negocios fuera de los templates. */

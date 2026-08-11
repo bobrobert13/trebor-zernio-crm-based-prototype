@@ -24,6 +24,7 @@
     currentUser: null,
     mode: 'demo',
     apiKey: '',
+    masterKey: '', // key del centro (solo llamadas admin: perfiles, sub-keys, billing)
     corsBlocked: false,
     serverMode: false,
     route: 'dashboard',

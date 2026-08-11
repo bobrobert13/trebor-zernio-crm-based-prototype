@@ -41,12 +41,13 @@
       /** Cuentas de la plataforma seleccionada en el perfil. */
       const platformAccounts = Vue.computed(() => accounts.value.filter((a) => a.platform === props.platform));
 
-      /** Valida la key listando perfiles. */
+      /** Valida la key listando perfiles. Guarda la key del centro (master). */
       async function validateKey() {
         const key = apiKey.value.trim();
         if (!key || busy.value) return;
         busy.value = true;
         try {
+          store.masterKey = key;
           store.apiKey = key;
           const data = await api.getProfiles();
           profiles.value = asArray(data);
@@ -63,7 +64,42 @@
         }
       }
 
-      /** Crea un perfil en Zernio con el nombre del workspace. */
+      /**
+       * Crea la sub-key scoped al perfil (una por negocio) y la activa como
+       * key operativa. Si ya existe (workspace.zernio.subKey) la reutiliza.
+       * @param {string} profileId — id del perfil del negocio.
+       * @returns {Promise<string|null>} Sub-key activa o null si no se pudo crear.
+       */
+      async function ensureSubKey(profileId) {
+        if (!profileId) return null;
+        const z = store.workspace && store.workspace.zernio;
+        if (z && z.subKey) {
+          if (store.apiKey !== z.subKey) store.apiKey = z.subKey;
+          return z.subKey;
+        }
+        if (!store.masterKey) store.masterKey = store.apiKey;
+        try {
+          const data = await api.createApiKey({
+            name: `negocio-${((store.workspace && store.workspace.name) || 'mvp').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`,
+            profileIds: [profileId],
+          });
+          const subKey = (data.apiKey && data.apiKey.key) || data.key;
+          if (!subKey) throw new Error('el API no devolvió la sub-key');
+          if (store.workspace) {
+            store.workspace.zernio = store.workspace.zernio || {};
+            store.workspace.zernio.subKey = subKey;
+            store.workspace.zernio.masterKey = store.masterKey;
+          }
+          store.apiKey = subKey;
+          toast('Sub-key del negocio creada (aislamiento por perfil)', 'success');
+          return subKey;
+        } catch (err) {
+          toast(`No se pudo crear la sub-key (${err.message}). Se continúa con la key actual.`, 'error', 6000);
+          return null;
+        }
+      }
+
+      /** Crea un perfil en Zernio con el nombre del workspace y su sub-key. */
       async function createProfile() {
         busy.value = true;
         try {
@@ -73,6 +109,7 @@
           selectedProfileId.value = profile.id || profile._id;
           step.value = 'profile';
           toast('Perfil creado en Zernio', 'success');
+          await ensureSubKey(selectedProfileId.value);
           await loadChannelOptions(selectedProfileId.value);
         } catch (err) {
           toast(err.message || 'No se pudo crear el perfil', 'error');
@@ -88,6 +125,7 @@
         selectedProfileId.value = id;
         busy.value = true;
         try {
+          await ensureSubKey(id); // activa la sub-key del negocio antes de operar
           const [accData, phoneData] = await Promise.all([
             api.getAccounts(id),
             isWhatsApp.value ? api.listPhoneNumbers(id) : Promise.resolve([]),
@@ -225,7 +263,7 @@
         step, busy, apiKey, profiles, selectedProfileId, accounts, phones,
         selectedAccountId, selectedPhoneId, creds, showCreds, result, waAccounts: platformAccounts,
         isWhatsApp, oauthUrl,
-        validateKey, createProfile, loadChannelOptions, connectWithAccount,
+        validateKey, createProfile, ensureSubKey, loadChannelOptions, connectWithAccount,
         connectWithPhone, connectCredentials, startOAuth, verifyOAuth, reset,
       };
     },
@@ -274,6 +312,9 @@
                 + Crear perfil nuevo con el nombre del negocio
               </button>
             </div>
+            <p class="border-t-2 border-neutral-900 px-4 py-2.5 text-xs text-neutral-500">
+              Al elegir un perfil se crea y activa la sub-key del negocio (scope limitado a este perfil, expiración 90 días).
+            </p>
           </div>
 
           <!-- Paso 3 · Cuenta o número -->

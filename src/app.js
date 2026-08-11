@@ -55,6 +55,10 @@
         store.workspace = workspace;
         store.currentUser =
           workspace.users.find((u) => u.id === session.userId) || workspace.users[0] || null;
+        // Restaura las claves del centro/sub-key persistidas en el workspace
+        const z = workspace.zernio || {};
+        store.masterKey = z.masterKey || store.masterKey;
+        if (z.subKey && store.mode === 'live') store.apiKey = z.subKey;
       }
     }
     // Saneamiento: modo live con conexión Zernio incompleta → degradar a demo con aviso

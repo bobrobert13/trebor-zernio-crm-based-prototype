@@ -38,6 +38,41 @@
       );
       const referrer = Vue.computed(() => REFERRERS.find((r) => r.id === workspace.value.referrer) || {});
 
+      // ── Opciones avanzadas (superadministrador) ────────────────────────────
+      const advancedOpen = Vue.ref(false);
+      const adminKeyInput = Vue.ref('');
+      const adminKeyBusy = Vue.ref(false);
+
+      /** ¿Hay clave de administración en sesión? (el centro la deja al configurar). */
+      const isAdvanced = Vue.computed(() => {
+        try {
+          return Boolean(sessionStorage.getItem('tzcrm.masterKey')) || Boolean(store.masterKey);
+        } catch {
+          return false;
+        }
+      });
+
+      /** Valida la clave de administración (probe admin) y la guarda en sesión. */
+      async function validateAdminKey() {
+        const key = adminKeyInput.value.trim();
+        if (!key || adminKeyBusy.value) return;
+        adminKeyBusy.value = true;
+        // Nunca tocar store.apiKey (key operativa del negocio): solo masterKey
+        const prev = store.masterKey;
+        store.masterKey = key;
+        try {
+          await api.listApiKeys(); // solo la master puede listar/crear sub-keys
+          sessionStorage.setItem('tzcrm.masterKey', key);
+          adminKeyInput.value = '';
+          toast('Clave de administración válida: opciones avanzadas habilitadas', 'success');
+        } catch (err) {
+          store.masterKey = prev; // revertir: la key operativa nunca se contamina
+          toast(err.message || 'La clave no es válida para administración', 'error');
+        } finally {
+          adminKeyBusy.value = false;
+        }
+      }
+
       /** Guarda branding y refresca el acento del tema. */
       function saveBranding() {
         if (!workspace.value.name.trim()) return;
@@ -341,6 +376,50 @@
         toast('Reconectado con la plataforma', 'success');
       }
 
+      // ── Gestión de leads (etiquetas personalizables de la bandeja) ─────────
+      const leadTags = Vue.computed(() => workspace.value.leadTags || []);
+      const leadInput = Vue.ref('');
+
+      function addLeadTag() {
+        const tag = leadInput.value.trim().toLowerCase().replace(/\s+/g, '_');
+        if (!tag || leadTags.value.includes(tag)) return;
+        workspace.value.leadTags = [...leadTags.value, tag];
+        leadInput.value = '';
+        toast('Etiqueta de lead agregada', 'success');
+      }
+
+      function removeLeadTag(index) {
+        workspace.value.leadTags = leadTags.value.filter((_, i) => i !== index);
+        toast('Etiqueta de lead eliminada', 'info');
+      }
+
+      function moveLeadTag(index, dir) {
+        const next = index + dir;
+        if (next < 0 || next >= leadTags.value.length) return;
+        const list = [...leadTags.value];
+        [list[index], list[next]] = [list[next], list[index]];
+        workspace.value.leadTags = list;
+      }
+
+      /** Renombra una etiqueta en la bandeja y en las conversaciones asociadas. */
+      function renameLeadTag(index, value) {
+        const old = leadTags.value[index];
+        const tag = value.trim().toLowerCase().replace(/\s+/g, '_');
+        if (!tag || tag === old) {
+          workspace.value.leadTags = [...leadTags.value]; // fuerza re-render
+          return;
+        }
+        const list = [...leadTags.value];
+        list[index] = tag;
+        workspace.value.leadTags = list;
+        (workspace.value.conversations || []).forEach((c) => {
+          if (c.tags && c.tags.includes(old)) {
+            c.tags = c.tags.map((t) => (t === old ? tag : t));
+          }
+        });
+        toast('Etiqueta renombrada', 'success');
+      }
+
       Vue.onMounted(loadWebhooks);
 
       // ── Credenciales del centro (sub-key por negocio) ──────────────────────
@@ -435,6 +514,8 @@
         EVENTS, whForm, whExists, whSaving, whLogs, whLogsOpen,
         health, healthBusy, reconnectOpen, tunnelUrl, tunnelBusy,
         subKey, subKeyBusy, maskKey, rotateSubKey, revokeSubKey,
+        advancedOpen, isAdvanced, adminKeyInput, adminKeyBusy, validateAdminKey,
+        leadTags, leadInput, addLeadTag, removeLeadTag, moveLeadTag, renameLeadTag,
         canEdit, saveBranding, saveApiKey, testConnection,
         disconnectWhatsApp, reconnectWhatsApp, exportData, resetDemo, deleteWorkspace,
         saveWebhooks, deleteWebhooks, testWebhook, openLogs, simulateWebhook, toggleWhEvent,
@@ -446,7 +527,7 @@
       <div class="grid items-start gap-6 xl:grid-cols-2">
         <header class="xl:col-span-2">
           <h2 class="text-2xl font-bold">Configuración</h2>
-          <p class="mt-1 text-sm text-neutral-500">Branding, canales y datos del espacio de trabajo.</p>
+          <p class="mt-1 text-sm text-neutral-500">Branding, canales y datos del espacio de trabajo. Las opciones avanzadas las gestiona tu proveedor.</p>
         </header>
 
         <!-- Branding -->
@@ -481,8 +562,88 @@
           </button>
         </section>
 
-        <!-- Integración de canales -->
+        <!-- Gestión de leads (etiquetas de la bandeja) -->
         <section class="border-2 border-neutral-900 bg-white p-5">
+          <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Gestión de leads</h3>
+          <p class="text-sm text-neutral-600">
+            Define cómo clasificas a tus clientes en la bandeja. Cada negocio inicia con las etiquetas de su modelo
+            y puedes adaptarlas cuando quieras.
+          </p>
+          <div class="mt-4 space-y-2">
+            <div v-for="(tag, i) in leadTags" :key="tag + i" class="flex items-center gap-2 border border-neutral-200 bg-stone-50 px-3 py-2">
+              <input :value="tag" @change="renameLeadTag(i, $event.target.value)"
+                class="min-w-0 flex-1 border border-transparent bg-transparent px-1 py-1 font-mono text-xs outline-none focus:border-neutral-900 focus:bg-white" />
+              <div class="flex shrink-0 items-center gap-1">
+                <button @click="moveLeadTag(i, -1)" :disabled="i === 0" class="p-1 text-neutral-400 transition hover:text-neutral-900 disabled:opacity-30" aria-label="Subir">
+                  <ui-icon name="chevron-up" class="h-4 w-4"></ui-icon>
+                </button>
+                <button @click="moveLeadTag(i, 1)" :disabled="i === leadTags.length - 1" class="p-1 text-neutral-400 transition hover:text-neutral-900 disabled:opacity-30" aria-label="Bajar">
+                  <ui-icon name="chevron-down" class="h-4 w-4"></ui-icon>
+                </button>
+                <button @click="removeLeadTag(i)" class="p-1 text-red-600 transition hover:text-red-800" aria-label="Eliminar etiqueta">
+                  <ui-icon name="trash" class="h-4 w-4"></ui-icon>
+                </button>
+              </div>
+            </div>
+            <div v-if="leadTags.length === 0" class="border border-dashed border-neutral-300 p-4 text-center text-sm text-neutral-400">
+              Sin etiquetas: agrega la primera abajo.
+            </div>
+          </div>
+          <div class="mt-3 flex max-w-md items-end gap-2">
+            <input v-model.trim="leadInput" type="text" placeholder="Nueva etiqueta (ej: cotizacion)" @keydown.enter="addLeadTag"
+              class="w-full border-2 border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none focus:border-neutral-900" />
+            <button @click="addLeadTag" :disabled="!leadInput.trim()"
+              class="shrink-0 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+              Agregar
+            </button>
+          </div>
+          <p class="mt-3 text-xs text-neutral-400">
+            Las etiquetas se usan como pestañas en la bandeja y para segmentar campañas. Renombrar actualiza las conversaciones existentes.
+          </p>
+        </section>
+
+        <!-- Opciones avanzadas (superadministrador) -->
+        <section class="border-2 border-neutral-900 bg-white xl:col-span-2">
+          <button @click="advancedOpen = !advancedOpen" class="flex w-full items-center justify-between gap-3 px-5 py-4 text-left">
+            <div class="flex items-center gap-3">
+              <span class="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-neutral-600">
+                <ui-icon name="settings" class="h-4 w-4"></ui-icon>
+              </span>
+              <div>
+                <p class="font-semibold">Opciones avanzadas</p>
+                <p class="text-xs text-neutral-500">Webhooks, credenciales e integración técnica.</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <ui-badge v-if="isAdvanced" variant="success" dot>Habilitadas</ui-badge>
+              <ui-icon name="chevron-down" class="h-4 w-4 text-neutral-400" :class="advancedOpen ? 'rotate-180 transition-transform' : ''"></ui-icon>
+            </div>
+          </button>
+          <div v-if="advancedOpen" class="border-t-2 border-neutral-900 p-5">
+            <!-- Sin clave de administración: aviso + campo discreto -->
+            <template v-if="!isAdvanced">
+              <p class="text-sm text-neutral-600">
+                Estas opciones las gestiona tu proveedor. Ingresa la clave de administración si la tienes.
+              </p>
+              <div class="mt-3 flex max-w-xl items-end gap-2">
+                <input v-model.trim="adminKeyInput" type="password" placeholder="sk_…" autocomplete="off"
+                  class="w-full border-2 border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none focus:border-neutral-900" />
+                <button @click="validateAdminKey" :disabled="adminKeyBusy || !adminKeyInput.trim()"
+                  class="flex shrink-0 items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                  <ui-spinner v-if="adminKeyBusy" size="h-4 w-4"></ui-spinner>
+                  Validar
+                </button>
+              </div>
+            </template>
+            <!-- Con clave: las secciones técnicas quedan dentro del grid original -->
+            <template v-else>
+              <p class="mb-4 text-xs text-neutral-500">Modo administración: puedes gestionar la integración técnica del negocio.</p>
+            </template>
+          </div>
+        </section>
+
+        <!-- Integración de canales -->
+        <section v-if="advancedOpen && isAdvanced" class="border-2 border-neutral-900 bg-white p-5">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Integración de canales</h3>
           <div v-if="store.corsBlocked" class="mb-4 flex items-start gap-3 border-2 border-amber-700 bg-amber-50 p-3 text-sm text-amber-900">
             <ui-icon name="alert" class="mt-0.5 h-4 w-4 shrink-0"></ui-icon>
@@ -571,7 +732,7 @@
         </section>
 
         <!-- Credenciales del centro (multi-negocio) -->
-        <section class="border-2 border-neutral-900 bg-white p-5">
+        <section v-if="advancedOpen && isAdvanced" class="border-2 border-neutral-900 bg-white p-5">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Credenciales del centro</h3>
           <p class="text-sm text-neutral-600">
             Este negocio opera con una sub-key de acceso limitada a su perfil (expiración 90 días).
@@ -607,7 +768,7 @@
         </ui-modal>
 
         <!-- Webhooks -->
-        <section class="border-2 border-neutral-900 bg-white p-5 xl:col-span-2">
+        <section v-if="advancedOpen && isAdvanced" class="border-2 border-neutral-900 bg-white p-5 xl:col-span-2">
           <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Webhooks (eventos en tiempo real)</h3>
             <div class="flex items-center gap-2">

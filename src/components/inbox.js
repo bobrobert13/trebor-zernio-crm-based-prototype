@@ -52,6 +52,9 @@
       const contacts = Vue.computed(() => workspace.value.contacts || []);
       const conversations = Vue.computed(() => workspace.value.conversations || []);
 
+      /** Etiquetas de leads del negocio (personalizables en Configuración). */
+      const leadTags = Vue.computed(() => workspace.value.leadTags || niche.value.tags || []);
+
       /** Conversaciones filtradas por búsqueda, pestaña/tag y plataforma. */
       const filtered = Vue.computed(() => {
         const q = search.value.trim().toLowerCase();
@@ -317,6 +320,12 @@
       function startConversation() {
         const contact = contacts.value.find((c) => c.id === newContactId.value);
         if (!contact) return;
+        // Live + WhatsApp: el primer mensaje DEBE ser una plantilla aprobada
+        if (isLive.value) {
+          newConvOpen.value = false;
+          openTemplatePicker(null);
+          return;
+        }
         const conv = {
           id: uid('conv'),
           contactId: contact.id,
@@ -334,11 +343,143 @@
         toast(`Conversación con ${contact.name} iniciada`, 'success');
       }
 
+      // ── Plantillas aprobadas (fuera de 24h y primer mensaje) ───────────────
+      const tplModalOpen = Vue.ref(false); // re-enganche >24h
+      const tplFirstOpen = Vue.ref(false); // primer mensaje de conversación nueva
+      const tplList = Vue.ref([]);
+      const tplSelected = Vue.ref(null);
+      const tplParams = Vue.reactive({});
+      const tplSending = Vue.ref(false);
+      const tplTarget = Vue.ref(null); // conversación objetivo (null = abrir nueva)
+
+      /** ¿Algún selector de plantilla abierto? */
+      const tplPickerOpen = Vue.computed(() => tplModalOpen.value || tplFirstOpen.value);
+
+      function zernioAccountId() {
+        return (workspace.value.zernio && workspace.value.zernio.accountId) || '';
+      }
+
+      /** Variables {{n}} del body de la plantilla seleccionada. */
+      const tplVariables = Vue.computed(() => {
+        const t = tplSelected.value;
+        if (!t) return [];
+        const comps = t.components || [];
+        const body = comps.find((c) => c.type === 'body') || {};
+        const text = t.body || body.text || '';
+        const m = String(text).match(/\{\{(\d+)\}\}/g) || [];
+        return [...new Set(m)];
+      });
+
+      /** Carga las plantillas APROBADAS del accountId (o demo). */
+      async function loadApprovedTemplates() {
+        if (isLive.value) {
+          const accountId = zernioAccountId();
+          if (!accountId) {
+            toast('Sin cuenta WhatsApp vinculada: reconecta en Configuración', 'error');
+            return;
+          }
+          const data = await api.listTemplates(accountId);
+          tplList.value = asArray(data).filter((t) => (t.status || '').toUpperCase() === 'APPROVED');
+        } else {
+          const seeded = (workspace.value.templates || []).filter((t) => t.status === 'APPROVED');
+          tplList.value = seeded.length
+            ? seeded
+            : [{ id: uid('tpl'), name: 'confirmacion_pedido', category: 'UTILITY', language: 'es', status: 'APPROVED', body: 'Hola {{1}}, tu pedido {{2}} fue confirmado. Te avisamos cuando esté listo.' }];
+        }
+      }
+
+      /** Abre el selector de plantilla: target=conversación (>24h) o null (nueva). */
+      function openTemplatePicker(target) {
+        tplTarget.value = target || null;
+        tplSelected.value = null;
+        Object.keys(tplParams).forEach((k) => delete tplParams[k]);
+        (target ? tplModalOpen : tplFirstOpen).value = true;
+        loadApprovedTemplates().catch((err) => toast(err.message || 'No se pudieron cargar las plantillas', 'error'));
+      }
+
+      function closeTemplatePicker() {
+        tplModalOpen.value = false;
+        tplFirstOpen.value = false;
+      }
+
+      /** Envía la plantilla seleccionada (re-enganche >24h o primer mensaje). */
+      async function sendApprovedTemplate() {
+        const t = tplSelected.value;
+        if (!t || tplSending.value) return;
+        tplSending.value = true;
+        try {
+          const accountId = zernioAccountId();
+          const params = tplVariables.value.map((v) => (tplParams[v] || '').trim());
+          const name = t.name;
+          if (!tplTarget.value) {
+            // Conversación nueva: WhatsApp exige plantilla aprobada para abrir el hilo
+            const contact = contacts.value.find((c) => c.id === newContactId.value);
+            if (!contact) throw new Error('Elige un contacto primero');
+            let conv;
+            if (isLive.value) {
+              const created = await api.createConversationWithTemplate({
+                accountId,
+                participantId: contact.phone,
+                templateName: name,
+                templateLanguage: t.language || 'es',
+                ...(params.length ? { templateParams: params } : {}),
+              });
+              const convData = created.conversation || created.data || created;
+              conv = {
+                id: convData.id || convData._id || uid('conv'),
+                contactId: contact.id,
+                platform: 'whatsapp',
+                status: 'active',
+                unread: 0,
+                tags: contact.tags.slice(0, 1),
+                messages: [],
+                lastTs: Date.now(),
+                accountId,
+              };
+            } else {
+              conv = { id: uid('conv'), contactId: contact.id, platform: 'whatsapp', status: 'active', unread: 0, tags: contact.tags.slice(0, 1), messages: [], lastTs: Date.now(), accountId: 'demo_wa' };
+            }
+            conv.messages.push({ id: uid('msg'), from: 'out', text: `[Plantilla ${name}] ${t.body || ''}`, ts: Date.now(), status: 'delivered' });
+            workspace.value.conversations.unshift(conv);
+            selectedId.value = conv.id;
+            closeTemplatePicker();
+            newContactId.value = null;
+            toast(`Conversación iniciada con la plantilla ${name}`, 'success');
+          } else {
+            // Re-enganche >24h: plantilla dentro del hilo existente
+            const conv = tplTarget.value;
+            // Resuelve las variables {{n}} con los valores del usuario (y el body
+            // puede vivir en components[].text en plantillas reales de Meta)
+            const bodyText = t.body || ((t.components || []).find((c) => c.type === 'body') || {}).text || '';
+            let resolved = bodyText;
+            params.forEach((val, i) => {
+              resolved = String(resolved).split(`{{${i + 1}}}`).join(val);
+            });
+            if (isLive.value) {
+              await api.sendTemplate(conv.id, {
+                accountId,
+                template: { elements: [{ name, language: t.language || 'es', components: [{ type: 'body', text: resolved }] }] },
+              });
+            }
+            conv.messages.push({ id: uid('msg'), from: 'out', text: `[Plantilla ${name}] ${resolved}`, ts: Date.now(), status: 'delivered' });
+            conv.lastTs = Date.now();
+            closeTemplatePicker();
+            toast('Plantilla enviada: el cliente debe responder para abrir la ventana de 24 h', 'info', 6000);
+          }
+        } catch (err) {
+          toast(err.message || 'No se pudo enviar la plantilla', 'error');
+        } finally {
+          tplSending.value = false;
+        }
+      }
+
       return {
         search, filter, platformFilter, selectedId, draft, sending, loading, syncing, newConvOpen, newContactId,
         workspace, niche, conversations, contacts, filtered, selected, selectedContact, unreadTotal, isLive,
         QUICK_REPLIES, canEdit, humanAgent, outsideWindow, canHumanAgent, blockedByWindow,
-        presentPlatforms, tiktokChannel, tiktokEmpty, getPlatform,
+        presentPlatforms, tiktokChannel, tiktokEmpty, getPlatform, leadTags,
+        tplPickerOpen, tplList, tplSelected, tplParams, tplVariables, tplSending,
+        openTemplatePicker, closeTemplatePicker, sendApprovedTemplate,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
     },
@@ -421,7 +562,7 @@
                   :class="filter === 'unread' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   No leídas ({{ unreadTotal }})
                 </button>
-                <button v-for="t in niche.tags" :key="t" @click="filter = t"
+                <button v-for="t in leadTags" :key="t" @click="filter = t"
                   class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
                   :class="filter === t ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   {{ t }}
@@ -527,7 +668,9 @@
                   <span>Conversación fuera de la ventana de 24h: enviar como agente humano (HUMAN_AGENT).</span>
                 </div>
                 <div v-if="blockedByWindow" class="mb-2.5 border border-red-700 bg-red-50 px-3 py-2 text-xs text-red-800">
-                  WhatsApp fuera de la ventana de 24h: usa una plantilla aprobada desde Campañas.
+                  WhatsApp fuera de la ventana de 24h:
+                  <button @click="openTemplatePicker(selected)" class="font-semibold underline">envía una plantilla aprobada</button>
+                  para re-enganchar la conversación.
                 </div>
                 <div class="mb-2.5 flex gap-1.5 overflow-x-auto scrollbar-none">
                   <button v-for="qr in QUICK_REPLIES" :key="qr" @click="draft = qr"
@@ -563,6 +706,49 @@
             class="mt-4 w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
             Iniciar conversación
           </button>
+        </ui-modal>
+
+        <!-- Modal: selector de plantilla aprobada (primer mensaje o re-enganche >24h) -->
+        <ui-modal :open="tplPickerOpen" :title="tplTarget ? 'Re-enganchar con plantilla aprobada' : 'Primer mensaje: elige una plantilla aprobada'" width="max-w-2xl" @close="closeTemplatePicker">
+          <div class="space-y-4">
+            <p class="text-xs text-neutral-500">
+              WhatsApp exige plantillas aprobadas por Meta para abrir o re-enganchar conversaciones. Elige una y completa sus variables.
+            </p>
+            <div v-if="tplList.length === 0" class="border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-400">
+              Sin plantillas aprobadas todavía. Crea y aprueba una en Campañas primero (Meta revisa hasta 24 h).
+            </div>
+            <div v-else class="grid gap-2 sm:grid-cols-2">
+              <button v-for="t in tplList" :key="t.id || t.name" @click="tplSelected = t"
+                class="border-2 p-3 text-left transition"
+                :class="tplSelected && (tplSelected.id || tplSelected.name) === (t.id || t.name) ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-neutral-200 hover:border-neutral-900'">
+                <p class="truncate font-mono text-xs font-semibold">{{ t.name }}</p>
+                <p class="mt-0.5 flex items-center gap-1.5">
+                  <ui-badge variant="neutral">{{ t.category }}</ui-badge>
+                  <span class="font-mono text-[10px] uppercase text-neutral-400">{{ t.language }}</span>
+                </p>
+              </button>
+            </div>
+
+            <template v-if="tplSelected">
+              <div class="border border-neutral-200 bg-stone-50 p-3">
+                <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Vista previa</p>
+                <div class="mt-2 rounded-lg border border-neutral-200 bg-white px-3 py-2">
+                  <p class="whitespace-pre-wrap text-sm">{{ tplSelected.body || (tplSelected.components || []).find(c => c.type === 'body')?.text || tplSelected.name }}</p>
+                </div>
+              </div>
+              <div v-if="tplVariables.length" class="grid gap-3 sm:grid-cols-2">
+                <ui-field v-for="v in tplVariables" :key="v" :label="'Valor para ' + v">
+                  <input v-model.trim="tplParams[v]" type="text" :placeholder="'Dato para ' + v"
+                    class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
+                </ui-field>
+              </div>
+              <button @click="sendApprovedTemplate" :disabled="tplSending || tplVariables.some(v => !tplParams[v])"
+                class="flex w-full items-center justify-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                <ui-spinner v-if="tplSending" size="h-4 w-4"></ui-spinner>
+                {{ tplSending ? 'Enviando…' : (tplTarget ? 'Enviar plantilla' : 'Iniciar conversación con esta plantilla') }}
+              </button>
+            </template>
+          </div>
         </ui-modal>
       </div>`,
   };

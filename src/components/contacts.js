@@ -107,11 +107,11 @@
     },
 
     template: `
-      <div class="-mx-5 -my-5 flex h-[calc(100vh-40px)] flex-col lg:-mx-8 lg:-my-8 lg:h-[calc(100vh)]">
-        <!-- Encabezado integrado (full-bleed) -->
-        <header class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b-0 bg-stone-100/80 px-5 py-3.5 backdrop-blur lg:px-6">
+      <div class="space-y-4">
+        <!-- Encabezado -->
+        <header class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-3">
-            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-800">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-800">
               <ui-icon name="users" class="h-5 w-5"></ui-icon>
             </span>
             <div>
@@ -126,7 +126,7 @@
         </header>
 
         <!-- Búsqueda y filtros -->
-        <div class="flex shrink-0 flex-wrap items-center gap-3 border-b border-neutral-200 bg-stone-100/80 px-5 py-3 lg:px-6">
+        <div class="flex flex-wrap items-center gap-3">
           <div class="flex min-w-72 flex-1 items-center gap-2 border border-neutral-300 bg-stone-50 px-3 py-2.5 focus-within:border-neutral-900 focus-within:bg-white">
             <ui-icon name="search" class="h-4 w-4 text-neutral-400"></ui-icon>
             <input v-model.trim="search" type="search" placeholder="Buscar por nombre o teléfono…"
@@ -145,9 +145,9 @@
           </div>
         </div>
 
-        <!-- Tabla (integrada, con header sticky en scroll) -->
-        <div class="min-h-0 flex-1 overflow-auto bg-white">
-          <table class="h-full w-full min-w-[720px] text-left text-sm">
+        <!-- Tabla -->
+        <div class="overflow-auto border border-neutral-200 bg-white">
+          <table class="w-full min-w-[720px] text-left text-sm">
             <thead class="border-b border-neutral-200 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
               <tr>
                 <th class="sticky top-0 z-10 bg-white px-4 py-3">Contacto</th>

@@ -57,6 +57,11 @@
         store.workspace = workspace;
         store.currentUser =
           workspace.users.find((u) => u.id === session.userId) || workspace.users[0] || null;
+        // Migración: etiquetas de leads personalizables (default del nicho)
+        if (!workspace.leadTags) {
+          const n = ZernioCrm.getNiche(workspace.nicheId);
+          workspace.leadTags = [...((n && n.tags) || ['cliente'])];
+        }
         // La master key del centro vive solo en sessionStorage (nunca en el workspace/export)
         const master = sessionStorage.getItem('tzcrm.masterKey');
         if (master) store.masterKey = master;

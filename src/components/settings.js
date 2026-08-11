@@ -374,6 +374,50 @@
         toast('Reconectado con la plataforma', 'success');
       }
 
+      // ── Gestión de leads (etiquetas personalizables de la bandeja) ─────────
+      const leadTags = Vue.computed(() => workspace.value.leadTags || []);
+      const leadInput = Vue.ref('');
+
+      function addLeadTag() {
+        const tag = leadInput.value.trim().toLowerCase().replace(/\s+/g, '_');
+        if (!tag || leadTags.value.includes(tag)) return;
+        workspace.value.leadTags = [...leadTags.value, tag];
+        leadInput.value = '';
+        toast('Etiqueta de lead agregada', 'success');
+      }
+
+      function removeLeadTag(index) {
+        workspace.value.leadTags = leadTags.value.filter((_, i) => i !== index);
+        toast('Etiqueta de lead eliminada', 'info');
+      }
+
+      function moveLeadTag(index, dir) {
+        const next = index + dir;
+        if (next < 0 || next >= leadTags.value.length) return;
+        const list = [...leadTags.value];
+        [list[index], list[next]] = [list[next], list[index]];
+        workspace.value.leadTags = list;
+      }
+
+      /** Renombra una etiqueta en la bandeja y en las conversaciones asociadas. */
+      function renameLeadTag(index, value) {
+        const old = leadTags.value[index];
+        const tag = value.trim().toLowerCase().replace(/\s+/g, '_');
+        if (!tag || tag === old) {
+          workspace.value.leadTags = [...leadTags.value]; // fuerza re-render
+          return;
+        }
+        const list = [...leadTags.value];
+        list[index] = tag;
+        workspace.value.leadTags = list;
+        (workspace.value.conversations || []).forEach((c) => {
+          if (c.tags && c.tags.includes(old)) {
+            c.tags = c.tags.map((t) => (t === old ? tag : t));
+          }
+        });
+        toast('Etiqueta renombrada', 'success');
+      }
+
       Vue.onMounted(loadWebhooks);
 
       // ── Credenciales del centro (sub-key por negocio) ──────────────────────
@@ -469,6 +513,7 @@
         health, healthBusy, reconnectOpen, tunnelUrl, tunnelBusy,
         subKey, subKeyBusy, maskKey, rotateSubKey, revokeSubKey,
         advancedOpen, isAdvanced, adminKeyInput, adminKeyBusy, validateAdminKey,
+        leadTags, leadInput, addLeadTag, removeLeadTag, moveLeadTag, renameLeadTag,
         canEdit, saveBranding, saveApiKey, testConnection,
         disconnectWhatsApp, reconnectWhatsApp, exportData, resetDemo, deleteWorkspace,
         saveWebhooks, deleteWebhooks, testWebhook, openLogs, simulateWebhook, toggleWhEvent,
@@ -513,6 +558,46 @@
           <button @click="saveBranding" class="mt-4 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
             Guardar branding
           </button>
+        </section>
+
+        <!-- Gestión de leads (etiquetas de la bandeja) -->
+        <section class="border-2 border-neutral-900 bg-white p-5">
+          <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Gestión de leads</h3>
+          <p class="text-sm text-neutral-600">
+            Define cómo clasificas a tus clientes en la bandeja. Cada negocio inicia con las etiquetas de su modelo
+            y puedes adaptarlas cuando quieras.
+          </p>
+          <div class="mt-4 space-y-2">
+            <div v-for="(tag, i) in leadTags" :key="tag + i" class="flex items-center gap-2 border border-neutral-200 bg-stone-50 px-3 py-2">
+              <input :value="tag" @change="renameLeadTag(i, $event.target.value)"
+                class="min-w-0 flex-1 border border-transparent bg-transparent px-1 py-1 font-mono text-xs outline-none focus:border-neutral-900 focus:bg-white" />
+              <div class="flex shrink-0 items-center gap-1">
+                <button @click="moveLeadTag(i, -1)" :disabled="i === 0" class="p-1 text-neutral-400 transition hover:text-neutral-900 disabled:opacity-30" aria-label="Subir">
+                  <ui-icon name="chevron-up" class="h-4 w-4"></ui-icon>
+                </button>
+                <button @click="moveLeadTag(i, 1)" :disabled="i === leadTags.length - 1" class="p-1 text-neutral-400 transition hover:text-neutral-900 disabled:opacity-30" aria-label="Bajar">
+                  <ui-icon name="chevron-down" class="h-4 w-4"></ui-icon>
+                </button>
+                <button @click="removeLeadTag(i)" class="p-1 text-red-600 transition hover:text-red-800" aria-label="Eliminar etiqueta">
+                  <ui-icon name="trash" class="h-4 w-4"></ui-icon>
+                </button>
+              </div>
+            </div>
+            <div v-if="leadTags.length === 0" class="border border-dashed border-neutral-300 p-4 text-center text-sm text-neutral-400">
+              Sin etiquetas: agrega la primera abajo.
+            </div>
+          </div>
+          <div class="mt-3 flex max-w-md items-end gap-2">
+            <input v-model.trim="leadInput" type="text" placeholder="Nueva etiqueta (ej: cotizacion)" @keydown.enter="addLeadTag"
+              class="w-full border-2 border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none focus:border-neutral-900" />
+            <button @click="addLeadTag" :disabled="!leadInput.trim()"
+              class="shrink-0 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+              Agregar
+            </button>
+          </div>
+          <p class="mt-3 text-xs text-neutral-400">
+            Las etiquetas se usan como pestañas en la bandeja y para segmentar campañas. Renombrar actualiza las conversaciones existentes.
+          </p>
         </section>
 
         <!-- Opciones avanzadas (superadministrador) -->

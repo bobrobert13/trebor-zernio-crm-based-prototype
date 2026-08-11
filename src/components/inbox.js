@@ -52,6 +52,9 @@
       const contacts = Vue.computed(() => workspace.value.contacts || []);
       const conversations = Vue.computed(() => workspace.value.conversations || []);
 
+      /** Etiquetas de leads del negocio (personalizables en Configuración). */
+      const leadTags = Vue.computed(() => workspace.value.leadTags || niche.value.tags || []);
+
       /** Conversaciones filtradas por búsqueda, pestaña/tag y plataforma. */
       const filtered = Vue.computed(() => {
         const q = search.value.trim().toLowerCase();
@@ -338,7 +341,7 @@
         search, filter, platformFilter, selectedId, draft, sending, loading, syncing, newConvOpen, newContactId,
         workspace, niche, conversations, contacts, filtered, selected, selectedContact, unreadTotal, isLive,
         QUICK_REPLIES, canEdit, humanAgent, outsideWindow, canHumanAgent, blockedByWindow,
-        presentPlatforms, tiktokChannel, tiktokEmpty, getPlatform,
+        presentPlatforms, tiktokChannel, tiktokEmpty, getPlatform, leadTags,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
     },
@@ -421,7 +424,7 @@
                   :class="filter === 'unread' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   No leídas ({{ unreadTotal }})
                 </button>
-                <button v-for="t in niche.tags" :key="t" @click="filter = t"
+                <button v-for="t in leadTags" :key="t" @click="filter = t"
                   class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
                   :class="filter === t ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   {{ t }}

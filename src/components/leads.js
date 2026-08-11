@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, timeAgo, getPlatform, canEdit, getNiche } = ZernioCrm;
+  const { store, toast, timeAgo, getPlatform, canEdit, getNiche, remindersOf, addReminder, toggleReminder, removeReminder } = ZernioCrm;
 
   const components = {};
 
@@ -111,6 +111,38 @@
         toast('Lead reabierto: vuelve al tablero activo', 'success');
       }
 
+      // ── Recordatorios por lead ─────────────────────────────────────────────
+      const remInput = Vue.reactive({ text: '', dueAt: '' });
+      const remPanelOpen = Vue.ref(false);
+
+      /** Pendientes sin completar de un contacto. */
+      function pendingReminders(contact) {
+        return remindersOf(contact.id).filter((r) => !r.done);
+      }
+
+      /** ¿Hay recordatorios vencidos para el contacto? */
+      function hasOverdue(contact) {
+        return pendingReminders(contact).some((r) => r.dueAt && Date.parse(r.dueAt) < Date.now());
+      }
+
+      function addReminderFor(contact) {
+        const text = remInput.text.trim();
+        if (!text) return;
+        addReminder(contact.id, text, remInput.dueAt || null);
+        remInput.text = '';
+        remInput.dueAt = '';
+        toast('Recordatorio creado', 'success');
+      }
+
+      /** Próximos recordatorios de todas las leads (panel del header). */
+      const upcomingReminders = Vue.computed(() =>
+        (store.workspace && store.workspace.reminders || [])
+          .filter((r) => !r.done)
+          .map((r) => ({ ...r, contact: contacts.value.find((c) => c.id === r.contactId) || null }))
+          .sort((a, b) => (a.dueAt || '9999') < (b.dueAt || '9999') ? -1 : 1)
+          .slice(0, 12)
+      );
+
       // ── Drag & drop nativo HTML5 + botones ─────────────────────────────────
       const dragContactId = Vue.ref(null);
 
@@ -186,6 +218,8 @@
         detailOpen, detailContact, openDetail, channelBars, openConversation,
         viewTab, activeContacts, closedContacts,
         closeOpen, closeTarget, closeForm, openCloseModal, confirmClose, reopenLead,
+        remInput, remPanelOpen, pendingReminders, hasOverdue, addReminderFor, upcomingReminders,
+        toggleReminder, removeReminder,
         getPlatform, timeAgo, canEdit,
       };
     },
@@ -203,6 +237,11 @@
           </div>
           <div class="flex items-center gap-2">
             <ui-badge variant="accent">{{ contacts.length }} clientes</ui-badge>
+            <button @click="remPanelOpen = true"
+              class="flex items-center gap-1.5 border-2 border-neutral-900 bg-white px-3 py-1.5 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
+              <ui-icon name="clock" class="h-4 w-4"></ui-icon>
+              Recordatorios ({{ upcomingReminders.length }})
+            </button>
             <button @click="ZernioCrm.navigate('settings')"
               class="border-2 border-neutral-900 bg-white px-3 py-1.5 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
               Configurar etapas
@@ -255,6 +294,11 @@
                   <ui-badge v-if="metricsOf(c).vip" variant="warn" dot>VIP</ui-badge>
                   <ui-badge v-if="metricsOf(c).frecuente" variant="success" dot>Frecuente</ui-badge>
                   <ui-badge variant="neutral">{{ metricsOf(c).totalMsgs }} msgs</ui-badge>
+                  <span v-if="pendingReminders(c).length" class="flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider"
+                    :class="hasOverdue(c) ? 'text-red-700' : 'text-neutral-500'">
+                    <ui-icon name="clock" class="h-3 w-3"></ui-icon>
+                    {{ pendingReminders(c).length }} pend.
+                  </span>
                 </div>
                 <p v-if="lastMessageOf(c)" class="mt-2 truncate border-t border-neutral-100 pt-2 text-xs text-neutral-500">
                   {{ lastMessageOf(c).text }}
@@ -366,6 +410,42 @@
               </div>
             </div>
 
+            <!-- Recordatorios del lead -->
+            <div>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Recordatorios</p>
+              <div class="space-y-1.5">
+                <div v-for="r in remindersOf(detailContact.id)" :key="r.id"
+                  class="flex items-center gap-2 border border-neutral-200 px-2.5 py-2"
+                  :class="r.done ? 'opacity-50' : r.dueAt && Date.parse(r.dueAt) < Date.now() ? 'border-red-700 bg-red-50' : ''">
+                  <button @click="toggleReminder(r.id)" class="shrink-0" :aria-label="r.done ? 'Marcar pendiente' : 'Marcar completado'">
+                    <ui-icon :name="r.done ? 'check-circle' : 'check'" class="h-4 w-4"
+                      :class="r.done ? 'text-emerald-700' : 'text-neutral-300'"></ui-icon>
+                  </button>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-xs" :class="r.done ? 'line-through' : ''">{{ r.text }}</p>
+                    <p v-if="r.dueAt" class="font-mono text-[9px] uppercase"
+                      :class="!r.done && Date.parse(r.dueAt) < Date.now() ? 'text-red-700' : 'text-neutral-400'">
+                      {{ new Date(r.dueAt).toLocaleString('es-VE') }}
+                    </p>
+                  </div>
+                  <button @click="removeReminder(r.id)" class="shrink-0 p-1 text-neutral-400 hover:text-red-700" aria-label="Eliminar recordatorio">
+                    <ui-icon name="trash" class="h-3.5 w-3.5"></ui-icon>
+                  </button>
+                </div>
+                <p v-if="remindersOf(detailContact.id).length === 0" class="text-xs text-neutral-400">Sin recordatorios.</p>
+              </div>
+              <div class="mt-2 flex gap-2">
+                <input v-model.trim="remInput.text" type="text" placeholder="Ej: llamar para confirmar pedido" @keydown.enter="addReminderFor(detailContact)"
+                  class="min-w-0 flex-1 border-2 border-neutral-300 px-2.5 py-2 text-xs outline-none focus:border-neutral-900" />
+                <input v-model="remInput.dueAt" type="datetime-local"
+                  class="shrink-0 border-2 border-neutral-300 px-2 py-2 text-xs outline-none focus:border-neutral-900" />
+                <button @click="addReminderFor(detailContact)" :disabled="!remInput.text.trim()"
+                  class="shrink-0 border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                  Agregar
+                </button>
+              </div>
+            </div>
+
             <!-- Historial de etapas del lead -->
             <div>
               <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial de etapas</p>
@@ -438,6 +518,27 @@
                 <li v-if="metricsOf(detailContact).convs.length === 0" class="text-xs text-neutral-400">Sin conversaciones registradas.</li>
               </ul>
             </div>
+          </div>
+        </ui-drawer>
+
+        <!-- Drawer: próximos recordatorios (todas las leads) -->
+        <ui-drawer :open="remPanelOpen" title="Recordatorios próximos" width="max-w-md" @close="remPanelOpen = false">
+          <div class="space-y-2">
+            <div v-for="r in upcomingReminders" :key="r.id">
+              <button @click="remPanelOpen = false; openDetail(r.contact)"
+                class="w-full border border-neutral-200 p-3 text-left transition hover:border-neutral-900 hover:bg-stone-50"
+                :class="r.dueAt && Date.parse(r.dueAt) < Date.now() ? 'border-red-700 bg-red-50' : ''">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="truncate text-sm font-semibold">{{ r.contact ? r.contact.name : 'Contacto' }}</span>
+                  <span v-if="r.dueAt" class="shrink-0 font-mono text-[9px] uppercase"
+                    :class="Date.parse(r.dueAt) < Date.now() ? 'text-red-700' : 'text-neutral-400'">
+                    {{ new Date(r.dueAt).toLocaleString('es-VE') }}
+                  </span>
+                </div>
+                <p class="mt-1 text-xs text-neutral-600">{{ r.text }}</p>
+              </button>
+            </div>
+            <p v-if="upcomingReminders.length === 0" class="py-8 text-center text-sm text-neutral-400">Sin recordatorios pendientes.</p>
           </div>
         </ui-drawer>
 

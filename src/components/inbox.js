@@ -458,6 +458,22 @@
         toast('Contacto registrado: completa su ficha aquí mismo', 'success');
       }
 
+      // ── Recordatorios (reutiliza los helpers del store) ────────────────────
+      const remInput = Vue.reactive({ text: '', dueAt: '' });
+
+      function addReminderFor(contact) {
+        const text = remInput.text.trim();
+        if (!text || !contact) return;
+        ZernioCrm.addReminder(contact.id, text, remInput.dueAt || null);
+        remInput.text = '';
+        remInput.dueAt = '';
+        toast('Recordatorio creado', 'success');
+      }
+
+      function contactReminders(contact) {
+        return contact ? ZernioCrm.remindersOf(contact.id) : [];
+      }
+
       /** Envía la plantilla seleccionada (re-enganche >24h o primer mensaje). */
       async function sendApprovedTemplate() {
         const t = tplSelected.value;
@@ -537,7 +553,7 @@
         tplPickerOpen, tplList, tplSelected, tplParams, tplVariables, tplSending,
         openTemplatePicker, closeTemplatePicker, sendApprovedTemplate,
         contactDrawerOpen, contactTags, toggleContactTag, setLeadTag, registerContact,
-        bizFields,
+        bizFields, remInput, addReminderFor, contactReminders, ZernioCrm,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
     },
@@ -853,6 +869,42 @@
                     <input v-model="selectedContact.customFields[f.slug]" type="text"
                       class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
                   </ui-field>
+                </div>
+              </div>
+
+              <!-- Recordatorios del contacto -->
+              <div>
+                <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Recordatorios</p>
+                <div class="space-y-1.5">
+                  <div v-for="r in contactReminders(selectedContact)" :key="r.id"
+                    class="flex items-center gap-2 border border-neutral-200 px-2.5 py-2"
+                    :class="r.done ? 'opacity-50' : r.dueAt && Date.parse(r.dueAt) < Date.now() ? 'border-red-700 bg-red-50' : ''">
+                    <button @click="ZernioCrm.toggleReminder(r.id)" class="shrink-0" :aria-label="r.done ? 'Marcar pendiente' : 'Marcar completado'">
+                      <ui-icon :name="r.done ? 'check-circle' : 'check'" class="h-4 w-4"
+                        :class="r.done ? 'text-emerald-700' : 'text-neutral-300'"></ui-icon>
+                    </button>
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-xs" :class="r.done ? 'line-through' : ''">{{ r.text }}</p>
+                      <p v-if="r.dueAt" class="font-mono text-[9px] uppercase"
+                        :class="!r.done && Date.parse(r.dueAt) < Date.now() ? 'text-red-700' : 'text-neutral-400'">
+                        {{ new Date(r.dueAt).toLocaleString('es-VE') }}
+                      </p>
+                    </div>
+                    <button @click="ZernioCrm.removeReminder(r.id)" class="shrink-0 p-1 text-neutral-400 hover:text-red-700" aria-label="Eliminar recordatorio">
+                      <ui-icon name="trash" class="h-3.5 w-3.5"></ui-icon>
+                    </button>
+                  </div>
+                  <p v-if="contactReminders(selectedContact).length === 0" class="text-xs text-neutral-400">Sin recordatorios.</p>
+                </div>
+                <div class="mt-2 flex gap-2">
+                  <input v-model.trim="remInput.text" type="text" placeholder="Ej: llamar para confirmar pedido" @keydown.enter="addReminderFor(selectedContact)"
+                    class="min-w-0 flex-1 border-2 border-neutral-300 px-2.5 py-2 text-xs outline-none focus:border-neutral-900" />
+                  <input v-model="remInput.dueAt" type="datetime-local"
+                    class="shrink-0 border-2 border-neutral-300 px-2 py-2 text-xs outline-none focus:border-neutral-900" />
+                  <button @click="addReminderFor(selectedContact)" :disabled="!remInput.text.trim()"
+                    class="shrink-0 border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                    Agregar
+                  </button>
                 </div>
               </div>
             </template>

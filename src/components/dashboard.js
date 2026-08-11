@@ -57,6 +57,74 @@
 
       const ACT_ICONS = { whatsapp: 'whatsapp', message: 'message', contact: 'user', broadcast: 'megaphone', system: 'zap' };
 
+      // ── Personalización del panel ──────────────────────────────────────────
+      const prefsOpen = Vue.ref(false);
+
+      /** Preferencias del panel (secciones y KPIs), con migración por defecto. */
+      const prefs = Vue.computed({
+        get() {
+          const ws = store.workspace;
+          if (!ws) return { sections: {}, kpis: [] };
+          if (!ws.dashboardPrefs) {
+            ws.dashboardPrefs = {
+              sections: { kpis: true, canal: true, acciones: true, roadmap: true, actividad: true },
+              kpis: (niche.value.kpis || []).map((k) => k.id),
+            };
+          }
+          return ws.dashboardPrefs;
+        },
+        set(v) {
+          store.workspace.dashboardPrefs = v;
+        },
+      });
+
+      /** Reasigna las preferencias (reactividad + persistencia del deep watch). */
+      function commitPrefs(sections, kpis) {
+        prefs.value = { sections: { ...sections }, kpis: [...kpis] };
+      }
+
+      function toggleSection(key) {
+        commitPrefs({ ...prefs.value.sections, [key]: !prefs.value.sections[key] }, prefs.value.kpis);
+      }
+
+      function toggleKpi(id) {
+        const list = prefs.value.kpis.includes(id)
+          ? prefs.value.kpis.filter((x) => x !== id)
+          : [...prefs.value.kpis, id];
+        commitPrefs(prefs.value.sections, list);
+      }
+
+      function moveKpi(id, dir) {
+        const list = [...prefs.value.kpis];
+        const i = list.indexOf(id);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= list.length) return;
+        [list[i], list[j]] = [list[j], list[i]];
+        commitPrefs(prefs.value.sections, list);
+      }
+
+      /** KPIs visibles en el orden elegido por el negocio. */
+      const visibleKpis = Vue.computed(() => {
+        const order = prefs.value.kpis;
+        return kpis.value
+          .filter((k) => order.includes(k.id))
+          .sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      });
+
+      /** Mini-tendencia pseudo-determinista (7 puntos) para cada KPI. */
+      function kpiTrend(k) {
+        const base = k.value;
+        return Array.from({ length: 7 }, (_, i) => Math.max(1, Math.round(base * (0.6 + ((hashSeed(k.id + i) % 50) / 100)))));
+      }
+
+      const SECTION_LABELS = {
+        kpis: 'Indicadores del negocio',
+        canal: 'Estado del canal',
+        acciones: 'Acciones rápidas',
+        roadmap: 'Roadmap del negocio',
+        actividad: 'Actividad reciente',
+      };
+
       const quickActions = Vue.computed(() => {
         const actions = [];
         if (can(user.value && user.value.role, 'inbox', 'edit')) actions.push({ label: 'Nueva conversación', icon: 'message', route: 'inbox' });
@@ -66,7 +134,7 @@
         return actions;
       });
 
-      return { workspace, niche, focus, user, kpis, today, activity, roadmapDone, roadmapTotal, ACT_ICONS, quickActions, navigate, can, ROLES, timeAgo };
+      return { workspace, niche, focus, user, kpis, visibleKpis, kpiTrend, today, activity, roadmapDone, roadmapTotal, ACT_ICONS, quickActions, navigate, can, ROLES, timeAgo, prefs, prefsOpen, SECTION_LABELS, toggleSection, toggleKpi, moveKpi };
     },
 
     template: `
@@ -83,25 +151,38 @@
           <div class="flex items-center gap-2">
             <ui-badge variant="accent">{{ niche.nombre }} {{ niche.emoji }}</ui-badge>
             <ui-badge variant="neutral">{{ focus.nombre || 'Sin foco' }}</ui-badge>
+            <button @click="prefsOpen = true"
+              class="flex items-center gap-1.5 border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
+              <ui-icon name="settings" class="h-3.5 w-3.5"></ui-icon>
+              Personalizar panel
+            </button>
           </div>
         </header>
 
-        <!-- KPIs del nicho (banda completa) -->
-        <section class="grid grid-cols-2 gap-5 lg:grid-cols-4">
-          <div v-for="k in kpis" :key="k.id"
+        <!-- KPIs del nicho (banda completa, personalizables) -->
+        <section v-if="prefs.sections.kpis" class="grid grid-cols-2 gap-5 lg:grid-cols-4">
+          <div v-for="k in visibleKpis" :key="k.id"
             class="flex h-36 flex-col justify-between border-2 border-neutral-900 bg-white p-6">
             <div class="flex items-center justify-between">
               <span class="font-mono text-[11px] uppercase tracking-widest text-neutral-400">{{ k.label }}</span>
               <ui-icon :name="k.icon" class="h-5 w-5 text-neutral-300"></ui-icon>
             </div>
-            <p class="text-4xl font-bold tabular-nums">
-              {{ k.value }}<span v-if="k.unit" class="ml-1.5 text-lg font-medium text-neutral-400">{{ k.unit }}</span>
-            </p>
+            <div class="flex items-end justify-between gap-3">
+              <p class="text-4xl font-bold tabular-nums">
+                {{ k.value }}<span v-if="k.unit" class="ml-1.5 text-lg font-medium text-neutral-400">{{ k.unit }}</span>
+              </p>
+              <!-- Mini-tendencia (7 puntos) -->
+              <div class="flex h-9 items-end gap-0.5">
+                <div v-for="(v, i) in kpiTrend(k)" :key="i" class="w-1.5 bg-[var(--accent)] opacity-40"
+                  :class="i === 6 ? 'opacity-100' : ''"
+                  :style="{ height: Math.max(12, Math.round((v / Math.max(...kpiTrend(k))) * 100)) + '%' }"></div>
+              </div>
+            </div>
           </div>
         </section>
 
         <!-- Strip del canal WhatsApp -->
-        <section class="flex flex-wrap items-center justify-between gap-4 border-2 border-neutral-900 bg-white p-5">
+        <section v-if="prefs.sections.canal" class="flex flex-wrap items-center justify-between gap-4 border-2 border-neutral-900 bg-white p-5">
           <div class="flex items-center gap-4">
             <span class="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
               <ui-icon name="whatsapp" class="h-6 w-6"></ui-icon>
@@ -121,7 +202,7 @@
         </section>
 
         <!-- Acciones rápidas (fila completa) -->
-        <section>
+        <section v-if="prefs.sections.acciones">
           <h3 class="mb-3 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Acciones rápidas</h3>
           <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <button v-for="a in quickActions" :key="a.route" @click="navigate(a.route)"
@@ -135,9 +216,9 @@
           </div>
         </section>
 
-        <div class="grid gap-6 xl:grid-cols-12">
+        <div v-if="prefs.sections.roadmap || prefs.sections.actividad" class="grid gap-6 xl:grid-cols-12">
           <!-- Roadmap del nicho -->
-          <section class="border-2 border-neutral-900 bg-white p-6 xl:col-span-7">
+          <section v-if="prefs.sections.roadmap" class="border-2 border-neutral-900 bg-white p-6 xl:col-span-7">
             <div class="flex items-center justify-between">
               <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Roadmap del negocio</h3>
               <span class="font-mono text-xs tabular-nums text-neutral-500">{{ roadmapDone }}/{{ roadmapTotal }} configurados</span>
@@ -154,7 +235,7 @@
           </section>
 
           <!-- Actividad reciente -->
-          <section class="border-2 border-neutral-900 bg-white p-6 xl:col-span-5">
+          <section v-if="prefs.sections.actividad" class="border-2 border-neutral-900 bg-white p-6 xl:col-span-5">
             <h3 class="mb-5 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Actividad reciente</h3>
             <ul class="space-y-5">
               <li v-for="act in activity" :key="act.id" class="flex items-start gap-3.5">
@@ -169,6 +250,40 @@
             </ul>
           </section>
         </div>
+
+        <!-- Modal: personalizar panel -->
+        <ui-modal :open="prefsOpen" title="Personalizar panel" width="max-w-lg" @close="prefsOpen = false">
+          <div class="space-y-5">
+            <div>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Secciones del resumen</p>
+              <div class="space-y-1.5">
+                <label v-for="(label, key) in SECTION_LABELS" :key="key" class="flex cursor-pointer items-center justify-between border border-neutral-200 px-3 py-2">
+                  <span class="text-sm">{{ label }}</span>
+                  <ui-toggle :model-value="prefs.sections[key]" @update:model-value="toggleSection(key)" :aria-label="label"></ui-toggle>
+                </label>
+              </div>
+            </div>
+            <div>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Indicadores (orden y visibilidad)</p>
+              <div class="space-y-1.5">
+                <div v-for="k in kpis" :key="k.id" class="flex items-center gap-2 border border-neutral-200 px-3 py-2">
+                  <ui-icon :name="k.icon" class="h-4 w-4 text-neutral-400"></ui-icon>
+                  <span class="min-w-0 flex-1 truncate text-sm">{{ k.label }}</span>
+                  <button @click="moveKpi(k.id, -1)" :disabled="prefs.kpis.indexOf(k.id) <= 0" class="p-1 text-neutral-400 hover:text-neutral-900 disabled:opacity-30" aria-label="Subir indicador">
+                    <ui-icon name="chevron-up" class="h-4 w-4"></ui-icon>
+                  </button>
+                  <button @click="moveKpi(k.id, 1)" :disabled="prefs.kpis.indexOf(k.id) === -1 || prefs.kpis.indexOf(k.id) >= prefs.kpis.length - 1" class="p-1 text-neutral-400 hover:text-neutral-900 disabled:opacity-30" aria-label="Bajar indicador">
+                    <ui-icon name="chevron-down" class="h-4 w-4"></ui-icon>
+                  </button>
+                  <ui-toggle :model-value="prefs.kpis.includes(k.id)" @update:model-value="toggleKpi(k.id)" :aria-label="'Mostrar ' + k.label"></ui-toggle>
+                </div>
+              </div>
+            </div>
+            <button @click="prefsOpen = false" class="w-full border-2 border-neutral-900 bg-neutral-900 px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+              Listo
+            </button>
+          </div>
+        </ui-modal>
       </div>`,
   };
 

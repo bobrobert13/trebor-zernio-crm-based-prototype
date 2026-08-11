@@ -199,7 +199,7 @@
       Vue.onMounted(load);
 
       return {
-        loading, error, range, usage, statement, pricing, local,
+        loading, error, range, usage, statement, pricing, local, store,
         localDays, maxDay, operations, estimatedCents, usd, pct, isLive, load,
         planName, spentCents, spendLimitCents, balanceCents, paymentStatus, billingPeriod,
       };
@@ -253,7 +253,7 @@
               <div class="border-2 border-neutral-900 p-4">
                 <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Cuentas conectadas</p>
                 <p class="mt-1 text-xl font-bold">{{ (usage.usage && usage.usage.connectedAccounts) ?? usage.limits?.profiles ?? '—' }}</p>
-                <p class="font-mono text-[11px] text-neutral-400">límite perfiles {{ usage.limits && usage.limits.profiles ?? '—' }}</p>
+                <p class="font-mono text-[11px] text-neutral-400">límite perfiles {{ (usage.limits && usage.limits.profiles) ?? '—' }}</p>
               </div>
               <div class="border-2 border-neutral-900 p-4">
                 <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Statement</p>

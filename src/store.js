@@ -30,6 +30,7 @@
     route: 'dashboard',
     toasts: [],
     webhookEvents: [],
+    pendingConversationId: null, // conversación a abrir al montar la bandeja (drawers de otros módulos)
   });
 
   /**
@@ -176,6 +177,71 @@
     return ZernioCrm.can(store.currentUser && store.currentUser.role, module, 'edit');
   }
 
+  /**
+   * Cambia la etapa del lead de un contacto registrando el histórico automático.
+   * Centraliza el cambio para que bandeja y kanban sean coherentes.
+   * @param {object} contact — contacto del workspace.
+   * @param {string|null} tag — nueva etapa (null = sin asignar).
+   */
+  function applyLeadTag(contact, tag) {
+    if (!contact) return;
+    const next = tag || null;
+    if (contact.leadTag === next) return;
+    contact.leadHistory = contact.leadHistory || [];
+    // Si el lead estaba finalizado, el cambio de etapa lo reabre: se conserva
+    // el registro de cierre en el historial antes de descartarlo.
+    if (contact.leadClosed) {
+      contact.leadHistory.push({ tag: 'reabierto', at: Date.now(), prev: contact.leadClosed });
+    }
+    contact.leadHistory.push({ tag: next, at: Date.now() });
+    if (contact.leadHistory.length > 50) contact.leadHistory.shift();
+    contact.leadTag = next;
+    delete contact.leadClosed; // reabre el lead si estaba finalizado
+  }
+
+  // ── Recordatorios (locales al workspace, persistidos por el deep watch) ───
+
+  /** @returns {Array<object>} Recordatorios de un contacto. */
+  function remindersOf(contactId) {
+    return (store.workspace && store.workspace.reminders || []).filter((r) => r.contactId === contactId);
+  }
+
+  /**
+   * Crea un recordatorio para un contacto.
+   * @param {string} contactId — contacto asociado.
+   * @param {string} text — texto del recordatorio.
+   * @param {string|null} dueAt — fecha ISO (opcional).
+   */
+  function addReminder(contactId, text, dueAt) {
+    if (!store.workspace) return;
+    store.workspace.reminders = store.workspace.reminders || [];
+    store.workspace.reminders.push({
+      id: ZernioCrm.uid('rem'),
+      contactId,
+      text,
+      dueAt: dueAt || null,
+      done: false,
+      createdAt: Date.now(),
+    });
+  }
+
+  /** @param {string} id — id del recordatorio. */
+  function toggleReminder(id) {
+    const r = (store.workspace && store.workspace.reminders || []).find((x) => x.id === id);
+    if (r) r.done = !r.done;
+  }
+
+  /** @param {string} id — id del recordatorio. */
+  function removeReminder(id) {
+    if (store.workspace) {
+      store.workspace.reminders = (store.workspace.reminders || []).filter((x) => x.id !== id);
+    }
+  }
+
   window.ZernioCrm = window.ZernioCrm || {};
-  Object.assign(window.ZernioCrm, { store, toast, applyAccent, navigate, flagCorsBlocked, canEdit, detectServer, pushWebhookEvent, reflectIncomingMessage });
+  Object.assign(window.ZernioCrm, {
+    store, toast, applyAccent, navigate, flagCorsBlocked, canEdit, detectServer,
+    pushWebhookEvent, reflectIncomingMessage, applyLeadTag,
+    remindersOf, addReminder, toggleReminder, removeReminder,
+  });
 })();

@@ -1000,15 +1000,16 @@
   /**
    * Preview gráfico de una plantilla de WhatsApp: burbuja simulada con
    * header/body/footer/botones y panel de información de la plantilla.
+   * Robusto ante plantillas sin body (solo media o interactivas).
    */
   components['template-preview'] = {
     props: { tpl: { type: Object, required: true } },
     setup(props) {
-      const components = props.tpl.components || [];
-      const body = components.find((c) => c.type === 'body') || {};
-      const header = components.find((c) => c.type === 'header') || {};
-      const footer = components.find((c) => c.type === 'footer') || {};
-      const buttons = (components.find((c) => c.type === 'buttons') || {}).buttons || [];
+      const comps = props.tpl.components || [];
+      const body = comps.find((c) => c.type === 'body') || {};
+      const header = comps.find((c) => c.type === 'header') || {};
+      const footer = comps.find((c) => c.type === 'footer') || {};
+      const buttons = (comps.find((c) => c.type === 'buttons') || {}).buttons || [];
 
       /** Sustituye {{n}} por los ejemplos de Meta (o deja la variable visible). */
       function fill(text, example) {
@@ -1019,11 +1020,15 @@
       const bodyText = Vue.computed(() => fill(props.tpl.body || body.text || '', (body.example || {}).body_text?.[0]));
       const headerText = Vue.computed(() => fill(header.text || '', (header.example || {}).header_text?.[0]));
       const footerText = Vue.computed(() => fill(footer.text || '', null));
+      const hasBody = Vue.computed(() => Boolean(String(bodyText.value).trim()));
+      const headerFormat = Vue.computed(() => (header.format ? String(header.format).toLowerCase() : ''));
       const variables = Vue.computed(() => {
         const m = String(props.tpl.body || body.text || '').match(/\{\{\d+\}\}/g) || [];
         return [...new Set(m)];
       });
-      return { bodyText, headerText, footerText, variables, buttons, fill };
+      /** Envelope sin componentes ni body: no hay nada que renderizar. */
+      const noComponents = Vue.computed(() => !comps.length && !props.tpl.body);
+      return { bodyText, headerText, footerText, buttons, fill, hasBody, headerFormat, variables, noComponents };
     },
     template: `
       <div class="grid gap-5 sm:grid-cols-2">
@@ -1032,8 +1037,23 @@
           <div class="mx-auto max-w-[300px]">
             <div class="mb-1.5 text-center font-mono text-[9px] uppercase tracking-widest text-neutral-400">Vista previa en WhatsApp</div>
             <div class="rounded-lg border border-neutral-200 bg-white px-3.5 py-2.5 shadow-sm">
-              <p v-if="headerText" class="border-b border-neutral-100 pb-1.5 text-xs font-semibold text-neutral-500">{{ headerText }}</p>
-              <p class="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed">{{ bodyText }}</p>
+              <!-- Header: texto o media -->
+              <div v-if="headerText" class="border-b border-neutral-100 pb-1.5">
+                <span v-if="headerFormat" class="mr-1.5 border px-1 py-px font-mono text-[8px] uppercase" :class="headerFormat === 'image' ? 'border-sky-700 text-sky-700' : headerFormat === 'video' ? 'border-violet-700 text-violet-700' : 'border-amber-700 text-amber-800'">
+                  {{ headerFormat === 'image' ? 'Imagen' : headerFormat === 'video' ? 'Video' : 'Documento' }}
+                </span>
+                <p class="text-xs font-semibold text-neutral-500">{{ headerText }}</p>
+              </div>
+              <div v-else-if="headerFormat" class="border-b border-neutral-100 pb-1.5">
+                <span class="border px-1.5 py-px font-mono text-[8px] uppercase" :class="headerFormat === 'image' ? 'border-sky-700 text-sky-700' : headerFormat === 'video' ? 'border-violet-700 text-violet-700' : 'border-amber-700 text-amber-800'">
+                  {{ headerFormat === 'image' ? 'Imagen adjunta' : headerFormat === 'video' ? 'Video adjunto' : 'Documento adjunto' }}
+                </span>
+              </div>
+              <!-- Body: texto o placeholder claro -->
+              <p v-if="hasBody" class="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed">{{ bodyText }}</p>
+              <p v-else class="mt-1 rounded border border-dashed border-neutral-300 bg-stone-50 px-2 py-2 text-center text-xs text-neutral-400">
+                {{ headerFormat ? 'Esta plantilla no tiene texto: usa el ' + (headerFormat === 'image' ? 'adjunto' : headerFormat) + ' o los botones para comunicar.' : 'Plantilla sin contenido de texto definido.' }}
+              </p>
               <p v-if="footerText" class="mt-1 text-[11px] text-neutral-400">{{ footerText }}</p>
               <div v-if="buttons.length" class="mt-2 space-y-1.5 border-t border-neutral-100 pt-2">
                 <div v-for="(b, i) in buttons" :key="i" class="rounded-md border px-3 py-1.5 text-center text-xs font-medium"
@@ -1064,6 +1084,19 @@
               <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Estado</p>
               <p class="mt-0.5 text-xs font-semibold" :class="tpl.status === 'APPROVED' ? 'text-emerald-700' : tpl.status === 'draft' ? 'text-neutral-500' : 'text-amber-700'">{{ tpl.status }}</p>
             </div>
+          </div>
+          <!-- Desglose de componentes -->
+          <p v-if="noComponents" class="border border-dashed border-neutral-400 bg-stone-50 px-3 py-2 text-xs text-neutral-500">
+            Sin componentes definidos en esta plantilla.
+          </p>
+          <div v-else class="flex flex-wrap gap-1.5">
+            <span v-if="headerFormat" class="border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider" :class="headerFormat === 'image' ? 'border-sky-700 text-sky-700' : headerFormat === 'video' ? 'border-violet-700 text-violet-700' : 'border-amber-700 text-amber-800'">
+              Header {{ headerFormat === 'image' ? 'imagen' : headerFormat === 'video' ? 'video' : 'documento' }}
+            </span>
+            <span v-if="hasBody" class="border border-neutral-300 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-600">Body texto</span>
+            <span v-else class="border border-dashed border-neutral-400 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">Sin body</span>
+            <span v-if="footerText" class="border border-neutral-300 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-600">Footer</span>
+            <span v-if="buttons.length" class="border border-neutral-300 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-600">{{ buttons.length }} botón(es)</span>
           </div>
           <div v-if="variables.length" class="border border-neutral-200 p-3">
             <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Variables (se llenan al enviar)</p>

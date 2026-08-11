@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, timeAgo, getPlatform, canEdit, getNiche } = ZernioCrm;
+  const { store, toast, timeAgo, getPlatform, canEdit, getNiche, remindersOf, addReminder, toggleReminder, removeReminder } = ZernioCrm;
 
   const components = {};
 
@@ -71,13 +71,82 @@
         return { convs, totalMsgs, days, channelCounts, topChannel, freqPerDay, vip, frecuente };
       }
 
-      /** Contactos de una columna. */
+      // ── Tabs: activas / finalizadas ────────────────────────────────────────
+      const viewTab = Vue.ref('activas');
+      const activeContacts = Vue.computed(() => contacts.value.filter((c) => !c.leadClosed));
+      const closedContacts = Vue.computed(() => contacts.value.filter((c) => c.leadClosed));
+
+      /** Contactos de una columna (solo leads activas). */
       function cardsOf(col) {
-        return contacts.value.filter((c) => {
+        return activeContacts.value.filter((c) => {
           if (col.id === '__sin_asignar__') return !c.leadTag || !leadTags.value.includes(c.leadTag);
           return c.leadTag === col.id;
         });
       }
+
+      // ── Finalización de leads ──────────────────────────────────────────────
+      const closeOpen = Vue.ref(false);
+      const closeTarget = Vue.ref(null);
+      const closeForm = Vue.reactive({ outcome: 'ganada', note: '' });
+
+      function openCloseModal(contact) {
+        closeTarget.value = contact;
+        Object.assign(closeForm, { outcome: 'ganada', note: '' });
+        closeOpen.value = true;
+      }
+
+      function confirmClose() {
+        const contact = closeTarget.value;
+        if (!contact) return;
+        contact.leadClosed = { at: Date.now(), outcome: closeForm.outcome, note: closeForm.note.trim() };
+        // El cierre queda registrado en el historial de etapas (timeline del drawer)
+        contact.leadHistory = contact.leadHistory || [];
+        contact.leadHistory.push({ tag: `finalizada:${closeForm.outcome}`, at: contact.leadClosed.at, note: closeForm.note.trim() || undefined });
+        closeOpen.value = false;
+        closeTarget.value = null;
+        detailOpen.value = false;
+        toast(`Lead finalizado como ${closeForm.outcome === 'ganada' ? 'ganado' : 'perdido'}`, 'success');
+      }
+
+      function reopenLead(contact) {
+        if (!contact) return;
+        contact.leadHistory = contact.leadHistory || [];
+        contact.leadHistory.push({ tag: 'reabierta', at: Date.now() });
+        delete contact.leadClosed;
+        toast('Lead reabierto: vuelve al tablero activo', 'success');
+      }
+
+      // ── Recordatorios por lead ─────────────────────────────────────────────
+      const remInput = Vue.reactive({ text: '', dueAt: '' });
+      const remPanelOpen = Vue.ref(false);
+
+      /** Pendientes sin completar de un contacto. */
+      function pendingReminders(contact) {
+        return remindersOf(contact.id).filter((r) => !r.done);
+      }
+
+      /** ¿Hay recordatorios vencidos para el contacto? */
+      function hasOverdue(contact) {
+        return pendingReminders(contact).some((r) => r.dueAt && Date.parse(r.dueAt) < Date.now());
+      }
+
+      function addReminderFor(contact) {
+        const text = remInput.text.trim();
+        if (!text) return;
+        addReminder(contact.id, text, remInput.dueAt || null);
+        remInput.text = '';
+        remInput.dueAt = '';
+        toast('Recordatorio creado', 'success');
+      }
+
+      /** Próximos recordatorios de todas las leads (panel del header). */
+      const upcomingReminders = Vue.computed(() =>
+        (store.workspace && store.workspace.reminders || [])
+          .filter((r) => !r.done)
+          .map((r) => ({ ...r, contact: contacts.value.find((c) => c.id === r.contactId) || null }))
+          .sort((a, b) => (a.dueAt || '9999') < (b.dueAt || '9999') ? -1 : 1)
+          .slice(0, 12)
+      );
 
       // ── Drag & drop nativo HTML5 + botones ─────────────────────────────────
       const dragContactId = Vue.ref(null);
@@ -107,7 +176,7 @@
         if (!id || !canEdit('leads')) return;
         const contact = contacts.value.find((c) => c.id === id);
         if (!contact) return;
-        contact.leadTag = col.id === '__sin_asignar__' ? null : col.id;
+        ZernioCrm.applyLeadTag(contact, col.id === '__sin_asignar__' ? null : col.id);
         toast(`Lead movido a "${col.nombre}"`, 'success');
       }
 
@@ -117,7 +186,7 @@
         const idx = columns.value.findIndex((c) => (contact.leadTag && leadTags.value.includes(contact.leadTag) ? c.id === contact.leadTag : c.id === '__sin_asignar__'));
         const next = columns.value[idx + dir];
         if (!next) return;
-        contact.leadTag = next.id === '__sin_asignar__' ? null : next.id;
+        ZernioCrm.applyLeadTag(contact, next.id === '__sin_asignar__' ? null : next.id);
         toast(`Lead movido a "${next.nombre}"`, 'success');
       }
 
@@ -141,11 +210,23 @@
         }));
       }
 
+      /** Abre la conversación en la bandeja (sin salir de la lógica del drawer). */
+      function openConversation(conv) {
+        if (!conv) return;
+        store.pendingConversationId = conv.id;
+        ZernioCrm.navigate('inbox');
+      }
+
       return {
         workspace, isLive, leadTags, columns, cardsOf, metricsOf, lastMessageOf,
+        contacts, conversations,
         dragContactId, onDragStart, onDragOver, onDrop, moveContact,
-        detailOpen, detailContact, openDetail, channelBars,
-        getPlatform, timeAgo, canEdit,
+        detailOpen, detailContact, openDetail, channelBars, openConversation,
+        viewTab, activeContacts, closedContacts,
+        closeOpen, closeTarget, closeForm, openCloseModal, confirmClose, reopenLead,
+        remInput, remPanelOpen, pendingReminders, hasOverdue, addReminderFor, upcomingReminders,
+        remindersOf, toggleReminder, removeReminder,
+        getPlatform, timeAgo, canEdit, ZernioCrm,
       };
     },
 
@@ -162,6 +243,11 @@
           </div>
           <div class="flex items-center gap-2">
             <ui-badge variant="accent">{{ contacts.length }} clientes</ui-badge>
+            <button @click="remPanelOpen = true"
+              class="flex items-center gap-1.5 border-2 border-neutral-900 bg-white px-3 py-1.5 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
+              <ui-icon name="clock" class="h-4 w-4"></ui-icon>
+              Recordatorios ({{ upcomingReminders.length }})
+            </button>
             <button @click="ZernioCrm.navigate('settings')"
               class="border-2 border-neutral-900 bg-white px-3 py-1.5 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
               Configurar etapas
@@ -174,8 +260,22 @@
           Las etapas se administran en Configuración → Gestión de leads y se reflejan en la bandeja.
         </p>
 
-        <!-- Kanban -->
-        <div class="flex gap-4 overflow-x-auto pb-4">
+        <!-- Tabs: activas / finalizadas -->
+        <div class="flex gap-1.5 border-b-2 border-neutral-900">
+          <button @click="viewTab = 'activas'"
+            class="border-2 border-b-0 px-5 py-2.5 font-mono text-[11px] uppercase tracking-widest transition"
+            :class="viewTab === 'activas' ? 'border-neutral-900 bg-[var(--accent)] text-white' : 'border-transparent text-neutral-500 hover:text-neutral-900'">
+            Activas ({{ activeContacts.length }})
+          </button>
+          <button @click="viewTab = 'finalizadas'"
+            class="border-2 border-b-0 px-5 py-2.5 font-mono text-[11px] uppercase tracking-widest transition"
+            :class="viewTab === 'finalizadas' ? 'border-neutral-900 bg-[var(--accent)] text-white' : 'border-transparent text-neutral-500 hover:text-neutral-900'">
+            Finalizadas ({{ closedContacts.length }})
+          </button>
+        </div>
+
+        <!-- Kanban: leads activas -->
+        <div v-if="viewTab === 'activas'" class="flex gap-4 overflow-x-auto pb-4">
           <section v-for="col in columns" :key="col.id"
             class="flex min-h-[420px] w-64 shrink-0 flex-col border-2 border-neutral-900 bg-stone-50"
             @dragover="onDragOver" @drop="onDrop(col)">
@@ -200,6 +300,11 @@
                   <ui-badge v-if="metricsOf(c).vip" variant="warn" dot>VIP</ui-badge>
                   <ui-badge v-if="metricsOf(c).frecuente" variant="success" dot>Frecuente</ui-badge>
                   <ui-badge variant="neutral">{{ metricsOf(c).totalMsgs }} msgs</ui-badge>
+                  <span v-if="pendingReminders(c).length" class="flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider"
+                    :class="hasOverdue(c) ? 'text-red-700' : 'text-neutral-500'">
+                    <ui-icon name="clock" class="h-3 w-3"></ui-icon>
+                    {{ pendingReminders(c).length }} pend.
+                  </span>
                 </div>
                 <p v-if="lastMessageOf(c)" class="mt-2 truncate border-t border-neutral-100 pt-2 text-xs text-neutral-500">
                   {{ lastMessageOf(c).text }}
@@ -209,6 +314,9 @@
                     {{ lastMessageOf(c) ? timeAgo(lastMessageOf(c).ts) : 'sin actividad' }}
                   </span>
                   <div class="flex gap-0.5">
+                    <button v-if="canEdit('leads')" @click.stop="openCloseModal(c)" class="p-0.5 text-neutral-400 hover:text-red-700" aria-label="Finalizar lead">
+                      <ui-icon name="check-circle" class="h-3.5 w-3.5"></ui-icon>
+                    </button>
                     <button @click.stop="moveContact(c, -1)" class="p-0.5 text-neutral-400 hover:text-neutral-900" aria-label="Mover atrás">
                       <ui-icon name="chevron-left" class="h-3.5 w-3.5"></ui-icon>
                     </button>
@@ -223,8 +331,34 @@
           </section>
         </div>
 
-        <!-- Drawer: detalle profundo del lead -->
-        <ui-drawer :open="detailOpen" :title="'Lead · ' + (detailContact ? detailContact.name : '')" @close="detailOpen = false">
+        <!-- Finalizadas: tarjetas con resultado -->
+        <div v-else>
+          <div v-if="closedContacts.length === 0" class="border-2 border-dashed border-neutral-300 bg-white">
+            <p class="px-6 py-10 text-center text-sm text-neutral-400">Aún no hay leads finalizadas.</p>
+          </div>
+          <div v-else class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <article v-for="c in closedContacts" :key="c.id" @click="openDetail(c)"
+              class="cursor-pointer border-2 border-neutral-900 bg-white p-4 shadow-brutal-sm transition hover:-translate-y-0.5">
+              <div class="flex items-start justify-between gap-2">
+                <p class="min-w-0 truncate text-sm font-semibold">{{ c.name }}</p>
+                <ui-badge :variant="c.leadClosed.outcome === 'ganada' ? 'success' : 'danger'" dot>
+                  {{ c.leadClosed.outcome === 'ganada' ? 'Ganada' : 'Perdida' }}
+                </ui-badge>
+              </div>
+              <p class="mt-0.5 truncate font-mono text-[10px] text-neutral-400">{{ c.phone || 'sin teléfono' }}</p>
+              <p v-if="c.leadClosed.note" class="mt-2 border-t border-neutral-100 pt-2 text-xs text-neutral-600">{{ c.leadClosed.note }}</p>
+              <div class="mt-2 flex items-center justify-between">
+                <span class="font-mono text-[9px] uppercase tracking-wider text-neutral-400">
+                  {{ c.leadClosed.at ? new Date(c.leadClosed.at).toLocaleDateString('es-VE') : '' }}
+                </span>
+                <button @click.stop="reopenLead(c)" class="border border-neutral-300 px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition hover:border-neutral-900">
+                  Reabrir
+                </button>
+              </div>
+            </article>
+          </div>
+        </div>
+        <ui-drawer :open="detailOpen" width="max-w-xl" :title="'Lead · ' + (detailContact ? detailContact.name : '')" @close="detailOpen = false">
           <div v-if="detailContact" class="space-y-5">
             <div class="flex items-center gap-3">
               <ui-avatar :name="detailContact.name" size="h-12 w-12 text-base"></ui-avatar>
@@ -282,6 +416,83 @@
               </div>
             </div>
 
+            <!-- Recordatorios del lead -->
+            <div>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Recordatorios</p>
+              <div class="space-y-1.5">
+                <div v-for="r in remindersOf(detailContact.id)" :key="r.id"
+                  class="flex items-center gap-2 border border-neutral-200 px-2.5 py-2"
+                  :class="r.done ? 'opacity-50' : r.dueAt && Date.parse(r.dueAt) < Date.now() ? 'border-red-700 bg-red-50' : ''">
+                  <button @click="toggleReminder(r.id)" class="shrink-0" :aria-label="r.done ? 'Marcar pendiente' : 'Marcar completado'">
+                    <ui-icon :name="r.done ? 'check-circle' : 'check'" class="h-4 w-4"
+                      :class="r.done ? 'text-emerald-700' : 'text-neutral-300'"></ui-icon>
+                  </button>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-xs" :class="r.done ? 'line-through' : ''">{{ r.text }}</p>
+                    <p v-if="r.dueAt" class="font-mono text-[9px] uppercase"
+                      :class="!r.done && Date.parse(r.dueAt) < Date.now() ? 'text-red-700' : 'text-neutral-400'">
+                      {{ new Date(r.dueAt).toLocaleString('es-VE') }}
+                    </p>
+                  </div>
+                  <button @click="removeReminder(r.id)" class="shrink-0 p-1 text-neutral-400 hover:text-red-700" aria-label="Eliminar recordatorio">
+                    <ui-icon name="trash" class="h-3.5 w-3.5"></ui-icon>
+                  </button>
+                </div>
+                <p v-if="remindersOf(detailContact.id).length === 0" class="text-xs text-neutral-400">Sin recordatorios.</p>
+              </div>
+              <div class="mt-2 flex gap-2">
+                <input v-model.trim="remInput.text" type="text" placeholder="Ej: llamar para confirmar pedido" @keydown.enter="addReminderFor(detailContact)"
+                  class="min-w-0 flex-1 border-2 border-neutral-300 px-2.5 py-2 text-xs outline-none focus:border-neutral-900" />
+                <input v-model="remInput.dueAt" type="datetime-local"
+                  class="shrink-0 border-2 border-neutral-300 px-2 py-2 text-xs outline-none focus:border-neutral-900" />
+                <button @click="addReminderFor(detailContact)" :disabled="!remInput.text.trim()"
+                  class="shrink-0 border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                  Agregar
+                </button>
+              </div>
+            </div>
+
+            <!-- Historial de etapas del lead -->
+            <div>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial de etapas</p>
+              <ol v-if="(detailContact.leadHistory || []).length" class="relative ml-1.5 space-y-2 border-l border-neutral-200 pl-4">
+                <li v-for="(h, i) in detailContact.leadHistory.slice().reverse()" :key="i" class="relative">
+                  <span class="absolute -left-[21.5px] top-1 h-2.5 w-2.5 rounded-full border-2 border-neutral-900 bg-white"
+                    :class="i === 0 ? 'bg-[var(--accent)]' : ''"></span>
+                  <p class="text-xs">
+                    <span class="font-semibold">{{ h.tag === 'reabierta' || h.tag === 'reabierto' ? 'Reabierta' : h.tag && h.tag.startsWith('finalizada:') ? 'Finalizada · ' + h.tag.split(':')[1] : (h.tag || 'Sin asignar') }}</span>
+                    <span class="ml-1 font-mono text-[9px] uppercase text-neutral-400">{{ new Date(h.at).toLocaleString('es-VE') }}</span>
+                  </p>
+                </li>
+              </ol>
+              <p v-else class="text-xs text-neutral-400">Sin cambios de etapa registrados.</p>
+            </div>
+
+            <!-- Finalización del lead -->
+            <div class="border border-neutral-200 p-3">
+              <template v-if="detailContact.leadClosed">
+                <div class="flex items-center justify-between gap-2">
+                  <div>
+                    <p class="font-semibold" :class="detailContact.leadClosed.outcome === 'ganada' ? 'text-emerald-700' : 'text-red-700'">
+                      {{ detailContact.leadClosed.outcome === 'ganada' ? 'Lead ganado' : 'Lead perdido' }}
+                    </p>
+                    <p class="font-mono text-[10px] text-neutral-400">{{ new Date(detailContact.leadClosed.at).toLocaleString('es-VE') }}</p>
+                    <p v-if="detailContact.leadClosed.note" class="mt-1 text-xs text-neutral-600">{{ detailContact.leadClosed.note }}</p>
+                  </div>
+                  <button @click="reopenLead(detailContact)" class="shrink-0 border border-neutral-300 px-2.5 py-1.5 text-xs font-medium transition hover:border-neutral-900">
+                    Reabrir lead
+                  </button>
+                </div>
+              </template>
+              <template v-else>
+                <p class="text-xs text-neutral-500">¿Cerraste la negociación con este cliente?</p>
+                <button v-if="canEdit('leads')" @click="openCloseModal(detailContact)"
+                  class="mt-2 w-full border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                  Finalizar lead
+                </button>
+              </template>
+            </div>
+
             <!-- Etiquetas del contacto -->
             <div>
               <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Etiquetas</p>
@@ -291,27 +502,77 @@
               </div>
             </div>
 
-            <!-- Conversaciones recientes -->
+            <!-- Conversaciones recientes (click = abrir en la bandeja) -->
             <div>
-              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Conversaciones recientes</p>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Conversaciones</p>
               <ul class="space-y-2">
-                <li v-for="c in metricsOf(detailContact).convs.slice(-3).reverse()" :key="c.id" class="border border-neutral-200 p-2.5">
-                  <div class="flex items-center justify-between">
-                    <span class="flex items-center gap-1.5 text-xs font-semibold">
-                      <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
-                      {{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}
-                    </span>
-                    <span class="font-mono text-[9px] uppercase text-neutral-400">{{ timeAgo(c.lastTs) }}</span>
-                  </div>
-                  <p class="mt-1 truncate text-xs text-neutral-600">
-                    {{ c.messages && c.messages.length ? c.messages[c.messages.length - 1].text : 'Sin mensajes' }}
-                  </p>
+                <li v-for="c in metricsOf(detailContact).convs.slice(-6).reverse()" :key="c.id">
+                  <button @click="openConversation(c)"
+                    class="w-full border border-neutral-200 p-2.5 text-left transition hover:border-neutral-900 hover:bg-stone-50">
+                    <div class="flex items-center justify-between">
+                      <span class="flex items-center gap-1.5 text-xs font-semibold">
+                        <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
+                        {{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}
+                      </span>
+                      <span class="font-mono text-[9px] uppercase text-neutral-400">{{ timeAgo(c.lastTs) }}</span>
+                    </div>
+                    <p class="mt-1 truncate text-xs text-neutral-600">
+                      {{ c.messages && c.messages.length ? c.messages[c.messages.length - 1].text : 'Sin mensajes' }}
+                    </p>
+                  </button>
                 </li>
                 <li v-if="metricsOf(detailContact).convs.length === 0" class="text-xs text-neutral-400">Sin conversaciones registradas.</li>
               </ul>
             </div>
           </div>
         </ui-drawer>
+
+        <!-- Drawer: próximos recordatorios (todas las leads) -->
+        <ui-drawer :open="remPanelOpen" title="Recordatorios próximos" width="max-w-md" @close="remPanelOpen = false">
+          <div class="space-y-2">
+            <div v-for="r in upcomingReminders" :key="r.id">
+              <button v-if="r.contact" @click="remPanelOpen = false; openDetail(r.contact)"
+                class="w-full border border-neutral-200 p-3 text-left transition hover:border-neutral-900 hover:bg-stone-50"
+                :class="r.dueAt && Date.parse(r.dueAt) < Date.now() ? 'border-red-700 bg-red-50' : ''">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="truncate text-sm font-semibold">{{ r.contact ? r.contact.name : 'Contacto' }}</span>
+                  <span v-if="r.dueAt" class="shrink-0 font-mono text-[9px] uppercase"
+                    :class="Date.parse(r.dueAt) < Date.now() ? 'text-red-700' : 'text-neutral-400'">
+                    {{ new Date(r.dueAt).toLocaleString('es-VE') }}
+                  </span>
+                </div>
+                <p class="mt-1 text-xs text-neutral-600">{{ r.text }}</p>
+              </button>
+            </div>
+            <p v-if="upcomingReminders.length === 0" class="py-8 text-center text-sm text-neutral-400">Sin recordatorios pendientes.</p>
+          </div>
+        </ui-drawer>
+
+        <!-- Modal: finalizar lead -->
+        <ui-modal :open="closeOpen" :title="'Finalizar lead · ' + (closeTarget ? closeTarget.name : '')" width="max-w-md" @close="closeOpen = false">
+          <div class="space-y-4">
+            <ui-field label="Resultado">
+              <div class="flex gap-1.5">
+                <button @click="closeForm.outcome = 'ganada'" class="flex-1 border-2 px-3 py-2 text-sm font-medium transition"
+                  :class="closeForm.outcome === 'ganada' ? 'border-emerald-800 bg-emerald-50 text-emerald-900' : 'border-neutral-300'">
+                  Ganada
+                </button>
+                <button @click="closeForm.outcome = 'perdida'" class="flex-1 border-2 px-3 py-2 text-sm font-medium transition"
+                  :class="closeForm.outcome === 'perdida' ? 'border-red-800 bg-red-50 text-red-900' : 'border-neutral-300'">
+                  Perdida
+                </button>
+              </div>
+            </ui-field>
+            <ui-field label="Nota (opcional)">
+              <textarea v-model.trim="closeForm.note" rows="3" placeholder="¿Por qué se cerró? ¿Qué aprendiste?"
+                class="w-full resize-none border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900"></textarea>
+            </ui-field>
+            <button @click="confirmClose"
+              class="w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+              Confirmar finalización
+            </button>
+          </div>
+        </ui-modal>
       </div>`,
   };
 

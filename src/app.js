@@ -68,6 +68,11 @@
           const n = ZernioCrm.getNiche(workspace.nicheId);
           workspace.contactTags = [...((n && n.tags) || []), 'cliente'];
         }
+        // Migración: campos del negocio personalizables (default del nicho)
+        if (!workspace.customFields) {
+          const n = ZernioCrm.getNiche(workspace.nicheId);
+          workspace.customFields = ((n && n.customFields) || []).map((f) => ({ ...f }));
+        }
         // Migración: preferencias del panel (secciones y KPIs visibles)
         if (!workspace.dashboardPrefs) {
           const n = ZernioCrm.getNiche(workspace.nicheId);

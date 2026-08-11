@@ -55,6 +55,9 @@
       /** Etiquetas de leads del negocio (personalizables en Configuración). */
       const leadTags = Vue.computed(() => workspace.value.leadTags || niche.value.tags || []);
 
+      /** Campos del negocio (personalizables en Configuración). */
+      const bizFields = Vue.computed(() => workspace.value.customFields || niche.value.customFields || []);
+
       /** Conversaciones filtradas por búsqueda, pestaña/tag y plataforma. */
       const filtered = Vue.computed(() => {
         const q = search.value.trim().toLowerCase();
@@ -65,7 +68,7 @@
             const convPlatform = c.platform || 'whatsapp';
             if (platformFilter.value !== 'all' && convPlatform !== platformFilter.value) return false;
             const contact = contacts.value.find((ct) => ct.id === c.contactId);
-            const haystack = `${contact ? contact.name : ''} ${c.messages.length ? c.messages[c.messages.length - 1].text : ''}`.toLowerCase();
+            const haystack = `${contact ? contact.name : ''} ${(c.messages && c.messages.length) ? c.messages[c.messages.length - 1].text : ''}`.toLowerCase();
             if (q && !haystack.includes(q)) return false;
             if (filter.value === 'unread') return c.unread > 0;
             if (filter.value !== 'all') return c.tags.includes(filter.value);
@@ -97,7 +100,7 @@
       /** ¿La conversación seleccionada está fuera de la ventana de 24h? */
       const outsideWindow = Vue.computed(() => {
         const conv = selected.value;
-        if (!conv || !conv.messages.length) {
+        if (!conv || !conv.messages || !conv.messages.length) {
           // Historial no disponible (carga fallida): tratar como fuera de ventana para no violar políticas
           return isLive.value && conv && conv.messagesLoaded === false;
         }
@@ -122,14 +125,14 @@
         selectedId.value = conv.id;
         humanAgent.value = false;
         if (conv.unread > 0) conv.unread = 0;
-        if (isLive.value && conv.messages.length === 0) {
+        if (isLive.value && (conv.messages || []).length === 0) {
           // Cada conversación pide sus mensajes con SU cuenta (puede haber varias por perfil)
           const accountId = conv.accountId || (workspace.value.zernio && workspace.value.zernio.accountId);
           if (!accountId) return;
           conv.messagesLoaded = false;
           try {
             const data = await ZernioCrm.api.listMessages(conv.id, accountId);
-            const list = Array.isArray(data) ? data : data.messages || [];
+            const list = Array.isArray(data) ? data : (data && data.messages) || [];
             conv.messages = list.map((m) => ({
               id: m.id || m.messageId,
               from: m.direction === 'outgoing' || m.from === 'me' ? 'out' : 'in',
@@ -152,7 +155,7 @@
 
       /** Último mensaje de una conversación (preview). */
       function lastMessage(conv) {
-        const m = conv.messages[conv.messages.length - 1];
+        const m = (conv.messages && conv.messages.length) ? conv.messages[conv.messages.length - 1] : null;
         return m ? `${m.from === 'out' ? 'Tú: ' : ''}${m.text}` : 'Sin mensajes';
       }
 
@@ -420,11 +423,12 @@
         else c.tags.push(tag);
       }
 
-      /** Asigna la etapa del lead al contacto (coherente con el kanban). */
+      /** Asigna la etapa del lead al contacto (centralizado en store.applyLeadTag). */
       function setLeadTag(tag) {
-        const c = selectedContact.value;
-        if (!c) return;
-        c.leadTag = tag || null;
+        const contact = selectedContact.value;
+        const wasClosed = Boolean(contact && contact.leadClosed);
+        ZernioCrm.applyLeadTag(contact, tag || null);
+        if (wasClosed) toast('Lead reabierto al cambiar de etapa', 'info');
       }
 
       /** Registra un contacto desde una conversación huérfana (sin ficha). */
@@ -443,6 +447,22 @@
         workspace.value.contacts.unshift(contact);
         conv.contactId = contact.id;
         toast('Contacto registrado: completa su ficha aquí mismo', 'success');
+      }
+
+      // ── Recordatorios (reutiliza los helpers del store) ────────────────────
+      const remInput = Vue.reactive({ text: '', dueAt: '' });
+
+      function addReminderFor(contact) {
+        const text = remInput.text.trim();
+        if (!text || !contact) return;
+        ZernioCrm.addReminder(contact.id, text, remInput.dueAt || null);
+        remInput.text = '';
+        remInput.dueAt = '';
+        toast('Recordatorio creado', 'success');
+      }
+
+      function contactReminders(contact) {
+        return contact ? ZernioCrm.remindersOf(contact.id) : [];
       }
 
       /** Envía la plantilla seleccionada (re-enganche >24h o primer mensaje). */
@@ -516,6 +536,26 @@
         }
       }
 
+      // Abre una conversación pedida desde otro módulo (ej. drawer de Leads).
+      // Va al FINAL del setup: el watch immediate corre en setup y usa computeds
+      // y selectConversation, que deben estar inicializados (TDZ).
+      Vue.watch(
+        () => store.pendingConversationId,
+        (id) => {
+          if (!id) return;
+          const conv = conversations.value.find((c) => c.id === id);
+          if (!conv) {
+            // La conversación pedida ya no existe: no se consume el pendiente
+            // (otro módulo podría recrearla) y se avisa para no perder la intención.
+            toast('La conversación solicitada ya no está disponible', 'error');
+            return;
+          }
+          store.pendingConversationId = null;
+          selectConversation(conv);
+        },
+        { immediate: true }
+      );
+
       return {
         search, filter, platformFilter, selectedId, draft, sending, loading, syncing, newConvOpen, newContactId,
         workspace, niche, conversations, contacts, filtered, selected, selectedContact, unreadTotal, isLive,
@@ -524,6 +564,7 @@
         tplPickerOpen, tplList, tplSelected, tplParams, tplVariables, tplSending,
         openTemplatePicker, closeTemplatePicker, sendApprovedTemplate,
         contactDrawerOpen, contactTags, toggleContactTag, setLeadTag, registerContact,
+        bizFields, remInput, addReminderFor, contactReminders, ZernioCrm,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
     },
@@ -756,7 +797,7 @@
         </ui-modal>
 
         <!-- Modal: selector de plantilla aprobada (primer mensaje o re-enganche >24h) -->
-        <ui-modal :open="tplPickerOpen" :title="tplTarget ? 'Re-enganchar con plantilla aprobada' : 'Primer mensaje: elige una plantilla aprobada'" width="max-w-2xl" @close="closeTemplatePicker">
+        <ui-modal :open="tplPickerOpen" :title="tplTarget ? 'Re-enganchar con plantilla aprobada' : 'Primer mensaje: elige una plantilla aprobada'" width="max-w-3xl" @close="closeTemplatePicker">
           <div class="space-y-4">
             <p class="text-xs text-neutral-500">
               WhatsApp exige plantillas aprobadas por Meta para abrir o re-enganchar conversaciones. Elige una y completa sus variables.
@@ -777,12 +818,8 @@
             </div>
 
             <template v-if="tplSelected">
-              <div class="border border-neutral-200 bg-stone-50 p-3">
-                <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Vista previa</p>
-                <div class="mt-2 rounded-lg border border-neutral-200 bg-white px-3 py-2">
-                  <p class="whitespace-pre-wrap text-sm">{{ tplSelected.body || (tplSelected.components || []).find(c => c.type === 'body')?.text || tplSelected.name }}</p>
-                </div>
-              </div>
+              <!-- Preview gráfico completo (burbuja WhatsApp + info + estado) -->
+              <template-preview :tpl="tplSelected"></template-preview>
               <div v-if="tplVariables.length" class="grid gap-3 sm:grid-cols-2">
                 <ui-field v-for="v in tplVariables" :key="v" :label="'Valor para ' + v">
                   <input v-model.trim="tplParams[v]" type="text" :placeholder="'Dato para ' + v"
@@ -798,7 +835,7 @@
           </div>
         </ui-modal>
         <!-- Drawer: ficha del cliente (gestión por conversación) -->
-        <ui-drawer :open="contactDrawerOpen" :title="'Ficha · ' + (selectedContact ? selectedContact.name : 'Sin ficha')" @close="contactDrawerOpen = false">
+        <ui-drawer :open="contactDrawerOpen" width="max-w-lg" :title="'Ficha · ' + (selectedContact ? selectedContact.name : 'Sin ficha')" @close="contactDrawerOpen = false">
           <div v-if="selected" class="space-y-5">
             <template v-if="selectedContact">
               <div class="flex items-center gap-3">
@@ -832,13 +869,49 @@
                 </select>
               </div>
 
-              <div v-if="niche.customFields.length">
+              <div v-if="bizFields.length">
                 <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Campos del negocio · {{ niche.nombre }}</p>
                 <div class="space-y-2">
-                  <ui-field v-for="f in niche.customFields" :key="f.slug" :label="f.name">
+                  <ui-field v-for="f in bizFields" :key="f.slug" :label="f.name">
                     <input v-model="selectedContact.customFields[f.slug]" type="text"
                       class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
                   </ui-field>
+                </div>
+              </div>
+
+              <!-- Recordatorios del contacto -->
+              <div>
+                <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Recordatorios</p>
+                <div class="space-y-1.5">
+                  <div v-for="r in contactReminders(selectedContact)" :key="r.id"
+                    class="flex items-center gap-2 border border-neutral-200 px-2.5 py-2"
+                    :class="r.done ? 'opacity-50' : r.dueAt && Date.parse(r.dueAt) < Date.now() ? 'border-red-700 bg-red-50' : ''">
+                    <button @click="ZernioCrm.toggleReminder(r.id)" class="shrink-0" :aria-label="r.done ? 'Marcar pendiente' : 'Marcar completado'">
+                      <ui-icon :name="r.done ? 'check-circle' : 'check'" class="h-4 w-4"
+                        :class="r.done ? 'text-emerald-700' : 'text-neutral-300'"></ui-icon>
+                    </button>
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-xs" :class="r.done ? 'line-through' : ''">{{ r.text }}</p>
+                      <p v-if="r.dueAt" class="font-mono text-[9px] uppercase"
+                        :class="!r.done && Date.parse(r.dueAt) < Date.now() ? 'text-red-700' : 'text-neutral-400'">
+                        {{ new Date(r.dueAt).toLocaleString('es-VE') }}
+                      </p>
+                    </div>
+                    <button @click="ZernioCrm.removeReminder(r.id)" class="shrink-0 p-1 text-neutral-400 hover:text-red-700" aria-label="Eliminar recordatorio">
+                      <ui-icon name="trash" class="h-3.5 w-3.5"></ui-icon>
+                    </button>
+                  </div>
+                  <p v-if="contactReminders(selectedContact).length === 0" class="text-xs text-neutral-400">Sin recordatorios.</p>
+                </div>
+                <div class="mt-2 flex gap-2">
+                  <input v-model.trim="remInput.text" type="text" placeholder="Ej: llamar para confirmar pedido" @keydown.enter="addReminderFor(selectedContact)"
+                    class="min-w-0 flex-1 border-2 border-neutral-300 px-2.5 py-2 text-xs outline-none focus:border-neutral-900" />
+                  <input v-model="remInput.dueAt" type="datetime-local"
+                    class="shrink-0 border-2 border-neutral-300 px-2 py-2 text-xs outline-none focus:border-neutral-900" />
+                  <button @click="addReminderFor(selectedContact)" :disabled="!remInput.text.trim()"
+                    class="shrink-0 border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
+                    Agregar
+                  </button>
                 </div>
               </div>
             </template>
@@ -850,17 +923,19 @@
               </button>
             </template>
 
-            <!-- Historial resumido del contacto -->
+            <!-- Historial resumido del contacto (click = abrir esa conversación) -->
             <div>
               <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial</p>
               <ul class="space-y-1.5">
-                <li v-for="c in conversations.filter(x => selectedContact && x.contactId === selectedContact.id)" :key="c.id"
-                  class="flex items-center justify-between gap-2 text-xs">
-                  <span class="flex min-w-0 items-center gap-1.5">
-                    <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
-                    <span class="truncate">{{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}</span>
-                  </span>
-                  <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ timeAgo(c.lastTs) }} · {{ (c.messages || []).length }} msgs</span>
+                <li v-for="c in conversations.filter(x => selectedContact && x.contactId === selectedContact.id)" :key="c.id">
+                  <button @click="selectConversation(c); contactDrawerOpen = false"
+                    class="flex w-full items-center justify-between gap-2 rounded border border-neutral-200 px-2.5 py-2 text-left text-xs transition hover:border-neutral-900 hover:bg-stone-50">
+                    <span class="flex min-w-0 items-center gap-1.5">
+                      <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
+                      <span class="truncate">{{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}</span>
+                    </span>
+                    <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ timeAgo(c.lastTs) }} · {{ (c.messages || []).length }} msgs</span>
+                  </button>
                 </li>
                 <li v-if="!selectedContact || conversations.filter(x => x.contactId === selectedContact.id).length === 0" class="text-xs text-neutral-400">
                   Sin historial previo.

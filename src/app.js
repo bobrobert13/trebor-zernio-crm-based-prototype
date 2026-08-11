@@ -15,6 +15,7 @@
     inbox: 'inbox-view',
     contacts: 'contacts-view',
     channels: 'channels-view',
+    leads: 'leads-view',
     team: 'team-view',
     broadcasts: 'broadcasts-view',
     billing: 'billing-view',
@@ -61,6 +62,11 @@
         if (!workspace.leadTags) {
           const n = ZernioCrm.getNiche(workspace.nicheId);
           workspace.leadTags = [...((n && n.tags) || ['cliente'])];
+        }
+        // Migración: etiquetas de contacto administrables (separadas de las leads)
+        if (!workspace.contactTags) {
+          const n = ZernioCrm.getNiche(workspace.nicheId);
+          workspace.contactTags = [...((n && n.tags) || []), 'cliente'];
         }
         // Migración: preferencias del panel (secciones y KPIs visibles)
         if (!workspace.dashboardPrefs) {

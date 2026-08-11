@@ -28,8 +28,8 @@
       const niche = Vue.computed(() => getNiche(workspace.value && workspace.value.nicheId));
       const contacts = Vue.computed(() => workspace.value.contacts || []);
 
-      /** Tags disponibles: los del nicho + 'cliente'. */
-      const availableTags = Vue.computed(() => [...new Set([...niche.value.tags, 'cliente'])]);
+      /** Tags disponibles: etiquetas de contacto del negocio (administrables en Configuración). */
+      const availableTags = Vue.computed(() => workspace.value.contactTags || [...new Set([...niche.value.tags, 'cliente'])]);
 
       /** Contactos filtrados por búsqueda y tag. */
       const filtered = Vue.computed(() => {

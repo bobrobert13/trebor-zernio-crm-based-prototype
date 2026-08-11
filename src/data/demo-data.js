@@ -98,6 +98,7 @@
       phone,
       platform: 'whatsapp',
       tags,
+      leadTag: (niche.tags || [])[i % (niche.tags || []).length] || null, // etapa inicial del pipeline
       customFields: Object.fromEntries(fields.map((f, j) => [f.slug, values[j] ?? ''])),
       createdAt: Date.now() - (i + 3) * 864e5,
     }));
@@ -109,6 +110,7 @@
         phone: `+58 412 555 02${10 + i}`,
         platform: 'whatsapp',
         tags: ['cliente'],
+        leadTag: (niche.tags || [])[(i + 1) % (niche.tags || []).length] || null,
         customFields: Object.fromEntries(fields.map((f) => [f.slug, sampleFieldValue(f)])),
         createdAt: Date.now() - (i + 9) * 864e5,
       });
@@ -267,6 +269,7 @@
       activity: buildActivity([contacts[0].name, contacts[1].name]),
       settings: { notifications: true, autoReply: false },
       leadTags: [...niche.tags], // etiquetas de leads por defecto del nicho (editables)
+      contactTags: [...niche.tags, 'cliente'], // etiquetas de contacto por defecto del nicho (editables)
       channels: [
         { platform: 'whatsapp', accountId: 'demo_wa', username: DEMO_PHONE, connected: true, since: Date.now() - 3600e3 },
         { platform: 'instagram', accountId: 'demo_ig', username: 'mi.negocio.ve', connected: true, since: Date.now() - 864e5 },

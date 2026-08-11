@@ -104,6 +104,14 @@
       background-size: cover;
       background-position: center;
     }
+    /* Drawer lateral derecho (fichas y detalles) */
+    .drawer-in {
+      animation: drawer-in 0.22s ease;
+    }
+    @keyframes drawer-in {
+      from { transform: translateX(100%); }
+      to { transform: translateX(0); }
+    }
   </style>
 </head>
 
@@ -121,26 +129,27 @@
   -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 
-  <script src="src/constants.js?v=29"></script>
-  <script src="src/store.js?v=29"></script>
-  <script src="src/data/storage.js?v=29"></script>
-  <script src="src/data/demo-data.js?v=29"></script>
-  <script src="src/services/zernio-api.js?v=29"></script>
+  <script src="src/constants.js?v=31"></script>
+  <script src="src/store.js?v=31"></script>
+  <script src="src/data/storage.js?v=31"></script>
+  <script src="src/data/demo-data.js?v=31"></script>
+  <script src="src/services/zernio-api.js?v=31"></script>
 
-  <script src="src/components/ui.js?v=29"></script>
-  <script src="src/components/live-connect.js?v=29"></script>
-  <script src="src/components/onboarding.js?v=29"></script>
-  <script src="src/components/dashboard.js?v=29"></script>
-  <script src="src/components/inbox.js?v=29"></script>
-  <script src="src/components/contacts.js?v=29"></script>
-  <script src="src/components/channels.js?v=29"></script>
-  <script src="src/components/team.js?v=29"></script>
-  <script src="src/components/broadcasts.js?v=29"></script>
-  <script src="src/components/settings.js?v=29"></script>
-  <script src="src/components/analytics.js?v=29"></script>
-  <script src="src/components/billing.js?v=29"></script>
-  <script src="src/components/system.js?v=29"></script>
+  <script src="src/components/ui.js?v=31"></script>
+  <script src="src/components/live-connect.js?v=31"></script>
+  <script src="src/components/onboarding.js?v=31"></script>
+  <script src="src/components/dashboard.js?v=31"></script>
+  <script src="src/components/inbox.js?v=31"></script>
+  <script src="src/components/contacts.js?v=31"></script>
+  <script src="src/components/channels.js?v=31"></script>
+  <script src="src/components/leads.js?v=31"></script>
+  <script src="src/components/team.js?v=31"></script>
+  <script src="src/components/broadcasts.js?v=31"></script>
+  <script src="src/components/settings.js?v=31"></script>
+  <script src="src/components/analytics.js?v=31"></script>
+  <script src="src/components/billing.js?v=31"></script>
+  <script src="src/components/system.js?v=31"></script>
 
-  <script src="src/app.js?v=29"></script>
+  <script src="src/app.js?v=31"></script>
 </body>
 </html>

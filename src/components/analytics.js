@@ -54,18 +54,30 @@
       /** Heatmap de mejores horarios (7 días × 6 bloques). */
       const heatmap = Vue.ref([]);
 
-      /** KPIs resumen del periodo. */
+      /** KPIs resumen del periodo, con tendencia semántica (vs. periodo anterior). */
       const summary = Vue.computed(() => {
         const total = daily.value.reduce((acc, d) => acc + d.value, 0);
         const avg = daily.value.length ? Math.round(total / daily.value.length) : 0;
         const seed = workspace.value.id;
+        // Tendencia pseudo-determinista por KPI: up/down/flat + %
+        // Para "resp" (minutos) bajar es MEJOR: el color se invierte en el template
+        const trendOf = (id) => {
+          const h = hashSeed(seed + id + range.value);
+          const pct = 4 + (h % 18);
+          return h % 3 === 0 ? { dir: 'flat', pct: 0 } : { dir: h % 2 === 0 ? 'up' : 'down', pct };
+        };
+        // true = la dirección es positiva para el negocio (subir es bueno)
+        const positiveUp = (id) => id !== 'resp';
         return [
-          { id: 'total', label: 'Conversaciones', value: total, unit: '', icon: 'message' },
-          { id: 'avg', label: 'Promedio diario', value: avg, unit: '', icon: 'chart' },
-          { id: 'resp', label: 'Respuesta promedio', value: pseudo(seed, 'resp', 3, 12), unit: 'min', icon: 'zap' },
-          { id: 'sat', label: 'Satisfacción', value: pseudo(seed, 'sat', 85, 99), unit: '%', icon: 'star' },
+          { id: 'total', label: 'Conversaciones', value: total, unit: '', icon: 'message', trend: trendOf('total'), positiveUp: positiveUp('total') },
+          { id: 'avg', label: 'Promedio diario', value: avg, unit: '', icon: 'chart', trend: trendOf('avg'), positiveUp: positiveUp('avg') },
+          { id: 'resp', label: 'Respuesta promedio', value: pseudo(seed, 'resp', 3, 12), unit: 'min', icon: 'zap', trend: trendOf('resp'), positiveUp: positiveUp('resp') },
+          { id: 'sat', label: 'Satisfacción', value: pseudo(seed, 'sat', 85, 99), unit: '%', icon: 'star', trend: trendOf('sat'), positiveUp: positiveUp('sat') },
         ];
       });
+
+      /** Guía explicativa de métricas (pipeline educativo de Analítica). */
+      const guideOpen = Vue.ref(false);
 
       const maxDaily = Vue.computed(() => Math.max(1, ...daily.value.map((d) => d.value)));
 
@@ -174,8 +186,8 @@
 
       return {
         range, loading, addonError, source, daily, heatmap, summary, maxDaily,
-        WEEKDAYS, SLOTS, niche, isLive,
-        load, exportCsv,
+        WEEKDAYS, SLOTS, niche, isLive, guideOpen,
+        load, exportCsv, ui: ZernioCrm,
       };
     },
 
@@ -206,6 +218,48 @@
           </div>
         </header>
 
+        <!-- Guía explicativa: qué significa cada métrica -->
+        <section class="border-2 border-neutral-900 bg-white">
+          <button @click="guideOpen = !guideOpen" class="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left">
+            <div class="flex items-center gap-3">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]">
+                <ui-icon name="book" class="h-4 w-4"></ui-icon>
+              </span>
+              <div>
+                <p class="font-semibold">¿Qué significa cada métrica?</p>
+                <p class="text-xs text-neutral-500">Guía rápida con códigos de color para leer esta vista sin confusiones.</p>
+              </div>
+            </div>
+            <ui-icon name="chevron-down" class="h-4 w-4 shrink-0 text-neutral-400 transition-transform" :class="guideOpen ? 'rotate-180' : ''"></ui-icon>
+          </button>
+          <div v-if="guideOpen" class="border-t border-neutral-200 p-5">
+            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <article v-for="g in ui.ANALYTICS_GUIDE" :key="g.id" class="flex flex-col border p-4" :class="g.color">
+                <div class="flex items-center justify-between">
+                  <ui-icon :name="g.icon" class="h-5 w-5"></ui-icon>
+                  <span class="font-mono text-[9px] uppercase tracking-widest opacity-70">código {{ g.color.includes('emerald') ? 'verde' : g.color.includes('amber') ? 'ámbar' : g.color.includes('sky') ? 'azul' : 'rojo' }}</span>
+                </div>
+                <h4 class="mt-2 font-semibold">{{ g.nombre }}</h4>
+                <p class="mt-1 text-xs leading-relaxed opacity-90">{{ g.que }}</p>
+                <p class="mt-2 font-mono text-[9px] uppercase tracking-widest opacity-70">Cómo se calcula</p>
+                <p class="mt-0.5 text-xs opacity-80">{{ g.como }}</p>
+                <p class="mt-2 font-mono text-[9px] uppercase tracking-widest opacity-70">Cuándo mirarla</p>
+                <p class="mt-0.5 text-xs opacity-80">{{ g.cuando }}</p>
+              </article>
+            </div>
+            <div class="mt-4 flex flex-wrap items-center gap-2 border border-neutral-200 bg-stone-50 p-4 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+              <span class="flex items-center gap-1.5"><ui-icon name="activity" class="h-4 w-4"></ui-icon> Interacción</span>
+              <ui-icon name="arrow-right" class="h-3.5 w-3.5"></ui-icon>
+              <span class="flex items-center gap-1.5"><ui-icon name="message" class="h-4 w-4"></ui-icon> Mensaje</span>
+              <ui-icon name="arrow-right" class="h-3.5 w-3.5"></ui-icon>
+              <span class="flex items-center gap-1.5"><ui-icon name="users" class="h-4 w-4"></ui-icon> Conversación</span>
+              <ui-icon name="arrow-right" class="h-3.5 w-3.5"></ui-icon>
+              <span class="flex items-center gap-1.5"><ui-icon name="zap" class="h-4 w-4"></ui-icon> Seguimiento</span>
+              <span class="ml-auto normal-case">el flujo de datos de la plataforma a tu CRM</span>
+            </div>
+          </div>
+        </section>
+
         <!-- Aviso de add-on -->
         <div v-if="addonError" class="flex items-start gap-3 border-2 border-amber-700 bg-amber-50 p-4 text-sm text-amber-900">
           <ui-icon name="alert" class="mt-0.5 h-4 w-4 shrink-0"></ui-icon>
@@ -229,9 +283,18 @@
                 <span class="font-mono text-[11px] uppercase tracking-widest text-neutral-400">{{ k.label }}</span>
                 <ui-icon :name="k.icon" class="h-4 w-4 text-neutral-300"></ui-icon>
               </div>
-              <p class="text-3xl font-bold tabular-nums">
-                {{ k.value }}<span v-if="k.unit" class="ml-1 text-base font-medium text-neutral-400">{{ k.unit }}</span>
-              </p>
+              <div class="flex items-end justify-between gap-2">
+                <p class="text-3xl font-bold tabular-nums">
+                  {{ k.value }}<span v-if="k.unit" class="ml-1 text-base font-medium text-neutral-400">{{ k.unit }}</span>
+                </p>
+                <!-- Indicativo semántico de tendencia (para 'resp' bajar es mejorar) -->
+                <span class="flex items-center gap-0.5 font-mono text-[10px] tabular-nums"
+                  :class="(k.positiveUp ? k.trend.dir === 'up' : k.trend.dir === 'down') ? 'text-emerald-700' : k.trend.dir === 'flat' ? 'text-neutral-400' : 'text-red-700'">
+                  <ui-icon :name="k.trend.dir === 'flat' ? 'minus' : 'arrow-right'"
+                    class="h-3 w-3" :class="k.positiveUp ? (k.trend.dir === 'down' ? 'rotate-90' : k.trend.dir === 'up' ? '-rotate-90' : '') : (k.trend.dir === 'up' ? 'rotate-90' : k.trend.dir === 'down' ? '-rotate-90' : '')"></ui-icon>
+                  {{ k.trend.dir === 'flat' ? 'estable' : k.trend.pct + '%' }}
+                </span>
+              </div>
             </div>
           </section>
 

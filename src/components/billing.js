@@ -110,7 +110,10 @@
               local.value = null;
             }
           }
-          if (!isLive.value) return; // modo demo: solo medidor local
+          if (!isLive.value) {
+            local.value = (workspace.value && workspace.value.usage) || null; // seed demo
+            return;
+          }
 
           // Snapshot Zernio con la master key del centro
           const [u, st, pr] = await Promise.all([

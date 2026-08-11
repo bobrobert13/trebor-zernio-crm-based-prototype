@@ -17,6 +17,8 @@
     channels: 'channels-view',
     team: 'team-view',
     broadcasts: 'broadcasts-view',
+    billing: 'billing-view',
+    system: 'system-view',
     settings: 'settings-view',
   };
 
@@ -98,6 +100,14 @@
           if (seenWebhooks.size > 500) seenWebhooks.delete(seenWebhooks.values().next().value);
           ZernioCrm.pushWebhookEvent(entry.event);
           ZernioCrm.reflectIncomingMessage(entry.event);
+          // Cuenta desconectada (token expirado): marcar el canal para reconectar
+          if (entry.event && entry.event.event === 'account.disconnected' && store.workspace) {
+            const accId = entry.event.account && (entry.event.account.id || entry.event.account.accountId);
+            const channel = (store.workspace.channels || []).find((c) => !accId || c.accountId === accId);
+            if (channel) channel.health = 'reconnect';
+            if (store.workspace.zernio) store.workspace.zernio.health = 'reconnect';
+            ZernioCrm.toast('Alerta: una cuenta se desconectó en Zernio (token expirado). Revisa Canales.', 'error', 6000);
+          }
         });
       } catch {
         // servidor caído: se ignora hasta el próximo tick

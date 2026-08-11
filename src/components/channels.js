@@ -174,6 +174,9 @@
               {{ channelOf(p.id).username || channelOf(p.id).accountId }}
             </p>
             <p v-else class="mt-1 text-sm text-neutral-400">Sin cuenta vinculada</p>
+            <ui-badge v-if="channelOf(p.id) && channelOf(p.id).health === 'reconnect'" variant="danger" dot class="mt-2">
+              Reconectar (token expirado)
+            </ui-badge>
 
             <div class="mt-3 flex flex-wrap items-center gap-1.5">
               <ui-badge v-if="p.inbox" variant="success">Mensajería</ui-badge>

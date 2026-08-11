@@ -147,7 +147,7 @@
 
         <!-- Tabla (integrada, con header sticky en scroll) -->
         <div class="min-h-0 flex-1 overflow-auto bg-white">
-          <table class="w-full min-w-[720px] text-left text-sm">
+          <table class="h-full w-full min-w-[720px] text-left text-sm">
             <thead class="border-b border-neutral-200 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
               <tr>
                 <th class="sticky top-0 z-10 bg-white px-4 py-3">Contacto</th>

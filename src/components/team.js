@@ -118,7 +118,7 @@
         <div class="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[1fr_400px] xl:overflow-hidden">
           <!-- Usuarios -->
           <section class="min-h-0 overflow-auto bg-white">
-          <table class="w-full min-w-[640px] text-left text-sm">
+          <table class="h-full w-full min-w-[640px] text-left text-sm">
             <thead class="sticky top-0 z-10 border-b border-neutral-200 bg-white font-mono text-[10px] uppercase tracking-widest text-neutral-500">
               <tr>
                 <th class="px-4 py-3">Miembro</th>

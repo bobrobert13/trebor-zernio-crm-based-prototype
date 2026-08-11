@@ -59,9 +59,22 @@
       const workspace = Vue.computed(() => store.workspace);
       const isLive = Vue.computed(() => store.mode === 'live');
 
-      /** Operaciones con precio resuelto (xApiCallsByOperation + x-pricing). */
+      /** Operaciones con precio resuelto (xApiCallsByOperation o resumen por días). */
       const operations = Vue.computed(() => {
         const u = usage.value || {};
+        // Shape real de /usage: serie diaria por categoría (accounts, numbers, calls, sms, xApi…)
+        if (Array.isArray(u.days) && u.days.length) {
+          const totals = {};
+          u.days.forEach((d) => {
+            ['xApi', 'calls', 'sms', 'verify', 'dlc', 'credits', 'accounts', 'numbers', 'other'].forEach((k) => {
+              totals[k] = (totals[k] || 0) + (Number(d[k]) || 0);
+            });
+          });
+          return Object.entries(totals)
+            .filter(([, v]) => v > 0)
+            .map(([key, calls]) => ({ key: `/${key}`, calls, priceCents: null }))
+            .sort((a, b) => b.calls - a.calls);
+        }
         const ops = (u.usage && u.usage.xApiCallsByOperation) || u.xApiCallsByOperation || {};
         const pricingMap = pricing.value && (pricing.value.operations || pricing.value.prices || pricing.value);
         const list = Object.entries(ops).map(([key, calls]) => {
@@ -77,6 +90,57 @@
 
       /** Costo estimado de las llamadas con precio conocido. */
       const estimatedCents = Vue.computed(() => operations.value.reduce((acc, o) => acc + (o.priceCents != null ? o.priceCents * o.calls : 0), 0));
+
+      /** Nombre del plan (usage.plan o billing.plan). */
+      const planName = Vue.computed(() => {
+        const u = usage.value || {};
+        const st = statement.value || {};
+        return (u.plan && u.plan.name) || u.planName || (st.plan && st.plan.name) || '—';
+      });
+
+      /** Gasto del período en centavos (usage.spend o billing.caps/balance). */
+      const spentCents = Vue.computed(() => {
+        const u = usage.value || {};
+        const st = statement.value || {};
+        return (
+          (u.spend && (u.spend.xSpendCents ?? u.spend.currentPeriodCents)) ??
+          (st.caps && st.caps.xSpendUsedCents) ??
+          (st.balance && st.balance.accruedThisPeriodCents) ??
+          0
+        );
+      });
+
+      /** Límite de gasto del período en centavos. */
+      const spendLimitCents = Vue.computed(() => {
+        const u = usage.value || {};
+        const st = statement.value || {};
+        return (u.spend && u.spend.xSpendLimitCents) ?? (st.caps && st.caps.xSpendLimitCents) ?? null;
+      });
+
+      /** Balance/créditos disponibles en centavos. */
+      const balanceCents = Vue.computed(() => {
+        const st = statement.value || {};
+        return (st.balance && (st.balance.creditsRemainingCents ?? st.balance.cents)) ?? null;
+      });
+
+      /** Estado de pago (string corto del statement). */
+      const paymentStatus = Vue.computed(() => {
+        const st = statement.value || {};
+        if (st.status && typeof st.status === 'object') {
+          const s = st.status;
+          if (s.hasPaymentMethod == null && s.requiresAction == null) return JSON.stringify(s).slice(0, 40);
+          return [s.hasPaymentMethod ? 'método de pago OK' : 'sin método de pago', s.requiresAction ? '· acción requerida' : ''].filter(Boolean).join(' ');
+        }
+        return st.status || st.paymentStatus || '—';
+      });
+
+      /** Período de facturación (inicio → fin). */
+      const billingPeriod = Vue.computed(() => {
+        const st = statement.value || {};
+        if (!st.period) return (usage.value && usage.value.billingPeriod) || '';
+        const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString('es-VE') : '');
+        return `${fmt(st.period.start)} → ${fmt(st.period.end)}`;
+      });
 
       /** Últimos 30 días del medidor local para el gráfico. */
       const localDays = Vue.computed(() => {
@@ -137,6 +201,7 @@
       return {
         loading, error, range, usage, statement, pricing, local,
         localDays, maxDay, operations, estimatedCents, usd, pct, isLive, load,
+        planName, spentCents, spendLimitCents, balanceCents, paymentStatus, billingPeriod,
       };
     },
 
@@ -174,15 +239,15 @@
             <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <div class="border-2 border-neutral-900 p-4">
                 <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Plan</p>
-                <p class="mt-1 text-xl font-bold">{{ usage.planName || usage.plan || '—' }}</p>
-                <p class="font-mono text-[11px] text-neutral-400">{{ usage.billingPeriod || '' }}</p>
+                <p class="mt-1 text-xl font-bold">{{ planName }}</p>
+                <p class="font-mono text-[11px] text-neutral-400">{{ billingPeriod }}</p>
               </div>
               <div class="border-2 border-neutral-900 p-4">
                 <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Gasto del período</p>
-                <p class="mt-1 text-xl font-bold">{{ usd((usage.spend && usage.spend.xSpendCents) ?? (usage.spend && usage.spend.currentPeriodCents)) }}</p>
-                <p class="font-mono text-[11px] text-neutral-400">límite {{ usd(usage.spend && usage.spend.xSpendLimitCents) }}</p>
+                <p class="mt-1 text-xl font-bold">{{ usd(spentCents) }}</p>
+                <p class="font-mono text-[11px] text-neutral-400">límite {{ usd(spendLimitCents) }}</p>
                 <div class="mt-2 h-2 border border-neutral-300 bg-neutral-100">
-                  <div class="h-full bg-[var(--accent)]" :style="{ width: pct((usage.spend && usage.spend.xSpendCents), (usage.spend && usage.spend.xSpendLimitCents)) + '%' }"></div>
+                  <div class="h-full bg-[var(--accent)]" :style="{ width: pct(spentCents, spendLimitCents) + '%' }"></div>
                 </div>
               </div>
               <div class="border-2 border-neutral-900 p-4">
@@ -192,8 +257,8 @@
               </div>
               <div class="border-2 border-neutral-900 p-4">
                 <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Statement</p>
-                <p class="mt-1 text-xl font-bold">{{ usd(statement && (statement.balanceCents ?? (statement.balance && statement.balance.cents))) }}</p>
-                <p class="font-mono text-[11px] text-neutral-400">{{ (statement && statement.paymentStatus) || (statement && statement.status) || '—' }}</p>
+                <p class="mt-1 text-xl font-bold">{{ usd(balanceCents) }}</p>
+                <p class="font-mono text-[11px] text-neutral-400">{{ paymentStatus }}</p>
               </div>
             </div>
 

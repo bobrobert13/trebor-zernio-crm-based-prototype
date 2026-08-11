@@ -88,7 +88,8 @@ async function main() {
     let buffer = '';
     let persisted = false;
     wireSignals(child);
-    child.stdout.on('data', async (chunk) => {
+    // cloudflared loguea el banner por stderr: se parsea desde ambas corrientes
+    const onData = async (chunk) => {
       if (persisted) return; // no acumular más buffer
       buffer += chunk.toString();
       const url = cloudflaredUrl(buffer);
@@ -97,9 +98,9 @@ async function main() {
         console.log(`[tunnel] URL HTTPS: ${url}`);
         await persist(url);
       }
-    });
-    child.stderr.on('data', (chunk) => process.stderr.write(chunk));
-    process.on('SIGINT', () => child.kill('SIGINT'));
+    };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onData);
     return;
   }
 

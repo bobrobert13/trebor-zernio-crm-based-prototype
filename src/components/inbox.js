@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, getNiche, timeAgo, formatTime, formatDate, uid, canEdit, PLATFORMS, getPlatform, recordProductMentions, confirmMention, discardMention, INTENT_LABELS } = ZernioCrm;
+  const { store, toast, getNiche, timeAgo, formatTime, formatDate, uid, canEdit, PLATFORMS, getPlatform, recordProductMentions, confirmMention, discardMention, INTENT_LABELS, buildProductCard, PRODUCT_CARD_DEFAULTS, renderWhatsApp } = ZernioCrm;
 
   const components = {};
 
@@ -204,7 +204,7 @@
       async function send() {
         const text = draft.value.trim();
         const conv = selected.value;
-        if (!text || !conv || sending.value) return;
+        if ((!text && !cardAttach.value) || !conv || sending.value) return;
         // Políticas de ventana de 24h (validación ANTES de insertar el mensaje)
         if (isLive.value && outsideWindow.value) {
           if (conv.platform === 'whatsapp') {
@@ -216,16 +216,19 @@
             return;
           }
         }
+        // Si hay una ficha adjunta, el mensaje final = saludo + tarjeta formateada
+        const finalText = cardAttach.value ? (cardPreview.value || text) : text;
         sending.value = true;
-        const msg = { id: uid('msg'), from: 'out', text, ts: Date.now(), status: 'sent' };
+        const msg = { id: uid('msg'), from: 'out', text: finalText, ts: Date.now(), status: 'sent', card: Boolean(cardAttach.value) };
         conv.messages.push(msg);
         conv.lastTs = msg.ts;
         draft.value = '';
+        detachCard();
         try {
           if (isLive.value) {
             const payload = {
               accountId: (conv.accountId || (workspace.value.zernio && workspace.value.zernio.accountId)) || '',
-              message: text,
+              message: finalText,
             };
             if (['instagram', 'facebook'].includes(conv.platform) && outsideWindow.value) {
               payload.messagingType = 'MESSAGE_TAG';
@@ -535,6 +538,11 @@
 
       function pickProduct(product) {
         if (!product) return;
+        if (productPickTarget.value === 'attach') {
+          attachCard(product);
+          productPickOpen.value = false;
+          return;
+        }
         if (productPickTarget.value) {
           confirmMention(productPickTarget.value, product.id);
           toast('Producto confirmado: ' + product.name, 'success');
@@ -560,6 +568,35 @@
           }
         }
         productPickOpen.value = false;
+      }
+
+      // ── Adjuntar ficha de producto al borrador (composer) ──────────────────
+      const cardAttach = Vue.ref(null); // producto adjunto al draft
+      const cardGreeting = Vue.ref('');
+
+      /** Preview del mensaje final compuesto (saludo + tarjeta formateada). */
+      const cardPreview = Vue.computed(() => {
+        if (!cardAttach.value) return '';
+        const card = buildProductCard(cardAttach.value, niche.value.id);
+        const g = cardGreeting.value.trim();
+        return g ? g + '\n\n' + card : card;
+      });
+
+      function openCardPicker() {
+        productPickTarget.value = 'attach';
+        productPickQuery.value = '';
+        productPickOpen.value = true;
+      }
+
+      function attachCard(product) {
+        cardAttach.value = product;
+        const defaults = (PRODUCT_CARD_DEFAULTS || {})[niche.value.id] || (PRODUCT_CARD_DEFAULTS || {}).generic || {};
+        cardGreeting.value = defaults.greeting || '';
+      }
+
+      function detachCard() {
+        cardAttach.value = null;
+        cardGreeting.value = '';
       }
 
       function addReminderFor(contact) {
@@ -680,6 +717,8 @@
         productPickOpen, productPickTarget, productPickQuery, productPickResults,
         openProductPick, pickProduct, INTENT_LABELS,
         confirmMention, discardMention,
+        cardAttach, cardGreeting, cardPreview, openCardPicker, detachCard,
+        renderWhatsApp,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
     },
@@ -860,7 +899,8 @@
                     :class="m.from === 'out'
                       ? 'bg-[var(--accent)] text-white'
                       : 'border border-neutral-200 bg-white'">
-                    <p class="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{{ m.text }}</p>
+                    <p v-if="m.card" class="wa-rich whitespace-pre-wrap break-words text-[15px] leading-relaxed" v-html="renderWhatsApp(m.text)"></p>
+                    <p v-else class="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{{ m.text }}</p>
                     <div class="mt-1 flex items-center justify-end gap-1.5">
                       <span class="font-mono text-[10px] uppercase tracking-wider opacity-60">{{ formatTime(m.ts) }}</span>
                       <ui-icon v-if="m.from === 'out'" name="check" class="h-3 w-3"
@@ -906,15 +946,40 @@
                   </button>
                 </div>
                 <div class="flex items-end gap-2">
-                  <textarea v-model="draft" rows="2" placeholder="Escribe un mensaje… (Enter para enviar)"
-                    @keydown.enter.exact.prevent="send"
-                    class="flex-1 resize-none border border-neutral-300 bg-stone-50 px-3 py-2.5 text-sm outline-none transition focus:border-neutral-900 focus:bg-white"></textarea>
-                  <button @click="send" :disabled="sending || !draft.trim()"
-                    class="flex h-11 w-11 shrink-0 items-center justify-center border-2 border-neutral-900 bg-[var(--accent)] text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40"
-                    aria-label="Enviar mensaje">
-                    <ui-spinner v-if="sending" size="h-4 w-4"></ui-spinner>
-                    <ui-icon v-else name="send" class="h-5 w-5"></ui-icon>
-                  </button>
+                  <div class="flex-1">
+                    <!-- Ficha de producto adjunta al borrador (preview en vivo) -->
+                    <div v-if="cardAttach" class="mb-2 border-2 border-[var(--accent)] bg-white p-2.5">
+                      <div class="mb-2 flex items-center justify-between gap-2">
+                        <span class="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
+                          <ui-icon name="box" class="h-3.5 w-3.5 text-[var(--accent)]"></ui-icon>
+                          <span class="truncate">Ficha: {{ cardAttach.name }}</span>
+                        </span>
+                        <span class="flex shrink-0 gap-1">
+                          <button @click="openCardPicker" class="text-[11px] font-medium underline">Cambiar</button>
+                          <button @click="detachCard" class="text-[11px] text-red-700 underline">Quitar</button>
+                        </span>
+                      </div>
+                      <input v-model.trim="cardGreeting" type="text" placeholder="Saludo del mensaje…"
+                        class="mb-2 w-full border border-neutral-300 px-2 py-1.5 text-sm outline-none focus:border-neutral-900" />
+                      <wa-preview :text="cardPreview" :show-header="false"></wa-preview>
+                    </div>
+                    <textarea v-model="draft" rows="2" placeholder="Escribe un mensaje… (Enter para enviar)"
+                      @keydown.enter.exact.prevent="send"
+                      class="w-full resize-none border border-neutral-300 bg-stone-50 px-3 py-2.5 text-sm outline-none transition focus:border-neutral-900 focus:bg-white"></textarea>
+                  </div>
+                  <div class="flex shrink-0 flex-col gap-1.5">
+                    <button v-if="(workspace.products || []).length" @click="openCardPicker"
+                      class="flex h-11 w-11 items-center justify-center border-2 border-neutral-900 bg-white text-neutral-700 shadow-brutal-sm transition hover:shadow-none"
+                      aria-label="Adjuntar ficha de producto">
+                      <ui-icon name="box" class="h-5 w-5"></ui-icon>
+                    </button>
+                    <button @click="send" :disabled="sending || (!draft.trim() && !cardAttach)"
+                      class="flex h-11 w-11 shrink-0 items-center justify-center border-2 border-neutral-900 bg-[var(--accent)] text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40"
+                      aria-label="Enviar mensaje">
+                      <ui-spinner v-if="sending" size="h-4 w-4"></ui-spinner>
+                      <ui-icon v-else name="send" class="h-5 w-5"></ui-icon>
+                    </button>
+                  </div>
                 </div>
               </footer>
             </template>
@@ -1031,6 +1096,9 @@
                     </ui-badge>
                     <button v-if="men.status === 'pendiente'" @click="confirmMention(men.id, men.productId)" class="shrink-0 font-semibold text-emerald-700">
                       Confirmar
+                    </button>
+                    <button v-if="productOf(men)" @click="attachCard(productOf(men)); contactDrawerOpen = false" class="shrink-0 font-semibold text-[var(--accent)]">
+                      Enviar ficha
                     </button>
                   </li>
                 </ul>

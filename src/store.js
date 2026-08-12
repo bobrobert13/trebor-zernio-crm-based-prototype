@@ -75,8 +75,10 @@
           phone: sender.identifier || '',
           platform,
           tags: ['cliente'],
+          leadTag: null,
           customFields: {},
           createdAt: Date.now(),
+          leadHistory: [{ tag: null, at: Date.now() }],
         };
         ws.contacts.unshift(contact);
       }

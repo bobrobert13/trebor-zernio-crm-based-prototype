@@ -128,7 +128,7 @@
     const igContact = (name, phone, days, igProfile) => {
       const createdAt = Date.now() - days * 864e5;
       return {
-        id: uid('ct'), name, phone, platform: 'instagram', tags: ['cliente'], customFields: {}, createdAt,
+        id: uid('ct'), name, phone, platform: 'instagram', tags: ['cliente'], leadTag: null, customFields: {}, createdAt,
         leadHistory: [{ tag: null, at: createdAt }],
         igProfile,
       };

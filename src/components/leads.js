@@ -111,7 +111,8 @@
       function reopenLead(contact) {
         if (!contact) return;
         contact.leadHistory = contact.leadHistory || [];
-        contact.leadHistory.push({ tag: 'reabierta', at: Date.now() });
+        // Conserva el cierre previo para que la timeline muestre "antes: …"
+        contact.leadHistory.push({ tag: 'reabierta', at: Date.now(), prev: contact.leadClosed });
         delete contact.leadClosed;
         toast('Lead reabierto: vuelve al tablero activo', 'success');
       }
@@ -474,7 +475,7 @@
                 <ui-badge variant="accent" dot>{{ stageLabel(detailContact.leadTag) }}</ui-badge>
               </div>
               <ol v-if="historyOf(detailContact).length" class="relative ml-1.5 space-y-2.5 border-l border-neutral-200 pl-4">
-                <li v-for="(h, i) in historyOf(detailContact)" :key="i" class="relative">
+                <li v-for="(h, i) in historyOf(detailContact)" :key="h.at + '-' + i" class="relative">
                   <span class="absolute -left-[21.5px] top-1 h-2.5 w-2.5 rounded-full border-2 border-neutral-900 bg-white"
                     :class="i === 0 ? 'bg-[var(--accent)]' : ''"></span>
                   <p class="text-xs">

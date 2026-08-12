@@ -96,13 +96,19 @@
         const reader = new FileReader();
         reader.onload = () => {
           const img = new Image();
+          img.onerror = () => toast('No se pudo leer la imagen: archivo inválido o formato no soportado', 'error');
           img.onload = () => {
             const MAX = 256;
             const scale = Math.min(1, MAX / Math.max(img.width, img.height));
             const canvas = document.createElement('canvas');
             canvas.width = Math.max(1, Math.round(img.width * scale));
             canvas.height = Math.max(1, Math.round(img.height * scale));
-            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              toast('No se pudo procesar la imagen', 'error');
+              return;
+            }
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
             workspace.value.logo = canvas.toDataURL('image/png');
             toast('Logo actualizado', 'success');
           };

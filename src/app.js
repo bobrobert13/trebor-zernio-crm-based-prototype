@@ -74,9 +74,10 @@
           workspace.customFields = ((n && n.customFields) || []).map((f) => ({ ...f }));
         }
         // Migración: historial de etapas de leads — backfill del momento 0 para
-        // contactos existentes (idempotente: solo si no tienen leadHistory)
+        // contactos existentes (idempotente: solo si no tienen leadHistory).
+        // Incluye contactos sin leadTag (sync/webhooks previos) → "Sin asignar".
         (workspace.contacts || []).forEach((c) => {
-          if (c.leadTag !== undefined && !c.leadHistory) {
+          if (!c.leadHistory) {
             c.leadHistory = [{ tag: c.leadTag || null, at: c.createdAt || Date.now() }];
           }
         });

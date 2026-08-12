@@ -184,9 +184,11 @@
           }
 
           // Snapshot Zernio con la sub-key del negocio (solo su perfil;
-          // sin sub-key cae al master key del centro, demo/legacy)
+          // sin sub-key cae al master key del centro, demo/legacy).
+          // Si ambos fallan, el error se propaga al catch para no dejar
+          // la UI en "cargando…" sin explicación.
           const [u, st, pr] = await Promise.all([
-            api.getUsage(range.value).catch(() => api.getUsageStatsLegacy().catch(() => null)),
+            api.getUsage(range.value).catch(() => api.getUsageStatsLegacy()),
             api.getBilling().catch(() => null),
             api.getBillingPricing().catch(() => null),
           ]);
@@ -301,7 +303,7 @@
             <p class="mt-4 text-sm text-neutral-500">Modo demo: conecta Zernio en live para ver el consumo real de la cuenta.</p>
           </template>
           <template v-else>
-            <p class="mt-4 text-sm text-neutral-500">Cargando el snapshot de la cuenta… (requiere la master key del centro en Configuración).</p>
+            <p class="mt-4 text-sm text-neutral-500">Cargando el snapshot de consumo del negocio…</p>
           </template>
         </section>
 

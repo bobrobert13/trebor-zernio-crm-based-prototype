@@ -255,9 +255,9 @@
       return this.request('/usage-stats', { admin: !ZernioCrm.store.apiKey });
     }
 
-    /** @returns {Promise<Array<object>>} Health de las cuentas del perfil del negocio (sub-key). */
+    /** @returns {Promise<Array<object>>} Health de todas las cuentas del centro (master key; módulo Estados). */
     getAccountsHealth() {
-      return this.request('/accounts/health', { admin: !ZernioCrm.store.apiKey });
+      return this.request('/accounts/health', { admin: true });
     }
 
     /**

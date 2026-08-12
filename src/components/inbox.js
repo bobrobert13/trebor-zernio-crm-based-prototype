@@ -74,7 +74,11 @@
             // Las pestañas son etapas del pipeline: se filtran por la etapa VIVA
             // del contacto (no por el snapshot de la conversación) para que los
             // cambios hechos en el drawer se reflejen al instante.
-            if (filter.value !== 'all') return Boolean(contact && contact.leadTag === filter.value);
+            if (filter.value !== 'all') {
+              if (!contact) return false; // conversaciones huérfanas solo en "Todas"
+              if (filter.value === 'Sin asignar') return !contact.leadTag;
+              return contact.leadTag === filter.value;
+            }
             return true;
           });
       });
@@ -276,8 +280,10 @@
                     phone,
                     platform: p.id,
                     tags: ['cliente'],
+                    leadTag: null,
                     customFields: {},
                     createdAt: Date.now(),
+                    leadHistory: [{ tag: null, at: Date.now() }],
                   };
                   workspace.value.contacts.unshift(contact);
                 }
@@ -444,6 +450,7 @@
           phone: '',
           platform: conv.platform || 'whatsapp',
           tags: ['cliente'],
+          leadTag: null,
           customFields: {},
           createdAt: Date.now(),
           // Momento 0 del historial de etapas: cae en "Sin asignar" (null)
@@ -668,6 +675,10 @@
                 <button @click="filter = 'unread'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
                   :class="filter === 'unread' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   No leídas ({{ unreadTotal }})
+                </button>
+                <button @click="filter = 'Sin asignar'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="filter === 'Sin asignar' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
+                  Sin asignar
                 </button>
                 <button v-for="t in leadTags" :key="t" @click="filter = t"
                   class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"

@@ -183,7 +183,8 @@
             return;
           }
 
-          // Snapshot Zernio con la master key del centro
+          // Snapshot Zernio con la sub-key del negocio (solo su perfil;
+          // sin sub-key cae al master key del centro, demo/legacy)
           const [u, st, pr] = await Promise.all([
             api.getUsage(range.value).catch(() => api.getUsageStatsLegacy().catch(() => null)),
             api.getBilling().catch(() => null),

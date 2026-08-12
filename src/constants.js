@@ -366,7 +366,7 @@
       { id: 'pendientes', label: 'Seguimientos pendientes', unit: '', icon: 'clock' },
     ],
     roadmap: [
-      { id: 'wa_channel', title: 'Conectar número WhatsApp', desc: 'Vincula tu número vía Zernio (Cloud API o credenciales).', type: 'channel', optional: false, estimated: '~10 min' },
+      { id: 'wa_channel', title: 'Conectar número WhatsApp', desc: 'Vincula el número de WhatsApp del negocio.', type: 'channel', optional: false, estimated: '~10 min' },
       { id: 'wa_profile', title: 'Perfil comercial', desc: 'Nombre, descripción y horario de atención.', type: 'channel', optional: false, estimated: '~5 min' },
       { id: 'fields_base', title: 'Campos base', desc: 'Nota y nivel de interés de cada cliente.', type: 'fields', optional: false, estimated: '~5 min' },
       { id: 'roles_equipo', title: 'Roles del equipo', desc: 'Agentes y vendedores con permisos propios.', type: 'roles', optional: false, estimated: '~10 min' },

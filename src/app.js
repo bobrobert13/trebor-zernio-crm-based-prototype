@@ -16,6 +16,7 @@
     contacts: 'contacts-view',
     channels: 'channels-view',
     leads: 'leads-view',
+    products: 'products-view',
     team: 'team-view',
     broadcasts: 'broadcasts-view',
     billing: 'billing-view',

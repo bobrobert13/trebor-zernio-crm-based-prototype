@@ -410,10 +410,49 @@
    * Plataformas soportadas por el módulo de canales.
    * inbox: true solo si Zernio expone la mensajería (DM) para esa plataforma.
    */
+  /**
+   * Capacidades por plataforma según la doc de Zernio (openapi + reglas del
+   * skill). scope: 'plan' = disponible en el MVP · 'api' = Zernio lo soporta
+   * (fuera del MVP por ahora) · ok=false = no soportado.
+   */
   const PLATFORMS = [
-    { id: 'whatsapp', nombre: 'WhatsApp', icon: 'whatsapp', inbox: true, tone: 'bg-emerald-100 text-emerald-800' },
-    { id: 'instagram', nombre: 'Instagram', icon: 'instagram', inbox: true, tone: 'bg-pink-100 text-pink-700' },
-    { id: 'tiktok', nombre: 'TikTok', icon: 'tiktok', inbox: false, tone: 'bg-neutral-100 text-neutral-900', nota: 'Zernio no expone DM de TikTok: la cuenta se conecta para verificación, sin bandeja.' },
+    {
+      id: 'whatsapp', nombre: 'WhatsApp', icon: 'whatsapp', inbox: true, tone: 'bg-emerald-100 text-emerald-800',
+      caps: [
+        { cap: 'Mensajería unificada (inbox)', ok: true, scope: 'plan' },
+        { cap: 'Plantillas aprobadas Meta + ventana 24 h', ok: true, scope: 'plan' },
+        { cap: 'Flows e interactivos', ok: true, scope: 'api' },
+        { cap: 'Perfil de negocio', ok: true, scope: 'api' },
+        { cap: 'Grupos de WhatsApp', ok: true, scope: 'api' },
+        { cap: '1 número por negocio', ok: true, scope: 'plan' },
+        { cap: 'Comentarios / feed social', ok: false },
+        { cap: 'Anuncios (ads)', ok: false },
+      ],
+    },
+    {
+      id: 'instagram', nombre: 'Instagram', icon: 'instagram', inbox: true, tone: 'bg-pink-100 text-pink-700',
+      caps: [
+        { cap: 'Mensajería directa (DM)', ok: true, scope: 'plan' },
+        { cap: 'Comentarios y reseñas', ok: true, scope: 'api' },
+        { cap: 'Ice breakers de IG', ok: true, scope: 'api' },
+        { cap: 'Publicaciones Feed/Stories/Reels/Carrusel', ok: true, scope: 'api', nota: 'Zernio publica; el MVP aún no incluye el módulo de publicación' },
+        { cap: 'Respuesta fuera de ventana (HUMAN_AGENT)', ok: true, scope: 'plan' },
+        { cap: 'Anuncios Meta', ok: true, scope: 'api', nota: 'No implementado en el MVP' },
+        { cap: 'Analítica de plataforma', ok: true, scope: 'api' },
+      ],
+    },
+    {
+      id: 'tiktok', nombre: 'TikTok', icon: 'tiktok', inbox: false, tone: 'bg-neutral-100 text-neutral-900',
+      nota: 'Zernio no expone DM de TikTok: la cuenta se conecta para verificación, sin bandeja.',
+      caps: [
+        { cap: 'Publicación de videos', ok: true, scope: 'api', nota: 'El MVP aún no publica' },
+        { cap: 'Creator info (privacidad/duraciones)', ok: true, scope: 'api' },
+        { cap: 'Analítica de plataforma', ok: true, scope: 'api' },
+        { cap: 'Anuncios TikTok', ok: true, scope: 'api', nota: 'No implementado en el MVP' },
+        { cap: 'Bandeja / mensajería directa', ok: false, nota: 'Zernio no expone DMs de TikTok' },
+        { cap: 'Comentarios', ok: false },
+      ],
+    },
   ];
 
   /** @param {string} id — id de plataforma. @returns {object|undefined} */

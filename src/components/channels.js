@@ -188,7 +188,25 @@
               <ui-badge v-else variant="warn">Sin bandeja</ui-badge>
               <ui-badge v-if="p.id === 'whatsapp'" variant="neutral">1/1 número</ui-badge>
             </div>
-            <p v-if="p.id === 'whatsapp'" class="mt-2 text-xs text-neutral-400">Límite del plan: un número por negocio.</p>
+
+            <!-- Capacidades según la doc de Zernio (hace / no hace) -->
+            <div v-if="p.caps" class="mt-3 border-t border-neutral-100 pt-3">
+              <p class="mb-1.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400">Capacidades</p>
+              <div class="grid grid-cols-2 gap-x-3 gap-y-1">
+                <span v-for="c in p.caps" :key="c.cap" class="flex items-start gap-1.5 text-[11px] leading-snug"
+                  :class="c.ok ? (c.scope === 'plan' ? 'text-emerald-800' : 'text-neutral-500') : 'text-red-700'"
+                  :title="c.nota || ''">
+                  <ui-icon :name="c.ok ? 'check' : 'x'" class="mt-0.5 h-3 w-3 shrink-0"
+                    :class="c.ok ? (c.scope === 'plan' ? 'text-emerald-600' : 'text-neutral-300') : 'text-red-500'"></ui-icon>
+                  <span>{{ c.cap }}</span>
+                </span>
+              </div>
+              <p class="mt-2 flex items-center gap-3 font-mono text-[9px] uppercase tracking-widest text-neutral-400">
+                <span class="flex items-center gap-1"><ui-icon name="check" class="h-3 w-3 text-emerald-600"></ui-icon> en tu plan</span>
+                <span class="flex items-center gap-1"><ui-icon name="check" class="h-3 w-3 text-neutral-300"></ui-icon> Zernio lo soporta</span>
+                <span class="flex items-center gap-1"><ui-icon name="x" class="h-3 w-3 text-red-500"></ui-icon> no soportado</span>
+              </p>
+            </div>
             <p v-if="p.nota" class="mt-2 text-xs text-neutral-400">{{ p.nota }}</p>
 
             <!-- Health -->

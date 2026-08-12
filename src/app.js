@@ -73,6 +73,14 @@
           const n = ZernioCrm.getNiche(workspace.nicheId);
           workspace.customFields = ((n && n.customFields) || []).map((f) => ({ ...f }));
         }
+        // Migración: historial de etapas de leads — backfill del momento 0 para
+        // contactos existentes (idempotente: solo si no tienen leadHistory).
+        // Incluye contactos sin leadTag (sync/webhooks previos) → "Sin asignar".
+        (workspace.contacts || []).forEach((c) => {
+          if (!c.leadHistory) {
+            c.leadHistory = [{ tag: c.leadTag || null, at: c.createdAt || Date.now() }];
+          }
+        });
         // Migración: preferencias del panel (secciones y KPIs visibles)
         if (!workspace.dashboardPrefs) {
           const n = ZernioCrm.getNiche(workspace.nicheId);
@@ -203,8 +211,9 @@
         <!-- Sidebar (escritorio) -->
         <aside class="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r-2 border-neutral-900 bg-white lg:flex">
           <div class="flex items-center gap-3 border-b-2 border-neutral-900 p-4">
-            <span class="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--accent)] text-white shadow-brutal-sm">
-              <ui-icon name="whatsapp" class="h-5 w-5"></ui-icon>
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden bg-[var(--accent)] text-white shadow-brutal-sm">
+              <img v-if="store.workspace.logo" :src="store.workspace.logo" alt="Logo" class="h-full w-full object-contain" />
+              <ui-icon v-else name="whatsapp" class="h-5 w-5"></ui-icon>
             </span>
             <div class="min-w-0">
               <p class="truncate font-bold leading-tight">{{ store.workspace.name }}</p>

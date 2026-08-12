@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, getNiche, timeAgo, formatTime, uid, canEdit, PLATFORMS, getPlatform } = ZernioCrm;
+  const { store, toast, getNiche, timeAgo, formatTime, formatDate, uid, canEdit, PLATFORMS, getPlatform } = ZernioCrm;
 
   const components = {};
 
@@ -71,7 +71,14 @@
             const haystack = `${contact ? contact.name : ''} ${(c.messages && c.messages.length) ? c.messages[c.messages.length - 1].text : ''}`.toLowerCase();
             if (q && !haystack.includes(q)) return false;
             if (filter.value === 'unread') return c.unread > 0;
-            if (filter.value !== 'all') return c.tags.includes(filter.value);
+            // Las pestañas son etapas del pipeline: se filtran por la etapa VIVA
+            // del contacto (no por el snapshot de la conversación) para que los
+            // cambios hechos en el drawer se reflejen al instante.
+            if (filter.value !== 'all') {
+              if (!contact) return false; // conversaciones huérfanas solo en "Todas"
+              if (filter.value === 'Sin asignar') return !contact.leadTag;
+              return contact.leadTag === filter.value;
+            }
             return true;
           });
       });
@@ -273,8 +280,10 @@
                     phone,
                     platform: p.id,
                     tags: ['cliente'],
+                    leadTag: null,
                     customFields: {},
                     createdAt: Date.now(),
+                    leadHistory: [{ tag: null, at: Date.now() }],
                   };
                   workspace.value.contacts.unshift(contact);
                 }
@@ -441,8 +450,11 @@
           phone: '',
           platform: conv.platform || 'whatsapp',
           tags: ['cliente'],
+          leadTag: null,
           customFields: {},
           createdAt: Date.now(),
+          // Momento 0 del historial de etapas: cae en "Sin asignar" (null)
+          leadHistory: [{ tag: null, at: Date.now() }],
         };
         workspace.value.contacts.unshift(contact);
         conv.contactId = contact.id;
@@ -451,6 +463,22 @@
 
       // ── Recordatorios (reutiliza los helpers del store) ────────────────────
       const remInput = Vue.reactive({ text: '', dueAt: '' });
+
+      /** Conversaciones del contacto seleccionado, ordenadas por última actividad (desc). */
+      const contactConvs = Vue.computed(() => {
+        const c = selectedContact.value;
+        if (!c) return [];
+        return conversations.value
+          .filter((x) => x.contactId === c.id)
+          .slice()
+          .sort((a, b) => (b.lastTs || 0) - (a.lastTs || 0));
+      });
+
+      /** Rango de fechas de una conversación (primera → última actividad). */
+      function convRange(conv) {
+        const first = (conv.messages && conv.messages[0] && conv.messages[0].ts) || conv.createdAt || conv.lastTs;
+        return { from: first || Date.now(), to: conv.lastTs || Date.now() };
+      }
 
       function addReminderFor(contact) {
         const text = remInput.text.trim();
@@ -565,6 +593,7 @@
         openTemplatePicker, closeTemplatePicker, sendApprovedTemplate,
         contactDrawerOpen, contactTags, toggleContactTag, setLeadTag, registerContact,
         bizFields, remInput, addReminderFor, contactReminders, ZernioCrm,
+        contactConvs, convRange, formatDate,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
     },
@@ -647,6 +676,10 @@
                   :class="filter === 'unread' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
                   No leídas ({{ unreadTotal }})
                 </button>
+                <button @click="filter = 'Sin asignar'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="filter === 'Sin asignar' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
+                  Sin asignar
+                </button>
                 <button v-for="t in leadTags" :key="t" @click="filter = t"
                   class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
                   :class="filter === t ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
@@ -725,7 +758,9 @@
                   </div>
                 </div>
                 <div class="flex items-center gap-1.5">
-                  <ui-badge v-for="t in selected.tags" :key="t" variant="neutral">{{ t }}</ui-badge>
+                  <!-- Etiquetas vivas del contacto (no el snapshot de la conversación) -->
+                  <ui-badge v-for="t in (selectedContact ? selectedContact.tags : [])" :key="t" variant="neutral">{{ t }}</ui-badge>
+                  <ui-badge v-if="selectedContact && selectedContact.leadTag" variant="accent" dot>{{ selectedContact.leadTag }}</ui-badge>
                   <button @click="contactDrawerOpen = true" class="p-1.5 hover:text-[var(--accent)]" aria-label="Ficha del cliente">
                     <ui-icon name="user" class="h-4 w-4"></ui-icon>
                   </button>
@@ -923,21 +958,31 @@
               </button>
             </template>
 
-            <!-- Historial resumido del contacto (click = abrir esa conversación) -->
+            <!-- Historial detallado del contacto (click = abrir esa conversación) -->
             <div>
-              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial</p>
-              <ul class="space-y-1.5">
-                <li v-for="c in conversations.filter(x => selectedContact && x.contactId === selectedContact.id)" :key="c.id">
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial de conversaciones</p>
+              <ul class="space-y-2">
+                <li v-for="c in contactConvs" :key="c.id">
                   <button @click="selectConversation(c); contactDrawerOpen = false"
-                    class="flex w-full items-center justify-between gap-2 rounded border border-neutral-200 px-2.5 py-2 text-left text-xs transition hover:border-neutral-900 hover:bg-stone-50">
-                    <span class="flex min-w-0 items-center gap-1.5">
-                      <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
-                      <span class="truncate">{{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}</span>
-                    </span>
-                    <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ timeAgo(c.lastTs) }} · {{ (c.messages || []).length }} msgs</span>
+                    class="w-full border p-3 text-left transition hover:border-neutral-900 hover:bg-stone-50"
+                    :class="c.id === selectedId ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-neutral-200'">
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
+                        <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
+                        {{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}
+                        <ui-badge v-if="c.id === selectedId" variant="accent" class="ml-1">Actual</ui-badge>
+                      </span>
+                      <span class="shrink-0 font-mono text-[9px] uppercase text-neutral-400">
+                        {{ formatDate(convRange(c).from) }} → {{ formatDate(convRange(c).to) }}
+                      </span>
+                    </div>
+                    <p class="mt-1 truncate text-xs text-neutral-600">{{ lastMessage(c) }}</p>
+                    <p class="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400">
+                      {{ (c.messages || []).length }} mensajes · {{ timeAgo(c.lastTs) }}
+                    </p>
                   </button>
                 </li>
-                <li v-if="!selectedContact || conversations.filter(x => x.contactId === selectedContact.id).length === 0" class="text-xs text-neutral-400">
+                <li v-if="contactConvs.length === 0" class="text-xs text-neutral-400">
                   Sin historial previo.
                 </li>
               </ul>

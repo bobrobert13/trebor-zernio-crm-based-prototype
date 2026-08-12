@@ -1,13 +1,14 @@
 /**
- * @file team.js — Gestión de equipo y RBAC: usuarios con roles,
- * matriz de permisos por módulo (solo lectura) e invitaciones demo
- * (genera link de un solo uso con expiración).
+ * @file team.js — Gestión de equipo y RBAC: usuarios con roles
+ * (la matriz de permisos se ocultó de la UI; RBAC sigue activo vía
+ * PERMISSIONS en constants.js) e invitaciones demo (link de un solo uso
+ * con expiración).
  */
 (function () {
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, ROLES, MODULES, PERMISSIONS, uid, canEdit } = ZernioCrm;
+  const { store, toast, ROLES, uid, canEdit } = ZernioCrm;
 
   const components = {};
 
@@ -22,19 +23,6 @@
       const me = Vue.computed(() => store.currentUser);
 
       const roleIds = Vue.computed(() => Object.keys(ROLES));
-
-      /** Nivel de permiso de un rol sobre un módulo para la matriz. */
-      function levelOf(role, module) {
-        return (PERMISSIONS[role] && PERMISSIONS[role][module]) || null;
-      }
-
-      function levelIcon(level) {
-        return level === 'edit' ? 'check-circle' : level === 'view' ? 'eye' : 'x';
-      }
-
-      function levelTone(level) {
-        return level === 'edit' ? 'text-emerald-700' : level === 'view' ? 'text-amber-600' : 'text-neutral-300';
-      }
 
       /**
        * Cambia el rol de un usuario respetando jerarquía mínima:
@@ -89,8 +77,8 @@
 
       return {
         inviteOpen, inviteLink, inviteForm, workspace, users, me, roleIds,
-        canEdit, levelOf, levelIcon, levelTone, changeRole, invite, copyLink, closeInvite,
-        ROLES, MODULES,
+        canEdit, changeRole, invite, copyLink, closeInvite,
+        ROLES,
       };
     },
 
@@ -110,7 +98,7 @@
           </button>
         </header>
 
-        <div class="grid items-start gap-6 xl:grid-cols-[1fr_400px]">
+        <div class="grid items-start gap-6">
           <!-- Usuarios -->
           <section class="overflow-x-auto border-2 border-neutral-900 bg-white">
           <table class="w-full min-w-[640px] text-left text-sm">
@@ -153,37 +141,6 @@
               </tr>
             </tbody>
           </table>
-        </section>
-
-        <!-- Matriz de permisos -->
-        <section class="border-2 border-neutral-900 bg-white p-6 xl:sticky xl:top-8">
-          <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Matriz de permisos (RBAC)</h3>
-          <div class="mt-4 overflow-x-auto">
-            <table class="w-full min-w-[560px] text-left text-sm">
-              <thead class="font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                <tr>
-                  <th class="py-2 pr-4">Módulo</th>
-                  <th v-for="r in roleIds" :key="r" class="px-3 py-2 text-center">{{ ROLES[r].label }}</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-neutral-100">
-                <tr v-for="m in MODULES" :key="m.id">
-                  <td class="flex items-center gap-2 py-2.5 pr-4 font-medium">
-                    <ui-icon :name="m.icon" class="h-4 w-4 text-neutral-400"></ui-icon>
-                    {{ m.label }}
-                  </td>
-                  <td v-for="r in roleIds" :key="r" class="px-3 py-2.5 text-center">
-                    <ui-icon :name="levelIcon(levelOf(r, m.id))" class="mx-auto h-4 w-4" :class="levelTone(levelOf(r, m.id))"></ui-icon>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p class="mt-4 flex items-center gap-3 text-xs text-neutral-400">
-            <span class="flex items-center gap-1"><ui-icon name="check-circle" class="h-3.5 w-3.5 text-emerald-700"></ui-icon> editar</span>
-            <span class="flex items-center gap-1"><ui-icon name="eye" class="h-3.5 w-3.5 text-amber-600"></ui-icon> ver</span>
-            <span class="flex items-center gap-1"><ui-icon name="x" class="h-3.5 w-3.5 text-neutral-300"></ui-icon> sin acceso</span>
-          </p>
         </section>
         </div>
 

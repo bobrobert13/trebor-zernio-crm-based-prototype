@@ -92,33 +92,50 @@
   function buildContacts(niche) {
     const samples = NICHE_SAMPLES[niche.id] || NICHE_SAMPLES.personalizado;
     const fields = niche.customFields;
-    const contacts = samples.map(([name, phone, values, tags], i) => ({
-      id: uid('ct'),
-      name,
-      phone,
-      platform: 'whatsapp',
-      tags,
-      leadTag: (niche.tags || [])[i % (niche.tags || []).length] || null, // etapa inicial del pipeline
-      customFields: Object.fromEntries(fields.map((f, j) => [f.slug, values[j] ?? ''])),
-      createdAt: Date.now() - (i + 3) * 864e5,
-    }));
+    const contacts = samples.map(([name, phone, values, tags], i) => {
+      const createdAt = Date.now() - (i + 3) * 864e5;
+      const leadTag = (niche.tags || [])[i % (niche.tags || []).length] || null; // etapa inicial del pipeline
+      return {
+        id: uid('ct'),
+        name,
+        phone,
+        platform: 'whatsapp',
+        tags,
+        leadTag,
+        customFields: Object.fromEntries(fields.map((f, j) => [f.slug, values[j] ?? ''])),
+        createdAt,
+        // Momento 0 del historial de etapas: la etapa inicial queda registrada
+        leadHistory: [{ tag: leadTag, at: createdAt }],
+      };
+    });
     for (let i = 0; i < 4; i += 1) {
       const name = ['Carlos Hernández', 'Daniela Rojas', 'Oscar Pino', 'Natalia Briceño'][i];
+      const createdAt = Date.now() - (i + 9) * 864e5;
+      const leadTag = (niche.tags || [])[(i + 1) % (niche.tags || []).length] || null;
       contacts.push({
         id: uid('ct'),
         name,
         phone: `+58 412 555 02${10 + i}`,
         platform: 'whatsapp',
         tags: ['cliente'],
-        leadTag: (niche.tags || [])[(i + 1) % (niche.tags || []).length] || null,
+        leadTag,
         customFields: Object.fromEntries(fields.map((f) => [f.slug, sampleFieldValue(f)])),
-        createdAt: Date.now() - (i + 9) * 864e5,
+        createdAt,
+        leadHistory: [{ tag: leadTag, at: createdAt }],
       });
     }
     // Contactos de Instagram (canal con mensajería)
+    const igContact = (name, phone, days, igProfile) => {
+      const createdAt = Date.now() - days * 864e5;
+      return {
+        id: uid('ct'), name, phone, platform: 'instagram', tags: ['cliente'], leadTag: null, customFields: {}, createdAt,
+        leadHistory: [{ tag: null, at: createdAt }],
+        igProfile,
+      };
+    };
     contacts.push(
-      { id: uid('ct'), name: 'Valentina Ríos', phone: '@valentina.rios', platform: 'instagram', tags: ['cliente'], customFields: {}, createdAt: Date.now() - 2 * 864e5, igProfile: { isFollower: true, isFollowing: false, followerCount: 1240, isVerified: false } },
-      { id: uid('ct'), name: 'Sofía Marcano', phone: '@sofia.marcano', platform: 'instagram', tags: ['cliente'], customFields: {}, createdAt: Date.now() - 4 * 864e5, igProfile: { isFollower: false, isFollowing: true, followerCount: 305, isVerified: false } }
+      igContact('Valentina Ríos', '@valentina.rios', 2, { isFollower: true, isFollowing: false, followerCount: 1240, isVerified: false }),
+      igContact('Sofía Marcano', '@sofia.marcano', 4, { isFollower: false, isFollowing: true, followerCount: 305, isVerified: false })
     );
     return contacts;
   }

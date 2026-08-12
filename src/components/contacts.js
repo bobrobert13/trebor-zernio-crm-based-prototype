@@ -86,8 +86,11 @@
             phone: form.phone.trim(),
             platform: 'whatsapp',
             tags: [...form.tags],
+            leadTag: null,
             customFields: { ...form.customFields },
             createdAt: Date.now(),
+            // Momento 0 del historial de etapas: cae en "Sin asignar" (null)
+            leadHistory: [{ tag: null, at: Date.now() }],
           });
           toast('Contacto creado', 'success');
         }

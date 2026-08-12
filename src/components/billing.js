@@ -183,9 +183,12 @@
             return;
           }
 
-          // Snapshot Zernio con la master key del centro
+          // Snapshot Zernio con la sub-key del negocio (solo su perfil;
+          // sin sub-key cae al master key del centro, demo/legacy).
+          // Si ambos fallan, el error se propaga al catch para no dejar
+          // la UI en "cargando…" sin explicación.
           const [u, st, pr] = await Promise.all([
-            api.getUsage(range.value).catch(() => api.getUsageStatsLegacy().catch(() => null)),
+            api.getUsage(range.value).catch(() => api.getUsageStatsLegacy()),
             api.getBilling().catch(() => null),
             api.getBillingPricing().catch(() => null),
           ]);
@@ -203,7 +206,7 @@
       Vue.onMounted(load);
 
       return {
-        loading, error, range, usage, statement, pricing, local, store,
+        loading, error, range, usage, statement, pricing, local, store, workspace,
         localDays, maxDay, operations, estimatedCents, usd, pct, isLive, load,
         planName, spentCents, spendLimitCents, balanceCents, paymentStatus, billingPeriod,
       };
@@ -216,8 +219,9 @@
           <div>
             <h2 class="text-2xl font-bold">Billing y consumo</h2>
             <p class="mt-1 text-sm text-neutral-500">
-              Facturación de la cuenta Zernio (master) y consumo por negocio (medidor local).
-              <span class="font-semibold">{{ isLive ? '· live' : '· demo' }}</span>
+              Consumo de <span class="font-semibold">{{ workspace.name }}</span> con su perfil de Zernio
+              <ui-badge v-if="workspace.zernio && workspace.zernio.profileId" variant="accent" class="ml-1">perfil {{ workspace.zernio.profileId.slice(-6) }}</ui-badge>
+              <span class="font-semibold">· {{ isLive ? 'live' : 'demo' }}</span>
             </p>
           </div>
           <div class="flex items-center gap-2">
@@ -299,7 +303,7 @@
             <p class="mt-4 text-sm text-neutral-500">Modo demo: conecta Zernio en live para ver el consumo real de la cuenta.</p>
           </template>
           <template v-else>
-            <p class="mt-4 text-sm text-neutral-500">Cargando el snapshot de la cuenta… (requiere la master key del centro en Configuración).</p>
+            <p class="mt-4 text-sm text-neutral-500">Cargando el snapshot de consumo del negocio…</p>
           </template>
         </section>
 

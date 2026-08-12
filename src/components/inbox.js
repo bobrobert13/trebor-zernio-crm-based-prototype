@@ -446,6 +446,8 @@
           tags: ['cliente'],
           customFields: {},
           createdAt: Date.now(),
+          // Momento 0 del historial de etapas: cae en "Sin asignar" (null)
+          leadHistory: [{ tag: null, at: Date.now() }],
         };
         workspace.value.contacts.unshift(contact);
         conv.contactId = contact.id;

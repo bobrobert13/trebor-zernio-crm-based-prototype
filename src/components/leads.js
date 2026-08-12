@@ -217,6 +217,19 @@
         ZernioCrm.navigate('inbox');
       }
 
+      /** Historial de etapas del contacto, de la más reciente a la más antigua. */
+      function historyOf(contact) {
+        return ((contact && contact.leadHistory) || []).slice().reverse();
+      }
+
+      /** Etiqueta legible de una entrada del historial (finalizaciones y reaperturas). */
+      function stageLabel(tag) {
+        if (!tag) return 'Sin asignar';
+        if (tag === 'reabierta' || tag === 'reabierto') return 'Reabierta';
+        if (String(tag).startsWith('finalizada:')) return 'Finalizada · ' + tag.split(':')[1];
+        return tag;
+      }
+
       return {
         workspace, isLive, leadTags, columns, cardsOf, metricsOf, lastMessageOf,
         contacts, conversations,
@@ -226,6 +239,7 @@
         closeOpen, closeTarget, closeForm, openCloseModal, confirmClose, reopenLead,
         remInput, remPanelOpen, pendingReminders, hasOverdue, addReminderFor, upcomingReminders,
         remindersOf, toggleReminder, removeReminder,
+        historyOf, stageLabel,
         getPlatform, timeAgo, canEdit, ZernioCrm,
       };
     },
@@ -359,7 +373,7 @@
           </div>
         </div>
         <ui-drawer :open="detailOpen" width="max-w-xl" :title="'Lead · ' + (detailContact ? detailContact.name : '')" @close="detailOpen = false">
-          <div v-if="detailContact" class="space-y-5">
+          <div v-if="detailContact" :key="detailContact.id" class="space-y-5">
             <div class="flex items-center gap-3">
               <ui-avatar :name="detailContact.name" size="h-12 w-12 text-base"></ui-avatar>
               <div class="min-w-0 flex-1">
@@ -452,17 +466,24 @@
               </div>
             </div>
 
-            <!-- Historial de etapas del lead -->
+            <!-- Historial de etapas del lead (desde el momento 0) -->
             <div>
               <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial de etapas</p>
-              <ol v-if="(detailContact.leadHistory || []).length" class="relative ml-1.5 space-y-2 border-l border-neutral-200 pl-4">
-                <li v-for="(h, i) in detailContact.leadHistory.slice().reverse()" :key="i" class="relative">
+              <div class="mb-3 flex items-center gap-2 border border-neutral-200 bg-stone-50 px-3 py-2">
+                <span class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Etapa actual</span>
+                <ui-badge variant="accent" dot>{{ stageLabel(detailContact.leadTag) }}</ui-badge>
+              </div>
+              <ol v-if="historyOf(detailContact).length" class="relative ml-1.5 space-y-2.5 border-l border-neutral-200 pl-4">
+                <li v-for="(h, i) in historyOf(detailContact)" :key="i" class="relative">
                   <span class="absolute -left-[21.5px] top-1 h-2.5 w-2.5 rounded-full border-2 border-neutral-900 bg-white"
                     :class="i === 0 ? 'bg-[var(--accent)]' : ''"></span>
                   <p class="text-xs">
-                    <span class="font-semibold">{{ h.tag === 'reabierta' || h.tag === 'reabierto' ? 'Reabierta' : h.tag && h.tag.startsWith('finalizada:') ? 'Finalizada · ' + h.tag.split(':')[1] : (h.tag || 'Sin asignar') }}</span>
+                    <span class="font-semibold">{{ stageLabel(h.tag) }}</span>
+                    <span v-if="historyOf(detailContact)[i + 1]" class="ml-1 font-mono text-[9px] uppercase text-neutral-400">← desde {{ stageLabel(historyOf(detailContact)[i + 1].tag) }}</span>
                     <span class="ml-1 font-mono text-[9px] uppercase text-neutral-400">{{ new Date(h.at).toLocaleString('es-VE') }}</span>
                   </p>
+                  <p v-if="h.note" class="mt-0.5 text-[11px] text-neutral-500">{{ h.note }}</p>
+                  <p v-else-if="h.prev && h.prev.outcome" class="mt-0.5 text-[11px] text-neutral-500">antes: {{ stageLabel('finalizada:' + h.prev.outcome) }}</p>
                 </li>
               </ol>
               <p v-else class="text-xs text-neutral-400">Sin cambios de etapa registrados.</p>

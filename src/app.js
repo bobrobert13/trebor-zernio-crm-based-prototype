@@ -73,6 +73,13 @@
           const n = ZernioCrm.getNiche(workspace.nicheId);
           workspace.customFields = ((n && n.customFields) || []).map((f) => ({ ...f }));
         }
+        // Migración: historial de etapas de leads — backfill del momento 0 para
+        // contactos existentes (idempotente: solo si no tienen leadHistory)
+        (workspace.contacts || []).forEach((c) => {
+          if (c.leadTag !== undefined && !c.leadHistory) {
+            c.leadHistory = [{ tag: c.leadTag || null, at: c.createdAt || Date.now() }];
+          }
+        });
         // Migración: preferencias del panel (secciones y KPIs visibles)
         if (!workspace.dashboardPrefs) {
           const n = ZernioCrm.getNiche(workspace.nicheId);

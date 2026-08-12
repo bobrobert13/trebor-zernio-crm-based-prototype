@@ -219,7 +219,7 @@
           <div>
             <h2 class="text-2xl font-bold">Billing y consumo</h2>
             <p class="mt-1 text-sm text-neutral-500">
-              Consumo de <span class="font-semibold">{{ workspace.name }}</span> con su perfil de Zernio
+              Consumo de <span class="font-semibold">{{ workspace.name }}</span> con su perfil en la plataforma
               <ui-badge v-if="workspace.zernio && workspace.zernio.profileId" variant="accent" class="ml-1">perfil {{ workspace.zernio.profileId.slice(-6) }}</ui-badge>
               <span class="font-semibold">· {{ isLive ? 'live' : 'demo' }}</span>
             </p>
@@ -242,7 +242,7 @@
 
         <!-- Cuenta Zernio (master key del centro) -->
         <section class="border-2 border-neutral-900 bg-white p-5">
-          <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Cuenta Zernio</h3>
+          <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Cuenta de la plataforma</h3>
           <template v-if="usage">
             <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <div class="border-2 border-neutral-900 p-4">
@@ -300,7 +300,7 @@
             </div>
           </template>
           <template v-else-if="!isLive">
-            <p class="mt-4 text-sm text-neutral-500">Modo demo: conecta Zernio en live para ver el consumo real de la cuenta.</p>
+            <p class="mt-4 text-sm text-neutral-500">Modo demo: conecta tu canal en vivo para ver el consumo real.</p>
           </template>
           <template v-else>
             <p class="mt-4 text-sm text-neutral-500">Cargando el snapshot de consumo del negocio…</p>

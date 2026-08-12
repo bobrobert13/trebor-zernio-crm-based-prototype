@@ -91,7 +91,7 @@
             phone: result.phone || entry.username,
             status: 'connected',
             since: Date.now(),
-            about: 'Conexión real con Zernio',
+            about: 'Conexión real con la plataforma',
             accountId: result.accountId,
           };
           store.mode = 'live';
@@ -157,7 +157,7 @@
             <h2 class="text-2xl font-bold">Canales</h2>
             <p class="mt-1 text-sm text-neutral-500">
               Plataformas conectadas a {{ workspace.name }}.
-              <span class="font-semibold">{{ isLive ? '· conectado a Zernio' : '· modo demo' }}</span>
+              <span class="font-semibold">{{ isLive ? '· conectado en vivo' : '· modo demo' }}</span>
             </p>
           </div>
           <ui-badge variant="accent">{{ channels.filter(c => c.connected).length }}/{{ PLATFORMS.length }} conectados</ui-badge>
@@ -203,7 +203,7 @@
               </div>
               <p class="mt-2 flex items-center gap-3 font-mono text-[9px] uppercase tracking-widest text-neutral-400">
                 <span class="flex items-center gap-1"><ui-icon name="check" class="h-3 w-3 text-emerald-600"></ui-icon> en tu plan</span>
-                <span class="flex items-center gap-1"><ui-icon name="check" class="h-3 w-3 text-neutral-300"></ui-icon> Zernio lo soporta</span>
+                <span class="flex items-center gap-1"><ui-icon name="check" class="h-3 w-3 text-neutral-300"></ui-icon> Disponible para ampliar</span>
                 <span class="flex items-center gap-1"><ui-icon name="x" class="h-3 w-3 text-red-500"></ui-icon> no soportado</span>
               </p>
             </div>
@@ -254,7 +254,7 @@
         <ui-modal :open="whatsappReplace" title="Reemplazar número de WhatsApp" width="max-w-md" @close="whatsappReplace = false">
           <p class="text-sm text-neutral-600">
             Cada negocio tiene <span class="font-semibold">1 número vinculado</span>. Al conectar otro número,
-            el actual se desconectará automáticamente en Zernio.
+            el actual se desconectará automáticamente.
           </p>
           <div class="mt-5 flex justify-end gap-2">
             <button @click="whatsappReplace = false" class="border-2 border-neutral-900 bg-white px-4 py-2 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">Cancelar</button>

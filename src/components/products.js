@@ -195,11 +195,18 @@
       );
       const previewFull = Vue.ref(false);
 
+      /** Etiqueta del campo plantilla (los placeholders son literales, no mustaches). */
+      const tplLabel = 'Plantilla del mensaje ({{nombre}} {{descripcion}} {{detalles}} {{precio}} {{unidad}} {{stock}})';
+      /** Markup del separador (evita escapes dentro del template). */
+      const separatorMarkup = '—\n';
+
       // ── Importación (CSV / JSON) y exportación ─────────────────────────────
       const importMode = Vue.ref('csv');
       const importInput = Vue.ref('');
       const importRows = Vue.ref(null); // preview validado
       const importReport = Vue.ref(null);
+      const csvPlaceholder = 'Arroz con pollo,producto,Platos principales,8.5,porción,"arroz con pollo asado",si';
+      const jsonPlaceholder = '[{"name":"Arroz con pollo","type":"producto","category":"Platos principales","price":8.5}]';
 
       function parseCsv(text) {
         return text
@@ -340,6 +347,7 @@
         previewText, previewFull,
         importMode, importInput, importRows, importReport,
         parseImport, doImport, exportCsv,
+        tplLabel, csvPlaceholder, jsonPlaceholder, separatorMarkup,
         canEdit, formatPrice,
       };
     },
@@ -494,7 +502,7 @@
                 :class="importMode === 'json' ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-neutral-300'">JSON</button>
             </div>
             <textarea v-model.trim="importInput" rows="8" spellcheck="false"
-              :placeholder="importMode === 'csv' ? 'Arroz con pollo,producto,Platos principales,8.5,porción,\"arroz con pollo asado\",si' : '[{\"name\":\"Arroz con pollo\",\"type\":\"producto\",\"category\":\"Platos principales\",\"price\":8.5}]'"
+              :placeholder="importMode === 'csv' ? csvPlaceholder : jsonPlaceholder"
               class="mt-3 w-full resize-none border-2 border-neutral-300 px-3 py-2 font-mono text-xs outline-none focus:border-neutral-900"></textarea>
             <button @click="parseImport" class="mt-3 w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
               Analizar contenido
@@ -602,7 +610,7 @@
                   <button @click="insertMarkup('_cursiva_')" class="border px-2 py-1 font-mono text-[10px] italic">I</button>
                   <button @click="insertMarkup('~tachado~')" class="border px-2 py-1 font-mono text-[10px] line-through">S</button>
                   <button @click="insertMarkup('• ')">• lista</button>
-                  <button @click="insertMarkup('—\n')">— separador</button>
+                  <button @click="insertMarkup(separatorMarkup)">— separador</button>
                   <button @click="insertMarkup('😊')">emoji</button>
                 </div>
                 <textarea ref="descRef" v-model.trim="form.description" rows="4" placeholder="Descripción del producto…"
@@ -636,7 +644,7 @@
                 </div>
               </div>
 
-              <ui-field label="Plantilla del mensaje ({{nombre}} {{descripcion}} {{detalles}} {{precio}} {{unidad}} {{stock}})">
+              <ui-field :label="tplLabel">
                 <textarea v-model.trim="form.cardTemplate" rows="5" spellcheck="false"
                   class="w-full resize-none border-2 border-neutral-300 px-3 py-2 font-mono text-xs outline-none focus:border-neutral-900"></textarea>
               </ui-field>

@@ -1,8 +1,7 @@
 /**
- * @file onboarding.js — Wizard de configuración inicial (8 pasos).
- * Paso 1→nicho, 2→foco, 3→branding, 4→referencia, 5→roadmap (con
- * simulación de configuración), 6→conexión WhatsApp (simulada),
- * 7→equipo inicial. Incluye pantallas de carga simuladas para el flujo.
+ * @file onboarding.js — Wizard de configuración inicial (7 pasos).
+ * Paso 1→nicho, 2→foco, 3→branding, 4→referencia, 5→canales,
+ * 6→equipo inicial. Conexión real de WhatsApp vía live-connect.
  */
 (function () {
   'use strict';
@@ -10,7 +9,7 @@
   const { Vue, ZernioCrm } = window;
   const { store, toast, applyAccent, navigate } = ZernioCrm;
 
-  const STEPS = ['Bienvenida', 'Nicho', 'Foco', 'Marca', 'Referencia', 'Roadmap', 'WhatsApp', 'Equipo'];
+  const STEPS = ['Bienvenida', 'Nicho', 'Foco', 'Marca', 'Referencia', 'WhatsApp', 'Equipo'];
 
   const components = {};
 
@@ -46,10 +45,6 @@
         }
       });
 
-      /** Pasos del roadmap copiados (con estado de simulación local). */
-      const roadmapItems = Vue.ref([]);
-      const roadmapSim = Vue.reactive({ running: false, current: null, progress: 0, done: 0 });
-
       /** Resultado de la conexión real (live-connect). */
       const liveResult = Vue.ref(null);
 
@@ -70,47 +65,28 @@
       /** Nicho seleccionado (para la preview del paso 1). */
       const selectedNiche = Vue.computed(() => ZernioCrm.getNiche(form.nicheId));
 
-      /** Items del roadmap incluidos en la configuración (obligatorios + opcionales marcados). */
-      const selectedRoadmap = Vue.computed(() => roadmapItems.value.filter((r) => !r.optional || r.checked));
-
       /** ¿Es válido el paso actual para continuar? */
       const canContinue = Vue.computed(() => {
         switch (current.value) {
           case 1: return Boolean(form.nicheId);
           case 3: return form.name.trim().length > 0;
           case 4: return Boolean(form.referrer);
-          case 6: return Boolean(liveResult.value) || form.skipConnect;
-          case 7: return !creating.value;
+          case 5: return Boolean(liveResult.value) || form.skipConnect;
+          case 6: return !creating.value;
           default: return true;
         }
       });
 
-      const progressPercent = Vue.computed(() => {
-        const total = selectedRoadmap.value.length;
-        if (total === 0) return 0;
-        return ((roadmapSim.done + roadmapSim.progress / 100) / total) * 100;
-      });
-
-      /** Al elegir nicho se precargan foco, roadmap y sugerencia de nombre. */
+      /** Al elegir nicho se precargan foco y sugerencia de nombre. */
       function selectNiche(id) {
         form.nicheId = id;
         const n = ZernioCrm.getNiche(id);
         form.focus = n.focusDefault;
         form.name = n.id === 'personalizado' ? '' : `Mi ${n.nombre.toLowerCase()}`;
-        roadmapItems.value = n.roadmap.map((r) => ({ ...r, checked: r.optional ? false : true, simState: 'pending' }));
-        resetRoadmapSim();
-      }
-
-      /** Reinicia el estado de la simulación del roadmap. */
-      function resetRoadmapSim() {
-        roadmapSim.running = false;
-        roadmapSim.current = null;
-        roadmapSim.progress = 0;
-        roadmapSim.done = 0;
       }
 
       function jumpTo(i) {
-        if (i < current.value && !roadmapSim.running) current.value = i;
+        if (i < current.value) current.value = i;
       }
 
       function next() {
@@ -121,42 +97,11 @@
           later(() => { enterLoading.value = false; current.value = 1; }, 700);
           return;
         }
-        if (target === 5) runRoadmapSimulation();
         current.value = target;
       }
 
       function back() {
-        if (current.value > 0 && !roadmapSim.running && !creating.value) current.value -= 1;
-      }
-
-      /**
-       * Simula la configuración secuencial del roadmap del nicho:
-       * cada item pasa por pending → running (barra de progreso) → done.
-       */
-      async function runRoadmapSimulation() {
-        if (roadmapSim.running) return;
-        resetRoadmapSim();
-        roadmapSim.running = true;
-        const items = selectedRoadmap.value;
-        for (const item of items) {
-          item.simState = 'running';
-          roadmapSim.current = item;
-          await new Promise((resolve) => {
-            let p = 0;
-            const tick = setInterval(() => {
-              p += 12 + Math.random() * 22;
-              if (p >= 100) { clearInterval(tick); resolve(); }
-              roadmapSim.progress = p;
-            }, 110);
-            timers.push(tick);
-          });
-          item.simState = 'done';
-          roadmapSim.done += 1;
-          roadmapSim.progress = 0;
-        }
-        roadmapSim.running = false;
-        roadmapSim.current = null;
-        toast('Roadmap del negocio configurado', 'success');
+        if (current.value > 0 && !creating.value) current.value -= 1;
       }
 
       /** Recibe la conexión real de live-connect y habilita el siguiente paso. */
@@ -218,7 +163,6 @@
 
       return {
         STEPS, form, current, enterLoading, creating, niche, accent, selectedNiche,
-        roadmapItems, roadmapSim, selectedRoadmap, progressPercent,
         adminKeyOpen, hasMasterKey, liveResult,
         selectNiche, jumpTo, next, back, onLiveConnected, finish,
         canContinue,
@@ -337,7 +281,7 @@
           <!-- 1 · Nicho -->
           <section v-else-if="current === 1" class="bg-white p-8">
             <h2 class="text-2xl font-bold">¿A qué se dedica tu negocio?</h2>
-            <p class="mt-1 text-sm text-neutral-500">Elige el modelo más parecido: ajustamos campos, plantillas y roadmap de configuración.</p>
+            <p class="mt-1 text-sm text-neutral-500">Elige el modelo más parecido: ajustamos campos, plantillas y etapas de seguimiento.</p>
             <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               <button v-for="(n, ni) in ui.NICHES" :key="n.id" @click="selectNiche(n.id)"
                 class="stagger-in border-2 p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-brutal-sm"
@@ -351,7 +295,7 @@
                 <p class="mt-1 text-xs leading-relaxed text-neutral-500">{{ n.descripcion }}</p>
                 <div class="mt-3 flex flex-wrap gap-1.5">
                   <span class="border border-neutral-300 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">{{ (n.customFields || []).length }} campos</span>
-                  <span class="border border-neutral-300 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">{{ (n.roadmap || []).length }} pasos</span>
+                  <span class="border border-neutral-300 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">Plantillas demo</span>
                   <span class="border border-neutral-300 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">WhatsApp + IG</span>
                 </div>
               </button>
@@ -376,11 +320,19 @@
                 </div>
               </div>
               <div>
-                <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Lo que configuraremos por ti</p>
+                <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Lo que incluye tu espacio</p>
                 <ul class="mt-2 space-y-1">
-                  <li v-for="r in selectedNiche.roadmap.slice(0, 5)" :key="r.id" class="flex items-center gap-2 text-sm text-neutral-600">
-                    <ui-icon :name="ui.ROADMAP_TYPES[r.type].icon" class="h-3.5 w-3.5 text-neutral-400"></ui-icon>
-                    {{ r.title }}
+                  <li class="flex items-center gap-2 text-sm text-neutral-600">
+                    <ui-icon name="message" class="h-3.5 w-3.5 text-neutral-400"></ui-icon>
+                    Plantillas demo de WhatsApp del nicho
+                  </li>
+                  <li class="flex items-center gap-2 text-sm text-neutral-600">
+                    <ui-icon name="tag" class="h-3.5 w-3.5 text-neutral-400"></ui-icon>
+                    Campos del negocio y etapas del pipeline
+                  </li>
+                  <li class="flex items-center gap-2 text-sm text-neutral-600">
+                    <ui-icon name="users" class="h-3.5 w-3.5 text-neutral-400"></ui-icon>
+                    Equipo inicial con roles
                   </li>
                 </ul>
               </div>
@@ -456,61 +408,8 @@
             </ui-field>
           </section>
 
-          <!-- 5 · Roadmap (simulación de configuración) -->
+          <!-- 5 · Canales -->
           <section v-else-if="current === 5" class="bg-white p-8">
-            <div class="flex items-center justify-between gap-4">
-              <div>
-                <h2 class="text-2xl font-bold">Roadmap de {{ niche.nombre }}</h2>
-                <p class="mt-1 text-sm text-neutral-500">Lo que vamos a configurar para tu negocio. Marca o desmarca lo opcional.</p>
-              </div>
-              <ui-badge variant="accent">{{ selectedRoadmap.length }} pasos</ui-badge>
-            </div>
-
-            <div class="mt-6 space-y-2">
-              <div v-for="item in roadmapItems" :key="item.id"
-                class="flex items-start gap-3 border-2 p-3 transition"
-                :class="item.simState === 'done' ? 'border-emerald-800 bg-emerald-50'
-                  : item.simState === 'running' ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
-                  : item.checked ? 'border-neutral-900 bg-white' : 'border-neutral-200 bg-white opacity-60'">
-                <span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center">
-                  <ui-spinner v-if="item.simState === 'running'" size="h-4 w-4" class="text-[var(--accent)]"></ui-spinner>
-                  <ui-icon v-else-if="item.simState === 'done'" name="check-circle" class="h-5 w-5 text-emerald-700"></ui-icon>
-                  <ui-icon v-else :name="ui.ROADMAP_TYPES[item.type].icon" class="h-5 w-5 text-neutral-400"></ui-icon>
-                </span>
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-center gap-2">
-                    <h3 class="font-semibold">{{ item.title }}</h3>
-                    <ui-badge variant="neutral">{{ ui.ROADMAP_TYPES[item.type].label }}</ui-badge>
-                    <span v-if="item.optional" class="font-mono text-[10px] uppercase tracking-wider text-neutral-400">opcional</span>
-                  </div>
-                  <p class="text-sm text-neutral-500">{{ item.desc }}</p>
-                </div>
-                <div class="flex shrink-0 flex-col items-end gap-1">
-                  <span class="font-mono text-[10px] uppercase text-neutral-400">{{ item.estimated }}</span>
-                  <button v-if="item.optional && !roadmapSim.running" @click="item.checked = !item.checked"
-                    class="border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider"
-                    :class="item.checked ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300'">
-                    {{ item.checked ? 'Incluido' : 'Excluir' }}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Pantalla de carga: configuración secuencial -->
-            <div v-if="roadmapSim.running" class="mt-6 border-2 border-neutral-900 bg-neutral-900 p-5 text-white">
-              <div class="flex items-center justify-between font-mono text-[11px] uppercase tracking-widest">
-                <span>Configurando: {{ roadmapSim.current ? roadmapSim.current.title : '…' }}</span>
-                <span class="tabular-nums">{{ Math.round(progressPercent) }}%</span>
-              </div>
-              <div class="mt-3 h-2 border border-white/30 bg-white/10">
-                <div class="h-full bg-[var(--accent)] transition-all duration-150" :style="{ width: progressPercent + '%' }"></div>
-              </div>
-              <p class="mt-3 text-xs text-neutral-300">Preparando la configuración de tu negocio…</p>
-            </div>
-          </section>
-
-          <!-- 6 · Canales -->
-          <section v-else-if="current === 6" class="bg-white p-8">
             <h2 class="text-2xl font-bold">Conecta tus canales</h2>
             <p class="mt-1 text-sm text-neutral-500">WhatsApp ahora · Instagram próximamente. Todo desde un solo lugar.</p>
 
@@ -623,7 +522,7 @@
           </transition>
 
           <!-- Navegación inferior (sticky) -->
-          <footer v-if="current > 0 && current < 7" class="sticky bottom-0 z-10 -mx-5 mt-8 flex items-center justify-between gap-3 border-t border-neutral-200 bg-stone-100/95 px-5 py-4 backdrop-blur lg:-mx-16 lg:px-16">
+          <footer v-if="current > 0 && current < 6" class="sticky bottom-0 z-10 -mx-5 mt-8 flex items-center justify-between gap-3 border-t border-neutral-200 bg-stone-100/95 px-5 py-4 backdrop-blur lg:-mx-16 lg:px-16">
             <button @click="back" class="border-2 border-neutral-900 bg-white px-5 py-2.5 font-medium shadow-brutal-sm transition hover:shadow-none">
               ← Volver
             </button>

@@ -788,7 +788,7 @@
               <footer class="shrink-0 border-t border-neutral-200 bg-white p-3.5">
                 <div v-if="canHumanAgent" class="mb-2.5 flex items-center gap-2.5 border border-amber-600 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                   <ui-toggle v-model="humanAgent" class="shrink-0"></ui-toggle>
-                  <span>Conversación fuera de la ventana de 24h: enviar como agente humano (HUMAN_AGENT).</span>
+                  <span>El cliente no ha escrito en 24 h: activa el modo agente humano para que Meta permita responder.</span>
                 </div>
                 <div v-if="blockedByWindow" class="mb-2.5 border border-red-700 bg-red-50 px-3 py-2 text-xs text-red-800">
                   WhatsApp fuera de la ventana de 24h:

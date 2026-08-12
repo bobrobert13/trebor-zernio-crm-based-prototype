@@ -80,6 +80,42 @@
         toast('Branding actualizado', 'success');
       }
 
+      /** Sube el logo de la empresa: lee, redimensiona a ≤256 px y persiste como dataURL. */
+      function uploadLogo(event) {
+        const file = event.target.files && event.target.files[0];
+        event.target.value = ''; // permite volver a elegir el mismo archivo
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+          toast('Solo imágenes (PNG/JPG/WebP)', 'error');
+          return;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+          toast('Imagen muy grande: máximo 2 MB', 'error');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onload = () => {
+            const MAX = 256;
+            const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(img.width * scale));
+            canvas.height = Math.max(1, Math.round(img.height * scale));
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            workspace.value.logo = canvas.toDataURL('image/png');
+            toast('Logo actualizado', 'success');
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function removeLogo() {
+        delete workspace.value.logo;
+        toast('Logo eliminado', 'info');
+      }
+
       /** Guarda la API key y cambia a modo live (si aplica). */
       function saveApiKey() {
         store.apiKey = apiKeyInput.value.trim();
@@ -611,6 +647,7 @@
         customFields, fieldInput, fieldTypeOptions,
         addField, removeField, moveField, renameField, updateFieldType, updateFieldOptions,
         canEdit, saveBranding, saveApiKey, testConnection,
+        uploadLogo, removeLogo,
         disconnectWhatsApp, reconnectWhatsApp, exportData, resetDemo, deleteWorkspace,
         saveWebhooks, deleteWebhooks, testWebhook, openLogs, simulateWebhook, toggleWhEvent,
         buildWebhookUrl, fetchTunnelUrl, checkHealth, disconnectLive, onLiveConnected,
@@ -646,6 +683,24 @@
                 <span class="h-4 w-4 border border-black/10" :style="{ background: a.value }"></span>
                 <span class="text-xs">{{ a.nombre }}</span>
               </button>
+            </div>
+          </div>
+          <div class="mt-4">
+            <span class="mb-2 block font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-500">Logo de la empresa</span>
+            <div class="flex items-center gap-4">
+              <span class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-neutral-200 bg-[var(--accent)] text-lg font-bold text-white">
+                <img v-if="workspace.logo" :src="workspace.logo" alt="Logo de {{ workspace.name }}" class="h-full w-full object-contain" />
+                <span v-else>{{ (workspace.name || 'T').trim().slice(0, 2).toUpperCase() }}</span>
+              </span>
+              <div class="min-w-0 space-y-1.5">
+                <label class="inline-flex cursor-pointer items-center gap-2 border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
+                  <ui-icon name="plus" class="h-3.5 w-3.5"></ui-icon>
+                  {{ workspace.logo ? 'Reemplazar logo' : 'Subir logo' }}
+                  <input type="file" accept="image/*" class="hidden" @change="uploadLogo" />
+                </label>
+                <button v-if="workspace.logo" @click="removeLogo" class="block text-xs font-medium text-red-700 transition hover:text-red-900">Quitar logo</button>
+                <p class="text-[10px] text-neutral-400">PNG/JPG/WebP · máx 2 MB · se redimensiona a 256 px</p>
+              </div>
             </div>
           </div>
           <p class="mt-4 text-xs text-neutral-400">Nos recomendó: <span class="font-medium text-neutral-700">{{ referrer.nombre || '—' }}</span>

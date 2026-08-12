@@ -226,7 +226,10 @@
       return this.request(`/api-keys/${keyId}`, { method: 'DELETE', admin: true });
     }
 
-    // ── Admin: billing y consumo (master key del centro) ────────────────────
+    // ── Billing y consumo (sub-key del negocio → solo su perfil) ─────────────
+    // /usage y /billing son a nivel de cuenta (key): con la sub-key scoped del
+    // workspace (scope: profiles) el consumo queda aislado al perfil del negocio.
+    // Sin sub-key operativa se cae al master key del centro (demo/legacy).
 
     /**
      * Snapshot de plan, límites y gasto (endpoint moderno con rango).
@@ -234,27 +237,27 @@
      * @returns {Promise<object>} Plan, límites, uso por operación y spend.
      */
     getUsage(range = '30d') {
-      return this.request('/usage', { query: { range }, admin: true });
+      return this.request('/usage', { query: { range }, admin: !ZernioCrm.store.apiKey });
     }
 
     /** @returns {Promise<object>} Statement de billing (balance, créditos, caps, estado de pago). */
     getBilling() {
-      return this.request('/billing', { admin: true });
+      return this.request('/billing', { admin: !ZernioCrm.store.apiKey });
     }
 
     /** @returns {Promise<object>} Precios por operación (resuelve claves de xApiCallsByOperation). */
     getBillingPricing() {
-      return this.request('/billing/x-pricing', { admin: true });
+      return this.request('/billing/x-pricing', { admin: !ZernioCrm.store.apiKey });
     }
 
     /** @returns {Promise<object>} Snapshot legado (deprecado; fallback de getUsage). */
     getUsageStatsLegacy() {
-      return this.request('/usage-stats', { admin: true });
+      return this.request('/usage-stats', { admin: !ZernioCrm.store.apiKey });
     }
 
-    /** @returns {Promise<Array<object>>} Health de todas las cuentas del workspace Zernio (master). */
+    /** @returns {Promise<Array<object>>} Health de las cuentas del perfil del negocio (sub-key). */
     getAccountsHealth() {
-      return this.request('/accounts/health', { admin: true });
+      return this.request('/accounts/health', { admin: !ZernioCrm.store.apiKey });
     }
 
     /**

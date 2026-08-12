@@ -203,7 +203,7 @@
       Vue.onMounted(load);
 
       return {
-        loading, error, range, usage, statement, pricing, local, store,
+        loading, error, range, usage, statement, pricing, local, store, workspace,
         localDays, maxDay, operations, estimatedCents, usd, pct, isLive, load,
         planName, spentCents, spendLimitCents, balanceCents, paymentStatus, billingPeriod,
       };
@@ -216,8 +216,9 @@
           <div>
             <h2 class="text-2xl font-bold">Billing y consumo</h2>
             <p class="mt-1 text-sm text-neutral-500">
-              Facturación de la cuenta Zernio (master) y consumo por negocio (medidor local).
-              <span class="font-semibold">{{ isLive ? '· live' : '· demo' }}</span>
+              Consumo de <span class="font-semibold">{{ workspace.name }}</span> con su perfil de Zernio
+              <ui-badge v-if="workspace.zernio && workspace.zernio.profileId" variant="accent" class="ml-1">perfil {{ workspace.zernio.profileId.slice(-6) }}</ui-badge>
+              <span class="font-semibold">· {{ isLive ? 'live' : 'demo' }}</span>
             </p>
           </div>
           <div class="flex items-center gap-2">

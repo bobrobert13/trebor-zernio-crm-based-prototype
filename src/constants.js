@@ -39,7 +39,7 @@
     { id: 'ventas', nombre: 'Ventas + campañas', desc: 'Preventa, campañas y mensajes masivos.', icon: 'megaphone' },
   ];
 
-  /** Etapas del roadmap por negocio (agrupadas en el onboarding). */
+  /** Tipos de contenido del plan del nicho (panel "Lo que incluye tu plan"). */
   const ROADMAP_TYPES = {
     channel: { label: 'Canal', icon: 'link' },
     templates: { label: 'Plantillas', icon: 'message' },
@@ -111,7 +111,8 @@
 
   /**
    * Nichos de negocio. Cada nicho define campos personalizados, KPIs,
-   * tags de conversación y un roadmap específico de configuración.
+   * tags de conversación y un plan de contenido (plantillas demo y
+   * herramientas que incluye el espacio).
    */
   const NICHES = [
     {

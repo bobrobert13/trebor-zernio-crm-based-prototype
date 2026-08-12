@@ -132,14 +132,14 @@
           </button>
         </header>
 
-        <!-- Búsqueda y filtros -->
-        <div class="flex flex-wrap items-center gap-3">
-          <div class="flex min-w-72 flex-1 items-center gap-2 border border-neutral-300 bg-stone-50 px-3 py-2.5 focus-within:border-neutral-900 focus-within:bg-white">
+        <!-- Búsqueda y filtros (dos filas: buscador + chips scrolleables) -->
+        <div class="flex flex-col gap-3">
+          <div class="flex w-full items-center gap-2 border border-neutral-300 bg-stone-50 px-3 py-2.5 focus-within:border-neutral-900 focus-within:bg-white">
             <ui-icon name="search" class="h-4 w-4 text-neutral-400"></ui-icon>
             <input v-model.trim="search" type="search" placeholder="Buscar por nombre o teléfono…"
               class="w-full bg-transparent text-sm outline-none" />
           </div>
-          <div class="flex gap-1.5 overflow-x-auto scrollbar-none">
+          <div class="flex w-full items-center gap-1.5 overflow-x-auto scrollbar-none">
             <button @click="tagFilter = 'all'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
               :class="tagFilter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
               Todos
@@ -149,6 +149,9 @@
               :class="tagFilter === t ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
               {{ t }}
             </button>
+            <span class="ml-auto shrink-0 pl-2 font-mono text-[9px] uppercase tracking-widest text-neutral-400">
+              {{ availableTags.length }} etiquetas
+            </span>
           </div>
         </div>
 

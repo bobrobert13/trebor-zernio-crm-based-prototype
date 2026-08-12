@@ -84,28 +84,39 @@
         });
       }
 
-      // ── Finalización de leads ──────────────────────────────────────────────
+      // ── Cierre de leads (flujo amigable: concretada / no concretada) ───────
       const closeOpen = Vue.ref(false);
       const closeTarget = Vue.ref(null);
-      const closeForm = Vue.reactive({ outcome: 'ganada', note: '' });
+      const closeForm = Vue.reactive({ outcome: 'ganada', note: '', reason: '' });
+      const CLOSE_REASONS = ['Compró', 'Sin respuesta', 'Se pospuso', 'Eligió otra opción'];
+
+      /** Etiqueta amigable del resultado interno (ganada/perdida). */
+      function closeLabel(outcome) {
+        return outcome === 'ganada' ? 'Concretada' : 'No concretada';
+      }
 
       function openCloseModal(contact) {
         closeTarget.value = contact;
-        Object.assign(closeForm, { outcome: 'ganada', note: '' });
+        Object.assign(closeForm, { outcome: 'ganada', note: '', reason: '' });
         closeOpen.value = true;
       }
 
       function confirmClose() {
         const contact = closeTarget.value;
         if (!contact) return;
-        contact.leadClosed = { at: Date.now(), outcome: closeForm.outcome, note: closeForm.note.trim() };
+        contact.leadClosed = { at: Date.now(), outcome: closeForm.outcome, note: closeForm.note.trim(), reason: closeForm.reason || undefined };
         // El cierre queda registrado en el historial de etapas (timeline del drawer)
         contact.leadHistory = contact.leadHistory || [];
-        contact.leadHistory.push({ tag: `finalizada:${closeForm.outcome}`, at: contact.leadClosed.at, note: closeForm.note.trim() || undefined });
+        contact.leadHistory.push({
+          tag: `finalizada:${closeForm.outcome}`,
+          at: contact.leadClosed.at,
+          note: closeForm.note.trim() || undefined,
+          reason: closeForm.reason || undefined,
+        });
         closeOpen.value = false;
         closeTarget.value = null;
         detailOpen.value = false;
-        toast(`Lead finalizado como ${closeForm.outcome === 'ganada' ? 'ganado' : 'perdido'}`, 'success');
+        toast(`Lead cerrado como ${closeLabel(closeForm.outcome).toLowerCase()}`, 'success');
       }
 
       function reopenLead(contact) {
@@ -223,11 +234,11 @@
         return ((contact && contact.leadHistory) || []).slice().reverse();
       }
 
-      /** Etiqueta legible de una entrada del historial (finalizaciones y reaperturas). */
+      /** Etiqueta legible de una entrada del historial (cierres y reaperturas). */
       function stageLabel(tag) {
         if (!tag) return 'Sin asignar';
         if (tag === 'reabierta' || tag === 'reabierto') return 'Reabierta';
-        if (String(tag).startsWith('finalizada:')) return 'Finalizada · ' + tag.split(':')[1];
+        if (String(tag).startsWith('finalizada:')) return 'Cerrada · ' + closeLabel(tag.split(':')[1]);
         return tag;
       }
 
@@ -240,7 +251,7 @@
         closeOpen, closeTarget, closeForm, openCloseModal, confirmClose, reopenLead,
         remInput, remPanelOpen, pendingReminders, hasOverdue, addReminderFor, upcomingReminders,
         remindersOf, toggleReminder, removeReminder,
-        historyOf, stageLabel,
+        historyOf, stageLabel, closeLabel, CLOSE_REASONS,
         getPlatform, timeAgo, canEdit, ZernioCrm,
       };
     },
@@ -329,7 +340,7 @@
                     {{ lastMessageOf(c) ? timeAgo(lastMessageOf(c).ts) : 'sin actividad' }}
                   </span>
                   <div class="flex gap-0.5">
-                    <button v-if="canEdit('leads')" @click.stop="openCloseModal(c)" class="p-0.5 text-neutral-400 hover:text-red-700" aria-label="Finalizar lead">
+                    <button v-if="canEdit('leads')" @click.stop="openCloseModal(c)" class="p-0.5 text-neutral-400 hover:text-red-700" aria-label="Cerrar lead">
                       <ui-icon name="check-circle" class="h-3.5 w-3.5"></ui-icon>
                     </button>
                     <button @click.stop="moveContact(c, -1)" class="p-0.5 text-neutral-400 hover:text-neutral-900" aria-label="Mover atrás">
@@ -357,10 +368,11 @@
               <div class="flex items-start justify-between gap-2">
                 <p class="min-w-0 truncate text-sm font-semibold">{{ c.name }}</p>
                 <ui-badge :variant="c.leadClosed.outcome === 'ganada' ? 'success' : 'danger'" dot>
-                  {{ c.leadClosed.outcome === 'ganada' ? 'Ganada' : 'Perdida' }}
+                  Cerrada · {{ closeLabel(c.leadClosed.outcome) }}
                 </ui-badge>
               </div>
               <p class="mt-0.5 truncate font-mono text-[10px] text-neutral-400">{{ c.phone || 'sin teléfono' }}</p>
+              <p v-if="c.leadClosed.reason" class="mt-2 inline-block border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">{{ c.leadClosed.reason }}</p>
               <p v-if="c.leadClosed.note" class="mt-2 border-t border-neutral-100 pt-2 text-xs text-neutral-600">{{ c.leadClosed.note }}</p>
               <div class="mt-2 flex items-center justify-between">
                 <span class="font-mono text-[9px] uppercase tracking-wider text-neutral-400">
@@ -484,21 +496,25 @@
                     <span class="ml-1 font-mono text-[9px] uppercase text-neutral-400">{{ new Date(h.at).toLocaleString('es-VE') }}</span>
                   </p>
                   <p v-if="h.note" class="mt-0.5 text-[11px] text-neutral-500">{{ h.note }}</p>
+                  <p v-if="h.reason" class="mt-0.5 text-[11px] text-neutral-500">motivo: {{ h.reason }}</p>
                   <p v-else-if="h.prev && h.prev.outcome" class="mt-0.5 text-[11px] text-neutral-500">antes: {{ stageLabel('finalizada:' + h.prev.outcome) }}</p>
                 </li>
               </ol>
               <p v-else class="text-xs text-neutral-400">Sin cambios de etapa registrados.</p>
             </div>
 
-            <!-- Finalización del lead -->
+            <!-- Cierre del lead -->
             <div class="border border-neutral-200 p-3">
               <template v-if="detailContact.leadClosed">
                 <div class="flex items-center justify-between gap-2">
                   <div>
                     <p class="font-semibold" :class="detailContact.leadClosed.outcome === 'ganada' ? 'text-emerald-700' : 'text-red-700'">
-                      {{ detailContact.leadClosed.outcome === 'ganada' ? 'Lead ganado' : 'Lead perdido' }}
+                      Lead cerrado · {{ closeLabel(detailContact.leadClosed.outcome) }}
                     </p>
                     <p class="font-mono text-[10px] text-neutral-400">{{ new Date(detailContact.leadClosed.at).toLocaleString('es-VE') }}</p>
+                    <p v-if="detailContact.leadClosed.reason" class="mt-1 inline-block border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                      {{ detailContact.leadClosed.reason }}
+                    </p>
                     <p v-if="detailContact.leadClosed.note" class="mt-1 text-xs text-neutral-600">{{ detailContact.leadClosed.note }}</p>
                   </div>
                   <button @click="reopenLead(detailContact)" class="shrink-0 border border-neutral-300 px-2.5 py-1.5 text-xs font-medium transition hover:border-neutral-900">
@@ -507,10 +523,10 @@
                 </div>
               </template>
               <template v-else>
-                <p class="text-xs text-neutral-500">¿Cerraste la negociación con este cliente?</p>
+                <p class="text-xs text-neutral-500">¿Terminaste el seguimiento de este lead?</p>
                 <button v-if="canEdit('leads')" @click="openCloseModal(detailContact)"
                   class="mt-2 w-full border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
-                  Finalizar lead
+                  Cerrar lead
                 </button>
               </template>
             </div>
@@ -570,28 +586,56 @@
           </div>
         </ui-drawer>
 
-        <!-- Modal: finalizar lead -->
-        <ui-modal :open="closeOpen" :title="'Finalizar lead · ' + (closeTarget ? closeTarget.name : '')" width="max-w-md" @close="closeOpen = false">
+        <!-- Modal: cerrar lead -->
+        <ui-modal :open="closeOpen" :title="'Cerrar lead · ' + (closeTarget ? closeTarget.name : '')" width="max-w-md" @close="closeOpen = false">
           <div class="space-y-4">
-            <ui-field label="Resultado">
+            <p class="text-sm text-neutral-500">
+              Da por terminado el seguimiento de este lead. Puedes reabrirlo cuando quieras.
+            </p>
+
+            <!-- Resumen del lead -->
+            <div v-if="closeTarget" class="flex items-center gap-3 border border-neutral-200 bg-stone-50 p-3">
+              <ui-avatar :name="closeTarget.name" size="h-10 w-10 text-sm"></ui-avatar>
+              <div class="min-w-0 flex-1">
+                <p class="truncate font-semibold">{{ closeTarget.name }}</p>
+                <p class="truncate font-mono text-[11px] text-neutral-500">
+                  Etapa: {{ stageLabel(closeTarget.leadTag) }}
+                  <span v-if="closeTarget.createdAt"> · Cliente desde {{ new Date(closeTarget.createdAt).toLocaleDateString('es-VE') }}</span>
+                </p>
+              </div>
+              <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ metricsOf(closeTarget).days }} días</span>
+            </div>
+
+            <ui-field label="¿Se concretó?">
               <div class="flex gap-1.5">
                 <button @click="closeForm.outcome = 'ganada'" class="flex-1 border-2 px-3 py-2 text-sm font-medium transition"
                   :class="closeForm.outcome === 'ganada' ? 'border-emerald-800 bg-emerald-50 text-emerald-900' : 'border-neutral-300'">
-                  Ganada
+                  Sí, se concretó
                 </button>
                 <button @click="closeForm.outcome = 'perdida'" class="flex-1 border-2 px-3 py-2 text-sm font-medium transition"
                   :class="closeForm.outcome === 'perdida' ? 'border-red-800 bg-red-50 text-red-900' : 'border-neutral-300'">
-                  Perdida
+                  No se concretó
                 </button>
               </div>
             </ui-field>
+
+            <ui-field label="Motivo (opcional)">
+              <div class="flex flex-wrap gap-1.5">
+                <button v-for="r in CLOSE_REASONS" :key="r" @click="closeForm.reason = closeForm.reason === r ? '' : r"
+                  class="border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="closeForm.reason === r ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
+                  {{ r }}
+                </button>
+              </div>
+            </ui-field>
+
             <ui-field label="Nota (opcional)">
-              <textarea v-model.trim="closeForm.note" rows="3" placeholder="¿Por qué se cerró? ¿Qué aprendiste?"
+              <textarea v-model.trim="closeForm.note" rows="3" placeholder="Cuéntanos cómo fue el cierre…"
                 class="w-full resize-none border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900"></textarea>
             </ui-field>
             <button @click="confirmClose"
               class="w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
-              Confirmar finalización
+              Confirmar cierre
             </button>
           </div>
         </ui-modal>

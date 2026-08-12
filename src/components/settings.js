@@ -641,6 +641,17 @@
         }
       }
 
+      // ── Subsidebar: secciones de configuración ─────────────────────────────
+      const settingsTab = Vue.ref('marca');
+      const settingsTabs = [
+        { id: 'marca', label: 'Marca', icon: 'settings' },
+        { id: 'pipeline', label: 'Leads y etiquetas', icon: 'tag' },
+        { id: 'campos', label: 'Campos del negocio', icon: 'edit' },
+        { id: 'canal', label: 'Canal WhatsApp', icon: 'whatsapp' },
+        { id: 'avanzado', label: 'Avanzado', icon: 'key' },
+        { id: 'datos', label: 'Datos', icon: 'download' },
+      ];
+
       return {
         apiKeyInput, testing, testResult, confirmReset, confirmDelete,
         workspace, modality, referrer, ACCENTS, store,
@@ -657,18 +668,29 @@
         disconnectWhatsApp, reconnectWhatsApp, exportData, resetDemo, deleteWorkspace,
         saveWebhooks, deleteWebhooks, testWebhook, openLogs, simulateWebhook, toggleWhEvent,
         buildWebhookUrl, fetchTunnelUrl, checkHealth, disconnectLive, onLiveConnected,
+        settingsTab, settingsTabs,
       };
     },
 
     template: `
-      <div class="grid items-start gap-6 xl:grid-cols-2">
-        <header class="xl:col-span-2">
+      <div class="grid items-start gap-6 lg:grid-cols-[230px_1fr]">
+        <header class="lg:col-span-2">
           <h2 class="text-2xl font-bold">Configuración</h2>
           <p class="mt-1 text-sm text-neutral-500">Branding, canales y datos del espacio de trabajo. Las opciones avanzadas las gestiona tu proveedor.</p>
         </header>
 
+        <!-- Subsidebar: secciones de configuración -->
+        <aside class="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none lg:flex-col lg:gap-1 lg:overflow-visible lg:pb-0">
+          <button v-for="t in settingsTabs" :key="t.id" @click="settingsTab = t.id"
+            class="flex shrink-0 items-center gap-2 border-2 px-3 py-2.5 text-sm font-medium transition"
+            :class="settingsTab === t.id ? 'border-neutral-900 bg-[var(--accent)] text-white shadow-brutal-sm' : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-900'">
+            <ui-icon :name="t.icon" class="h-4 w-4"></ui-icon>
+            <span class="whitespace-nowrap">{{ t.label }}</span>
+          </button>
+        </aside>
+
         <!-- Branding -->
-        <section class="border-2 border-neutral-900 bg-white p-5">
+        <section v-if="settingsTab === 'marca'" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Branding</h3>
           <div class="grid gap-4 sm:grid-cols-2">
             <ui-field label="Nombre del negocio">
@@ -718,7 +740,7 @@
         </section>
 
         <!-- Gestión de leads (etiquetas de la bandeja y pipeline del kanban) -->
-        <section class="border-2 border-neutral-900 bg-white p-5">
+        <section v-if="settingsTab === 'pipeline'" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Gestión de leads</h3>
           <p class="text-sm text-neutral-600">
             Define las etapas de tu pipeline de clientes: se usan como pestañas en la bandeja y como columnas del tablero de Leads.
@@ -754,7 +776,7 @@
         </section>
 
         <!-- Etiquetas de contacto (clasificación general, separadas de las leads) -->
-        <section class="border-2 border-neutral-900 bg-white p-5">
+        <section v-if="settingsTab === 'pipeline'" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Etiquetas de contacto</h3>
           <p class="text-sm text-neutral-600">
             Clasificación general de tus clientes (vip, frecuente, pedido…). Es independiente del pipeline de leads.
@@ -790,7 +812,7 @@
         </section>
 
         <!-- Campos del negocio (personalizables) -->
-        <section class="border-2 border-neutral-900 bg-white p-5">
+        <section v-if="settingsTab === 'campos'" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Campos del negocio</h3>
           <p class="text-sm text-neutral-600">
             Información que registras de cada cliente (además del nombre y teléfono).
@@ -844,7 +866,7 @@
         </section>
 
         <!-- Opciones avanzadas (superadministrador) -->
-        <section class="border-2 border-neutral-900 bg-white xl:col-span-2">
+        <section v-if="settingsTab === 'avanzado'" class="border-2 border-neutral-900 bg-white lg:col-start-2">
           <button @click="advancedOpen = !advancedOpen" class="flex w-full items-center justify-between gap-3 px-5 py-4 text-left">
             <div class="flex items-center gap-3">
               <span class="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-neutral-600">
@@ -884,7 +906,7 @@
         </section>
 
         <!-- Integración de canales -->
-        <section v-if="advancedOpen && isAdvanced" class="border-2 border-neutral-900 bg-white p-5">
+        <section v-if="settingsTab === 'avanzado' && advancedOpen && isAdvanced" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Integración de canales</h3>
           <div v-if="store.corsBlocked" class="mb-4 flex items-start gap-3 border-2 border-amber-700 bg-amber-50 p-3 text-sm text-amber-900">
             <ui-icon name="alert" class="mt-0.5 h-4 w-4 shrink-0"></ui-icon>
@@ -918,7 +940,7 @@
         </section>
 
         <!-- Canal WhatsApp -->
-        <section class="border-2 border-neutral-900 bg-white p-5">
+        <section v-if="settingsTab === 'canal'" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Canal WhatsApp</h3>
           <div class="flex flex-wrap items-center justify-between gap-4">
             <div class="flex items-center gap-4">
@@ -973,7 +995,7 @@
         </section>
 
         <!-- Credenciales del centro (multi-negocio) -->
-        <section v-if="advancedOpen && isAdvanced" class="border-2 border-neutral-900 bg-white p-5">
+        <section v-if="settingsTab === 'avanzado' && advancedOpen && isAdvanced" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Credenciales del centro</h3>
           <p class="text-sm text-neutral-600">
             Este negocio opera con una sub-key de acceso limitada a su perfil (expiración 90 días).
@@ -1003,13 +1025,13 @@
           </p>
         </section>
 
-        <!-- Modal: reconexión con Zernio -->
-        <ui-modal :open="reconnectOpen" title="Conectar con Zernio" @close="reconnectOpen = false">
+        <!-- Modal: reconexión con la plataforma -->
+        <ui-modal :open="reconnectOpen" title="Conectar con la plataforma" @close="reconnectOpen = false">
           <live-connect @connected="onLiveConnected"></live-connect>
         </ui-modal>
 
         <!-- Webhooks -->
-        <section v-if="advancedOpen && isAdvanced" class="border-2 border-neutral-900 bg-white p-5 xl:col-span-2">
+        <section v-if="settingsTab === 'avanzado' && advancedOpen && isAdvanced" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Webhooks (eventos en tiempo real)</h3>
             <div class="flex items-center gap-2">
@@ -1097,7 +1119,7 @@
         </section>
 
         <!-- Datos -->
-        <section class="border-2 border-neutral-900 bg-white p-5">
+        <section v-if="settingsTab === 'datos'" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Datos</h3>
           <div class="flex flex-wrap gap-2">
             <button @click="exportData"

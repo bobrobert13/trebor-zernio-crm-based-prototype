@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, getNiche, timeAgo, formatTime, formatDate, uid, canEdit, PLATFORMS, getPlatform } = ZernioCrm;
+  const { store, toast, getNiche, timeAgo, formatTime, formatDate, uid, canEdit, PLATFORMS, getPlatform, recordProductMentions, confirmMention, discardMention, INTENT_LABELS } = ZernioCrm;
 
   const components = {};
 
@@ -176,10 +176,27 @@
       function simulateIncoming(conv) {
         const delay = 2200 + Math.random() * 1800;
         later(() => {
-          const reply = DEMO_REPLIES[(Math.random() * DEMO_REPLIES.length) | 0];
-          conv.messages.push({ id: uid('msg'), from: 'in', text: reply, ts: Date.now(), status: 'delivered' });
+          const catalog = (workspace.value.products || []).filter((p) => p.active !== false);
+          let reply = DEMO_REPLIES[(Math.random() * DEMO_REPLIES.length) | 0];
+          // A veces el cliente demo pregunta por un producto del catálogo (demanda demo)
+          if (catalog.length && Math.random() < 0.55) {
+            const p = catalog[(Math.random() * catalog.length) | 0];
+            const alias = (p.aliases && p.aliases.length ? p.aliases[0] : p.name);
+            const pool = [
+              `¿Tienen ${p.name}?`,
+              `¿Cuánto cuesta ${alias}?`,
+              `¿Hay ${p.name} disponible?`,
+              `Quiero pedir ${p.name} para delivery`,
+              `¿Precio de ${alias}?`,
+            ];
+            reply = pool[(Math.random() * pool.length) | 0];
+          }
+          const msg = { id: uid('msg'), from: 'in', text: reply, ts: Date.now(), status: 'delivered' };
+          conv.messages.push(msg);
           conv.lastTs = Date.now();
           if (selectedId.value !== conv.id) conv.unread += 1;
+          const contact = contacts.value.find((c) => c.id === conv.contactId);
+          if (contact) recordProductMentions(contact, conv, msg, reply);
         }, delay);
       }
 
@@ -480,6 +497,71 @@
         return { from: first || Date.now(), to: conv.lastTs || Date.now() };
       }
 
+      // ── Menciones de productos (detección + confirmación del agente) ───────
+      const productMentions = Vue.computed(() => (workspace.value && workspace.value.productMentions) || []);
+
+      /** Menciones asociadas a un mensaje (chips bajo el mensaje). */
+      function mentionsOfMessage(messageId) {
+        return productMentions.value.filter((m) => m.messageId === messageId);
+      }
+
+      /** Menciones del contacto seleccionado (sección de la ficha). */
+      function contactProductMentions(contact) {
+        if (!contact) return [];
+        return productMentions.value.filter((m) => m.contactId === contact.id);
+      }
+
+      /** Producto de una mention (o null si fue eliminado). */
+      function productOf(mention) {
+        return (workspace.value.products || []).find((p) => p.id === mention.productId) || null;
+      }
+
+      // Picker de productos reutilizable (confirmar mention, vincular manual)
+      const productPickOpen = Vue.ref(false);
+      const productPickTarget = Vue.ref(null); // id de mention o null (vinculación manual)
+      const productPickQuery = Vue.ref('');
+      const productPickResults = Vue.computed(() => {
+        const qq = productPickQuery.value.trim().toLowerCase();
+        return (workspace.value.products || [])
+          .filter((p) => p.active !== false && (!qq || `${p.name} ${(p.aliases || []).join(' ')}`.toLowerCase().includes(qq)))
+          .slice(0, 8);
+      });
+
+      function openProductPick(targetMentionId) {
+        productPickTarget.value = targetMentionId || null;
+        productPickQuery.value = '';
+        productPickOpen.value = true;
+      }
+
+      function pickProduct(product) {
+        if (!product) return;
+        if (productPickTarget.value) {
+          confirmMention(productPickTarget.value, product.id);
+          toast('Producto confirmado: ' + product.name, 'success');
+        } else {
+          // Vinculación manual desde la ficha del cliente
+          const conv = selected.value;
+          const contact = selectedContact.value;
+          if (conv && contact) {
+            workspace.value.productMentions.push({
+              id: uid('men'),
+              productId: product.id,
+              messageId: null,
+              contactId: contact.id,
+              convId: conv.id,
+              ts: Date.now(),
+              intent: 'consulta',
+              match: 'exacta',
+              status: 'confirmada',
+              source: 'manual',
+              text: 'Vinculación manual del agente',
+            });
+            toast('Producto vinculado al cliente', 'success');
+          }
+        }
+        productPickOpen.value = false;
+      }
+
       function addReminderFor(contact) {
         const text = remInput.text.trim();
         if (!text || !contact) return;
@@ -594,6 +676,10 @@
         contactDrawerOpen, contactTags, toggleContactTag, setLeadTag, registerContact,
         bizFields, remInput, addReminderFor, contactReminders, ZernioCrm,
         contactConvs, convRange, formatDate,
+        productMentions, mentionsOfMessage, contactProductMentions, productOf,
+        productPickOpen, productPickTarget, productPickQuery, productPickResults,
+        openProductPick, pickProduct, INTENT_LABELS,
+        confirmMention, discardMention,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
     },
@@ -769,8 +855,8 @@
 
               <!-- Mensajes -->
               <div class="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5">
-                <div v-for="m in selected.messages" :key="m.id" class="flex" :class="m.from === 'out' ? 'justify-end' : 'justify-start'">
-                  <div class="max-w-[70%] px-4 py-2.5 shadow-sm"
+                <div v-for="m in selected.messages" :key="m.id" class="space-y-1.5" :class="m.from === 'out' ? 'flex flex-col items-end' : 'flex flex-col items-start'">
+                  <div class="flex max-w-[70%] px-4 py-2.5 shadow-sm"
                     :class="m.from === 'out'
                       ? 'bg-[var(--accent)] text-white'
                       : 'border border-neutral-200 bg-white'">
@@ -780,6 +866,24 @@
                       <ui-icon v-if="m.from === 'out'" name="check" class="h-3 w-3"
                         :class="m.status === 'read' ? 'text-emerald-400' : m.status === 'failed' ? 'text-red-400' : 'opacity-60'"></ui-icon>
                     </div>
+                  </div>
+                  <!-- Feedback de productos detectados en el mensaje entrante -->
+                  <div v-for="men in mentionsOfMessage(m.id)" :key="men.id" class="max-w-[85%] text-xs"
+                    :class="men.match === 'exacta'
+                      ? 'flex items-center gap-2 border border-emerald-700 bg-emerald-50 px-2.5 py-1.5 text-emerald-900'
+                      : 'border border-amber-600 bg-amber-50 px-2.5 py-1.5 text-amber-900'">
+                    <template v-if="men.match === 'exacta'">
+                      <span class="flex items-center gap-1"><ui-icon name="check-circle" class="h-3.5 w-3.5"></ui-icon> Producto detectado: <strong>{{ productOf(men) ? productOf(men).name : '—' }}</strong></span>
+                      <button @click="openProductPick(men.id)" class="font-semibold underline">Cambiar</button>
+                    </template>
+                    <template v-else>
+                      <span>Posible producto: <strong>{{ productOf(men) ? productOf(men).name : '—' }}</strong> (coincidencia parcial)</span>
+                      <span class="flex gap-2">
+                        <button v-if="productOf(men)" @click="confirmMention(men.id, men.productId)" class="font-semibold underline">Sí, ese</button>
+                        <button @click="openProductPick(men.id)" class="font-semibold underline">Elegir otro</button>
+                        <button @click="discardMention(men.id)" class="underline">Descartar</button>
+                      </span>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -914,6 +1018,28 @@
                 </div>
               </div>
 
+              <!-- Productos de interés (menciones detectadas o vinculadas) -->
+              <div>
+                <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Productos de interés</p>
+                <ul v-if="contactProductMentions(selectedContact).length" class="space-y-1.5">
+                  <li v-for="men in contactProductMentions(selectedContact)" :key="men.id"
+                    class="flex items-center gap-2 border border-neutral-200 px-2.5 py-1.5 text-xs">
+                    <span class="min-w-0 flex-1 truncate font-medium">{{ productOf(men) ? productOf(men).name : '—' }}</span>
+                    <span class="shrink-0 font-mono text-[9px] uppercase tracking-wider text-neutral-400">{{ INTENT_LABELS[men.intent] || men.intent }}</span>
+                    <ui-badge :variant="men.status === 'confirmada' ? 'success' : 'warn'" dot class="shrink-0">
+                      {{ men.status === 'confirmada' ? 'Confirmada' : 'Pendiente' }}
+                    </ui-badge>
+                    <button v-if="men.status === 'pendiente'" @click="confirmMention(men.id, men.productId)" class="shrink-0 font-semibold text-emerald-700">
+                      Confirmar
+                    </button>
+                  </li>
+                </ul>
+                <p v-else class="text-xs text-neutral-400">Sin productos de interés registrados.</p>
+                <button @click="openProductPick(null)" class="mt-2 border border-neutral-300 px-2 py-1 text-xs transition hover:border-neutral-900">
+                  + Vincular producto
+                </button>
+              </div>
+
               <!-- Recordatorios del contacto -->
               <div>
                 <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Recordatorios</p>
@@ -989,6 +1115,26 @@
             </div>
           </div>
         </ui-drawer>
+
+        <!-- Modal: selector de productos (confirmar mention / vincular manual) -->
+        <ui-modal :open="productPickOpen" title="Seleccionar producto" width="max-w-md" @close="productPickOpen = false">
+          <div class="space-y-3">
+            <div class="flex items-center gap-2 border border-neutral-300 bg-stone-50 px-3 py-2.5 focus-within:border-neutral-900 focus-within:bg-white">
+              <ui-icon name="search" class="h-4 w-4 text-neutral-400"></ui-icon>
+              <input v-model.trim="productPickQuery" type="search" placeholder="Buscar producto…"
+                class="w-full bg-transparent text-sm outline-none" />
+            </div>
+            <ul class="max-h-80 divide-y divide-neutral-100 overflow-y-auto border border-neutral-200">
+              <li v-for="p in productPickResults" :key="p.id">
+                <button @click="pickProduct(p)" class="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm transition hover:bg-stone-50">
+                  <span class="min-w-0 truncate font-medium">{{ p.name }}</span>
+                  <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ p.category || p.type }}<span v-if="p.stock === false" class="ml-1 text-red-700">· Agotado</span></span>
+                </button>
+              </li>
+              <li v-if="productPickResults.length === 0" class="px-3 py-6 text-center text-sm text-neutral-400">Sin productos para la búsqueda.</li>
+            </ul>
+          </div>
+        </ui-modal>
       </div>`,
   };
 

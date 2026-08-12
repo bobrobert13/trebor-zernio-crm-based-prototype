@@ -99,15 +99,69 @@
     // Dedupe por id de mensaje (entrega at-least-once + recargas de página)
     const msgId = msg.id || null;
     if (msgId && conv.messages.some((m) => m.id === msgId)) return;
-    conv.messages.push({
+    const pushed = {
       id: msgId || ZernioCrm.uid('msg'),
       from: 'in',
       text,
       ts: Date.parse(msg.timestamp || event.timestamp) || Date.now(),
       status: 'delivered',
-    });
+    };
+    conv.messages.push(pushed);
     conv.lastTs = Date.now();
     if (store.route !== 'inbox') conv.unread += 1;
+    // Detección de productos del catálogo en el mensaje entrante (live)
+    recordProductMentions(contact, conv, pushed, text);
+  }
+
+  /**
+   * Registra menciones de productos del catálogo en un mensaje entrante.
+   * Cada candidato (top 3 de matchProducts) genera una mention con match
+   * exacta/parcial y status 'pendiente' (el agente la confirma en la bandeja).
+   * @param {object} contact — contacto de la conversación.
+   * @param {object} conv — conversación.
+   * @param {object} message — mensaje entrante ya insertado.
+   * @param {string} text — texto del mensaje.
+   */
+  function recordProductMentions(contact, conv, message, text) {
+    const ws = store.workspace;
+    if (!ws || !contact || !conv || !message || !text) return;
+    const catalog = ws.products || [];
+    if (!catalog.length) return;
+    const matches = ZernioCrm.matchProducts(text, catalog, ws.nicheId);
+    if (!matches.length) return;
+    matches.forEach((m) => {
+      ws.productMentions.push({
+        id: ZernioCrm.uid('men'),
+        productId: m.product.id,
+        messageId: message.id,
+        contactId: contact.id,
+        convId: conv.id,
+        ts: message.ts || Date.now(),
+        intent: m.intent,
+        match: m.score >= 1 ? 'exacta' : 'parcial',
+        status: 'pendiente',
+        text: String(text).slice(0, 200),
+      });
+    });
+    if (ws.productMentions.length > 2000) {
+      ws.productMentions.splice(0, ws.productMentions.length - 2000);
+    }
+  }
+
+  /** Confirma una mention pendiente (el agente eligió el producto exacto). */
+  function confirmMention(id, productId) {
+    const ws = store.workspace;
+    const m = (ws.productMentions || []).find((x) => x.id === id);
+    if (!m) return;
+    m.productId = productId || m.productId;
+    m.status = 'confirmada';
+    m.match = 'exacta';
+  }
+
+  /** Descarta una mention pendiente (falso positivo). */
+  function discardMention(id) {
+    const ws = store.workspace;
+    ws.productMentions = (ws.productMentions || []).filter((x) => x.id !== id);
   }
 
   /**
@@ -245,5 +299,6 @@
     store, toast, applyAccent, navigate, flagCorsBlocked, canEdit, detectServer,
     pushWebhookEvent, reflectIncomingMessage, applyLeadTag,
     remindersOf, addReminder, toggleReminder, removeReminder,
+    recordProductMentions, confirmMention, discardMention,
   });
 })();

@@ -484,6 +484,16 @@
     },
   };
 
+  /** Etiquetas legibles de los intents detectados. */
+  const INTENT_LABELS = {
+    pedido: 'Pedido',
+    reserva: 'Reserva',
+    disponibilidad: 'Disponibilidad',
+    precio: 'Precio',
+    garantia: 'Garantía',
+    consulta: 'Consulta',
+  };
+
   /** Plantillas de tarjeta por defecto (por nicho) y saludo del envío. */
   const PRODUCT_CARD_DEFAULTS = {
     restaurante: {
@@ -860,6 +870,7 @@
     NICHE_CATALOGS,
     NICHE_PRODUCT_FIELDS,
     NICHE_INTENTS,
+    INTENT_LABELS,
     PRODUCT_CARD_DEFAULTS,
     getNicheCatalog,
     getNicheProductFields,

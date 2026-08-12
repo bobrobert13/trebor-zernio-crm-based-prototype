@@ -391,6 +391,7 @@
     { id: 'analytics', label: 'Analítica', icon: 'chart' },
     { id: 'inbox', label: 'Bandeja', icon: 'message' },
     { id: 'leads', label: 'Leads', icon: 'tag' },
+    { id: 'products', label: 'Productos', icon: 'box' },
     { id: 'contacts', label: 'Contactos', icon: 'users' },
     { id: 'channels', label: 'Canales', icon: 'layers' },
     { id: 'broadcasts', label: 'Campañas', icon: 'megaphone' },
@@ -401,10 +402,10 @@
   ];
 
   const PERMISSIONS = {
-    owner: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', channels: 'edit', leads: 'edit', broadcasts: 'edit', billing: 'edit', system: 'edit', team: 'edit', settings: 'edit' },
-    admin: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', channels: 'edit', leads: 'edit', broadcasts: 'edit', billing: 'view', system: 'view', team: 'edit', settings: 'view' },
-    agente: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', channels: null, leads: 'view', broadcasts: null, billing: null, system: null, team: null, settings: null },
-    vendedor: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', channels: null, leads: 'view', broadcasts: 'edit', billing: null, system: null, team: null, settings: null },
+    owner: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', channels: 'edit', leads: 'edit', products: 'edit', broadcasts: 'edit', billing: 'edit', system: 'edit', team: 'edit', settings: 'edit' },
+    admin: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', channels: 'edit', leads: 'edit', products: 'edit', broadcasts: 'edit', billing: 'view', system: 'view', team: 'edit', settings: 'view' },
+    agente: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', channels: null, leads: 'view', products: 'view', broadcasts: null, billing: null, system: null, team: null, settings: null },
+    vendedor: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', channels: null, leads: 'view', products: 'view', broadcasts: 'edit', billing: null, system: null, team: null, settings: null },
   };
 
   /**
@@ -456,9 +457,245 @@
     },
   ];
 
-  /** @param {string} id — id de plataforma. @returns {object|undefined} */
+ /** @param {string} id — id de plataforma. @returns {object|undefined} */
   function getPlatform(id) {
     return PLATFORMS.find((p) => p.id === id);
+  }
+
+  // ── Productos y servicios: fichas técnicas, catálogos e intención ────────
+
+  /** Campos de la ficha técnica por nicho (presembran details del producto). */
+  const NICHE_PRODUCT_FIELDS = {
+    restaurante: ['Ingredientes', 'Alérgenos', 'Tiempo de preparación', 'Porciones', 'Disponible para delivery'],
+    celulares: ['Marca', 'Modelo', 'RAM', 'Almacenamiento', 'Cámara', 'Batería', 'Garantía', 'Colores'],
+  };
+
+  /** Palabras de intención por nicho (la primera coincidencia gana; fallback 'consulta'). */
+  const NICHE_INTENTS = {
+    restaurante: {
+      pedido: ['pedido', 'delivery', 'domicilio', 'llevar', 'orden', 'encargar'],
+      reserva: ['reserva', 'mesa', 'reservar'],
+      disponibilidad: ['tienen', 'disponible', 'hay', 'tienen?', 'queda'],
+    },
+    celulares: {
+      disponibilidad: ['disponibilidad', 'stock', 'hay', 'tienen', 'queda'],
+      precio: ['precio', 'cuánto', 'cuanto', 'costo', 'valor', 'cuesta'],
+      garantia: ['garantía', 'garantia', 'cambio', 'falla', 'defecto'],
+    },
+  };
+
+  /** Plantillas de tarjeta por defecto (por nicho) y saludo del envío. */
+  const PRODUCT_CARD_DEFAULTS = {
+    restaurante: {
+      greeting: '¡Claro! Aquí tiene los detalles 👇',
+      template: '*{{nombre}}*\n\n{{descripcion}}\n\n*Detalles*\n{{detalles}}\n\n—\n\n*Precio:* {{precio}} {{unidad}}\n*Disponibilidad:* {{stock}}',
+    },
+    celulares: {
+      greeting: 'Claro, aquí tiene los detalles del equipo 👇',
+      template: '*{{nombre}}*\n\n{{descripcion}}\n\n*Ficha técnica*\n{{detalles}}\n\n—\n\n*Precio:* {{precio}} {{unidad}}\n*Disponibilidad:* {{stock}}',
+    },
+    generic: {
+      greeting: 'Claro, aquí tiene los detalles 👇',
+      template: '*{{nombre}}*\n\n{{descripcion}}\n\n*Detalles*\n{{detalles}}\n\n—\n\n*Precio:* {{precio}} {{unidad}}\n*Disponibilidad:* {{stock}}',
+    },
+  };
+
+  /**
+   * Catálogo semilla por nicho (ficha técnica completa).
+   * id determinista por posición (estable entre migraciones del mismo nicho).
+   */
+  const NICHE_CATALOGS = {
+    restaurante: [
+      { name: 'Arroz con pollo', type: 'producto', category: 'Platos principales', price: 8.5, unit: 'porción', aliases: ['arroz con pollo asado'], stock: true, description: 'Pollo guisado con arroz amarillo, ensalada y tajadas.', details: [{ label: 'Ingredientes', value: 'Pollo, arroz, verduras y especias' }, { label: 'Alérgenos', value: 'Contiene gluten' }, { label: 'Tiempo de preparación', value: '25 min' }, { label: 'Porciones', value: '1 persona' }, { label: 'Disponible para delivery', value: 'Sí' }] },
+      { name: 'Pabellón criollo', type: 'producto', category: 'Platos principales', price: 9, unit: 'plato', aliases: ['pabellon'], stock: true, description: 'Carne mechada, caraotas negras, arroz blanco y plátano maduro.', details: [{ label: 'Ingredientes', value: 'Carne, caraotas, arroz, plátano' }, { label: 'Alérgenos', value: 'Sin gluten' }, { label: 'Tiempo de preparación', value: '20 min' }, { label: 'Porciones', value: '1 persona' }, { label: 'Disponible para delivery', value: 'Sí' }] },
+      { name: 'Hamburguesa clásica', type: 'producto', category: 'Platos principales', price: 6.5, unit: 'unidad', aliases: ['hamburguesa', 'burger'], stock: true, description: 'Carne 100% res, queso, lechuga, tomate y salsa de la casa.', details: [{ label: 'Ingredientes', value: 'Carne, queso, pan artesanal, vegetales' }, { label: 'Alérgenos', value: 'Contiene gluten y lácteos' }, { label: 'Tiempo de preparación', value: '15 min' }, { label: 'Porciones', value: '1 unidad' }, { label: 'Disponible para delivery', value: 'Sí' }] },
+      { name: 'Pizza margarita', type: 'producto', category: 'Platos principales', price: 10, unit: 'mediana', aliases: ['pizza'], stock: true, description: 'Salsa de tomate, mozzarella y albahaca fresca.', details: [{ label: 'Ingredientes', value: 'Harina, tomate, mozzarella, albahaca' }, { label: 'Alérgenos', value: 'Contiene gluten y lácteos' }, { label: 'Tiempo de preparación', value: '20 min' }, { label: 'Porciones', value: '2 personas' }, { label: 'Disponible para delivery', value: 'Sí' }] },
+      { name: 'Cachapa con queso', type: 'producto', category: 'Platos principales', price: 5.5, unit: 'unidad', aliases: ['cachapa'], stock: true, description: 'Maíz dulce con queso de mano derretido.', details: [{ label: 'Ingredientes', value: 'Maíz, queso de mano' }, { label: 'Alérgenos', value: 'Contiene lácteos' }, { label: 'Tiempo de preparación', value: '10 min' }, { label: 'Porciones', value: '1 unidad' }, { label: 'Disponible para delivery', value: 'Sí' }] },
+      { name: 'Arepa reina pepiada', type: 'producto', category: 'Desayunos', price: 4, unit: 'unidad', aliases: ['arepa', 'reina pepiada'], stock: true, description: 'Arepa de maíz con pollo, aguacate y mayonesa.', details: [{ label: 'Ingredientes', value: 'Maíz, pollo, aguacate' }, { label: 'Alérgenos', value: 'Contiene huevo' }, { label: 'Tiempo de preparación', value: '8 min' }, { label: 'Porciones', value: '1 unidad' }, { label: 'Disponible para delivery', value: 'Sí' }] },
+      { name: 'Bebida natural', type: 'producto', category: 'Bebidas', price: 3, unit: 'vaso', aliases: ['jugo', 'bebida', 'fresco'], stock: true, description: 'Jugo natural de la fruta del día.', details: [{ label: 'Ingredientes', value: 'Fruta natural, agua, azúcar opcional' }, { label: 'Alérgenos', value: 'Ninguno' }, { label: 'Tiempo de preparación', value: '5 min' }, { label: 'Porciones', value: '1 vaso' }, { label: 'Disponible para delivery', value: 'Sí' }] },
+      { name: 'Refresco', type: 'producto', category: 'Bebidas', price: 2, unit: 'lata', aliases: ['refresco', 'cola', 'soda'], stock: true, description: 'Refresco frío en lata.', details: [{ label: 'Ingredientes', value: 'Agua carbonatada, sabor' }, { label: 'Alérgenos', value: 'Ninguno' }, { label: 'Tiempo de preparación', value: 'Inmediato' }, { label: 'Porciones', value: '1 lata' }, { label: 'Disponible para delivery', value: 'Sí' }] },
+      { name: 'Postre del día', type: 'producto', category: 'Postres', price: 3.5, unit: 'porción', aliases: ['postre', 'torta'], stock: false, description: 'Postre artesanal del día (pregunta disponibilidad).', details: [{ label: 'Ingredientes', value: 'Varía según el día' }, { label: 'Alérgenos', value: 'Puede contener gluten y huevo' }, { label: 'Tiempo de preparación', value: '5 min' }, { label: 'Porciones', value: '1 porción' }, { label: 'Disponible para delivery', value: 'Sí' }] },
+      { name: 'Delivery express', type: 'servicio', category: 'Servicios', price: 2.5, unit: 'envío', aliases: ['delivery', 'domicilio', 'envio'], stock: true, description: 'Envío a domicilio en un radio de 5 km.', details: [{ label: 'Cobertura', value: '5 km a la redonda' }, { label: 'Tiempo estimado', value: '30-45 min' }, { label: 'Costo', value: 'Por zona' }] },
+    ],
+    celulares: [
+      { name: 'iPhone 15', type: 'producto', category: 'Equipos', price: 899, unit: 'unidad', aliases: ['iphone 15', 'iphone'], stock: true, description: 'Smartphone Apple con pantalla OLED de 6.1", chip A16 y cámara de 48 MP.', details: [{ label: 'Marca', value: 'Apple' }, { label: 'Modelo', value: 'iPhone 15' }, { label: 'RAM', value: '6 GB' }, { label: 'Almacenamiento', value: '128 GB' }, { label: 'Cámara', value: '48 MP + 12 MP' }, { label: 'Batería', value: '3.349 mAh' }, { label: 'Garantía', value: '1 año' }, { label: 'Colores', value: 'Negro, Azul, Rosa' }] },
+      { name: 'Samsung Galaxy S24', type: 'producto', category: 'Equipos', price: 799, unit: 'unidad', aliases: ['galaxy s24', 'samsung s24', 'galaxy'], stock: true, description: 'Smartphone Android con pantalla AMOLED 6.2", Exynos 2400 y cámara de 50 MP.', details: [{ label: 'Marca', value: 'Samsung' }, { label: 'Modelo', value: 'Galaxy S24' }, { label: 'RAM', value: '8 GB' }, { label: 'Almacenamiento', value: '256 GB' }, { label: 'Cámara', value: '50 MP + 12 MP + 10 MP' }, { label: 'Batería', value: '4.000 mAh' }, { label: 'Garantía', value: '1 año' }, { label: 'Colores', value: 'Negro, Violeta, Amarillo' }] },
+      { name: 'Audífonos inalámbricos', type: 'producto', category: 'Accesorios', price: 35, unit: 'unidad', aliases: ['audifonos', 'audífonos', 'earbuds', 'airpods'], stock: false, description: 'Audífonos Bluetooth con estuche de carga y cancelación de ruido.', details: [{ label: 'Marca', value: 'Genérica premium' }, { label: 'Modelo', value: 'TWS Pro' }, { label: 'Batería', value: '6 h + estuche 24 h' }, { label: 'Garantía', value: '3 meses' }, { label: 'Colores', value: 'Blanco, Negro' }] },
+      { name: 'Cargador rápido 25W', type: 'producto', category: 'Accesorios', price: 15, unit: 'unidad', aliases: ['cargador', 'carga rapida'], stock: true, description: 'Cargador USB-C de 25W con cable incluido.', details: [{ label: 'Potencia', value: '25 W' }, { label: 'Puerto', value: 'USB-C' }, { label: 'Garantía', value: '3 meses' }] },
+      { name: 'Funda de silicona', type: 'producto', category: 'Accesorios', price: 8, unit: 'unidad', aliases: ['funda', 'case', 'protector'], stock: true, description: 'Funda de silicona suave compatible con la mayoría de equipos.', details: [{ label: 'Material', value: 'Silicona' }, { label: 'Compatibilidad', value: 'Universal 6.1-6.8"' }] },
+      { name: 'Vidrio templado', type: 'producto', category: 'Accesorios', price: 5, unit: 'unidad', aliases: ['vidrio', 'protector de pantalla', 'polarizado'], stock: true, description: 'Protector de pantalla de vidrio templado 9H.', details: [{ label: 'Dureza', value: '9H' }, { label: 'Instalación', value: 'Incluida' }] },
+      { name: 'Reparación de pantalla', type: 'servicio', category: 'Servicios', price: 60, unit: 'servicio', aliases: ['reparacion', 'cambio de pantalla', 'pantalla rota'], stock: true, description: 'Reemplazo de pantalla en 24-48 h con garantía de 3 meses.', details: [{ label: 'Tiempo', value: '24-48 h' }, { label: 'Garantía', value: '3 meses' }, { label: 'Incluye', value: 'Mano de obra y repuesto' }] },
+      { name: 'Plan de datos 10GB', type: 'servicio', category: 'Servicios', price: 12, unit: 'mensual', aliases: ['plan de datos', 'plan', 'datos'], stock: true, description: 'Plan de datos móvil de 10 GB mensuales.', details: [{ label: 'Datos', value: '10 GB' }, { label: 'Vigencia', value: '30 días' }, { label: 'Incluye', value: 'Redes sociales ilimitadas' }] },
+      { name: 'Liberación de equipo', type: 'servicio', category: 'Servicios', price: 20, unit: 'servicio', aliases: ['liberacion', 'desbloqueo', 'simlock'], stock: true, description: 'Liberación de equipos para cualquier operadora.', details: [{ label: 'Tiempo', value: '24 h' }, { label: 'Garantía', value: 'Definitiva' }] },
+      { name: 'Power bank 20.000 mAh', type: 'producto', category: 'Accesorios', price: 25, unit: 'unidad', aliases: ['power bank', 'bateria externa', 'cargador portatil'], stock: true, description: 'Batería externa de 20.000 mAh con doble puerto USB.', details: [{ label: 'Capacidad', value: '20.000 mAh' }, { label: 'Puertos', value: '2 USB + USB-C' }, { label: 'Garantía', value: '6 meses' }] },
+    ],
+    generic: [],
+  };
+
+  /** @param {string} nicheId — id del nicho. @returns {Array<object>} Catálogo semilla (ids deterministas). */
+  function getNicheCatalog(nicheId) {
+    return (NICHE_CATALOGS[nicheId] || NICHE_CATALOGS.generic || []).map((p, i) => ({
+      ...p,
+      id: `prd_${nicheId}_${i + 1}`,
+      active: true,
+      createdAt: Date.now(),
+    }));
+  }
+
+  /** @param {string} nicheId — id del nicho. @returns {Array<string>} Labels de la ficha técnica. */
+  function getNicheProductFields(nicheId) {
+    return NICHE_PRODUCT_FIELDS[nicheId] || [];
+  }
+
+  /** Normaliza texto para matching: minúsculas y sin diacríticos. */
+  function normalizeText(str) {
+    return String(str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  /** Distancia de edición acotada (Levenshtein) — tolera typos hasta max. */
+  function editDistance(a, b, max) {
+    if (a === b) return 0;
+    const la = a.length;
+    const lb = b.length;
+    if (Math.abs(la - lb) > max) return max + 1;
+    const row = Array.from({ length: lb + 1 }, (_, j) => j);
+    for (let i = 1; i <= la; i += 1) {
+      let prev = row[0];
+      row[0] = i;
+      let best = row[0];
+      for (let j = 1; j <= lb; j += 1) {
+        const cur = row[j];
+        row[j] = Math.min(prev + (a[i - 1] === b[j - 1] ? 0 : 1), row[j] + 1, row[j - 1] + 1);
+        prev = cur;
+        if (row[j] < best) best = row[j];
+      }
+      if (best > max) return max + 1;
+    }
+    return row[lb];
+  }
+
+  /** Intención del mensaje según el nicho (primera coincidencia; fallback 'consulta'). */
+  function detectIntent(text, nicheId) {
+    const hay = normalizeText(text);
+    const intents = NICHE_INTENTS[nicheId] || {};
+    const entries = Object.entries(intents);
+    for (const [intent, words] of entries) {
+      if (words.some((w) => hay.includes(normalizeText(w)))) return intent;
+    }
+    return 'consulta';
+  }
+
+  /**
+   * Matchea un texto contra el catálogo activo: exacto (score 1), parcial
+   * (0.5-0.9: contención, solapamiento de tokens o typos ≤2 ediciones).
+   * @returns {Array<{product:object, intent:string, score:number}>} top 3.
+   */
+  function matchProducts(text, products, nicheId) {
+    const hay = normalizeText(text);
+    const tokens = hay.split(/\s+/).filter(Boolean);
+    const intent = detectIntent(text, nicheId);
+    const out = [];
+    (products || []).forEach((p) => {
+      if (!p || p.active === false) return;
+      const names = [p.name, ...(p.aliases || [])].map(normalizeText).filter(Boolean);
+      let best = 0;
+      names.forEach((n) => {
+        if (!n) return;
+        if (hay === n) best = Math.max(best, 1);
+        else if (hay.includes(n) || (n.length > 3 && n.includes(hay))) best = Math.max(best, 0.85);
+        else {
+          const nt = n.split(/\s+/).filter(Boolean);
+          const overlap = nt.filter((t) => tokens.includes(t)).length / Math.max(1, nt.length);
+          if (overlap >= 0.6) best = Math.max(best, 0.7);
+          else if (n.length > 3 && editDistance(hay, n, 2) <= 2) best = Math.max(best, 0.6);
+          else if (nt.some((t) => t.length > 3 && editDistance(hay, t, 1) <= 1)) best = Math.max(best, 0.55);
+        }
+      });
+      if (best > 0) out.push({ product: p, intent, score: best });
+    });
+    out.sort((a, b) => b.score - a.score);
+    return out.slice(0, 3);
+  }
+
+  /** Escapa HTML antes de aplicar el markup de WhatsApp (anti-XSS). */
+  function escapeHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /**
+   * Renderiza el markup de WhatsApp como HTML seguro para previews:
+   * ```mono```, *negrita*, _cursiva_, ~tachado~, saltos de línea, bullets
+   * (•/-) agrupados en <ul> y '—' como separador.
+   */
+  function renderWhatsApp(text) {
+    const esc = escapeHtml(text);
+    let body = esc
+      .replace(/```([^`]+)```/g, '<code>$1</code>')
+      .replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>')
+      .replace(/~([^~\n]+)~/g, '<del>$1</del>')
+      .replace(/(^|[\s(])(_([^_\n]+)_)(?=$|[\s).,;!?])/g, '$1<em>$3</em>');
+    const lines = body.split('\n');
+    const html = [];
+    let inList = false;
+    lines.forEach((line) => {
+      const t = line.trim();
+      const isBullet = t.startsWith('• ') || t.startsWith('- ');
+      if (isBullet) {
+        if (!inList) {
+          html.push('<ul>');
+          inList = true;
+        }
+        html.push('<li>' + t.replace(/^[•-]\s*/, '') + '</li>');
+      } else {
+        if (inList) {
+          html.push('</ul>');
+          inList = false;
+        }
+        if (t === '—') html.push('<hr/>');
+        else html.push(line + '<br/>');
+      }
+    });
+    if (inList) html.push('</ul>');
+    return html.join('');
+  }
+
+  /** @param {number|null} n — precio. @returns {string} Precio formateado. */
+  function formatPrice(n) {
+    if (n == null || Number.isNaN(Number(n))) return '';
+    return '$' + Number(n).toLocaleString('es-VE', { maximumFractionDigits: 2 });
+  }
+
+  /**
+   * Compone la tarjeta final del producto (texto con formato WhatsApp) a partir
+   * del cardTemplate y los placeholders {{nombre}} {{descripcion}} {{detalles}}
+   * {{precio}} {{unidad}} {{stock}}. Trunca suave a 4096 chars (límite WhatsApp).
+   */
+  function buildProductCard(product, nicheId) {
+    const p = product || {};
+    const defaults = PRODUCT_CARD_DEFAULTS[nicheId] || PRODUCT_CARD_DEFAULTS.generic;
+    const tpl = p.cardTemplate || defaults.template;
+    const details = (p.details || [])
+      .filter((d) => d && d.label && d.value)
+      .map((d) => '• ' + d.label + ': ' + d.value)
+      .join('\n');
+    const map = {
+      '{{nombre}}': p.name || '',
+      '{{descripcion}}': p.description || '',
+      '{{detalles}}': details,
+      '{{precio}}': formatPrice(p.price),
+      '{{unidad}}': p.unit || '',
+      '{{stock}}': p.stock === false ? 'Agotado' : 'Disponible',
+    };
+    let card = tpl;
+    Object.entries(map).forEach(([k, v]) => {
+      card = card.split(k).join(v);
+    });
+    if (card.length > 4096) card = card.slice(0, 4090) + '\n…';
+    return card;
   }
 
   /** Modalidades de conexión WhatsApp que ofrece Zernio. */
@@ -510,6 +747,7 @@
     key: { paths: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>' },
     zap: { paths: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>' },
     book: { paths: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>' },
+    box: { paths: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>' },
     tag: { paths: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>' },
     globe: { paths: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>' },
     eye: { paths: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>' },
@@ -619,5 +857,17 @@
     asArray,
     PLATFORMS,
     getPlatform,
+    NICHE_CATALOGS,
+    NICHE_PRODUCT_FIELDS,
+    NICHE_INTENTS,
+    PRODUCT_CARD_DEFAULTS,
+    getNicheCatalog,
+    getNicheProductFields,
+    normalizeText,
+    matchProducts,
+    escapeHtml,
+    renderWhatsApp,
+    buildProductCard,
+    formatPrice,
   });
 })();

@@ -52,8 +52,7 @@
         (store.workspace.activity || []).slice().sort((a, b) => b.ts - a.ts)
       );
 
-      const roadmapDone = Vue.computed(() => niche.value.roadmap.filter((r) => !r.optional).length);
-      const roadmapTotal = Vue.computed(() => niche.value.roadmap.length);
+      const roadmapTotal = Vue.computed(() => (niche.value.roadmap || []).length);
 
       const ACT_ICONS = { whatsapp: 'whatsapp', message: 'message', contact: 'user', broadcast: 'megaphone', system: 'zap' };
 
@@ -113,7 +112,7 @@
         kpis: 'Indicadores del negocio',
         canal: 'Estado del canal',
         acciones: 'Acciones rápidas',
-        roadmap: 'Roadmap del negocio',
+        roadmap: 'Lo que incluye tu plan',
         actividad: 'Actividad reciente',
       };
 
@@ -126,7 +125,7 @@
         return actions;
       });
 
-      return { workspace, niche, focus, user, kpis, visibleKpis, kpiTrend, today, activity, roadmapDone, roadmapTotal, ACT_ICONS, quickActions, navigate, can, ROLES, timeAgo, prefs, prefsOpen, SECTION_LABELS, toggleSection, toggleKpi, moveKpi };
+      return { workspace, niche, focus, user, kpis, visibleKpis, kpiTrend, today, activity, roadmapTotal, ACT_ICONS, quickActions, navigate, can, ROLES, timeAgo, prefs, prefsOpen, SECTION_LABELS, toggleSection, toggleKpi, moveKpi };
     },
 
     template: `
@@ -209,19 +208,17 @@
         </section>
 
         <div v-if="prefs.sections.roadmap || prefs.sections.actividad" class="grid gap-6 xl:grid-cols-12">
-          <!-- Roadmap del nicho -->
+          <!-- Contenido incluido en el plan del nicho (informativo, sin afirmar configuraciones) -->
           <section v-if="prefs.sections.roadmap" class="border-2 border-neutral-900 bg-white p-6 xl:col-span-7">
             <div class="flex items-center justify-between">
-              <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Roadmap del negocio</h3>
-              <span class="font-mono text-xs tabular-nums text-neutral-500">{{ roadmapDone }}/{{ roadmapTotal }} configurados</span>
+              <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Lo que incluye tu plan</h3>
+              <span class="font-mono text-xs tabular-nums text-neutral-500">{{ roadmapTotal }} herramientas</span>
             </div>
-            <div class="mt-4 h-3 border-2 border-neutral-900 bg-neutral-100">
-              <div class="h-full bg-[var(--accent)] transition-all" :style="{ width: (roadmapDone / roadmapTotal * 100) + '%' }"></div>
-            </div>
-            <div class="mt-5 grid gap-2.5 sm:grid-cols-2">
-              <div v-for="r in niche.roadmap.filter(x => !x.optional)" :key="r.id" class="flex items-center gap-2.5 text-sm">
-                <ui-icon name="check-circle" class="h-4 w-4 shrink-0 text-emerald-700"></ui-icon>
+            <div class="mt-4 grid gap-2.5 sm:grid-cols-2">
+              <div v-for="r in niche.roadmap" :key="r.id" class="flex items-center gap-2.5 text-sm">
+                <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]"></span>
                 <span class="truncate">{{ r.title }}</span>
+                <span v-if="r.optional" class="shrink-0 font-mono text-[9px] uppercase tracking-wider text-neutral-400">opcional</span>
               </div>
             </div>
           </section>

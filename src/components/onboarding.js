@@ -31,6 +31,7 @@
         inviteVendor: true,
         skipConnect: false, // "Configurar después": termina sin canal conectado
         accepted: false, // convenio de uso aceptado (paso 2, obligatorio)
+        logo: null, // logo del negocio (dataURL, opcional)
       });
 
       const current = Vue.ref(0);
@@ -88,6 +89,48 @@
         form.name = n.id === 'personalizado' ? '' : `Mi ${n.nombre.toLowerCase()}`;
       }
 
+      /** Sube el logo del negocio: lee, redimensiona a ≤256 px y lo guarda como dataURL. */
+      function uploadLogo(event) {
+        const file = event.target.files && event.target.files[0];
+        event.target.value = ''; // permite volver a elegir el mismo archivo
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+          toast('Solo imágenes (PNG/JPG/WebP)', 'error');
+          return;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+          toast('Imagen muy grande: máximo 2 MB', 'error');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => toast('No se pudo leer la imagen: archivo inválido o formato no soportado', 'error');
+          img.onload = () => {
+            const MAX = 256;
+            const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(img.width * scale));
+            canvas.height = Math.max(1, Math.round(img.height * scale));
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              toast('No se pudo procesar la imagen', 'error');
+              return;
+            }
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            form.logo = canvas.toDataURL('image/png');
+            toast('Logo listo: se guardará con tu espacio', 'success');
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function removeLogo() {
+        form.logo = null;
+        toast('Logo quitado', 'info');
+      }
+
       function jumpTo(i) {
         if (i < current.value) current.value = i;
       }
@@ -131,6 +174,8 @@
           });
           if (!form.inviteAgent) ws.users = ws.users.filter((u) => u.role !== 'agente');
           if (!form.inviteVendor) ws.users = ws.users.filter((u) => u.role !== 'vendedor');
+          // Logo del negocio subido en el paso de Marca
+          if (form.logo) ws.logo = form.logo;
           // "Configurar después": workspace sin canal conectado (conecta luego desde Canales)
           if (form.skipConnect && !liveResult.value) {
             ws.zernio = null;
@@ -169,6 +214,7 @@
         STEPS, form, current, enterLoading, creating, niche, accent, selectedNiche,
         adminKeyOpen, hasMasterKey, liveResult,
         selectNiche, jumpTo, next, back, onLiveConnected, finish,
+        uploadLogo, removeLogo,
         canContinue,
         ui: ZernioCrm,
       };
@@ -434,13 +480,24 @@
                 </button>
               </div>
             </div>
-            <div class="mt-6 flex items-center gap-4 border-2 border-dashed border-neutral-300 p-4">
-              <span class="flex h-12 w-12 shrink-0 items-center justify-center text-lg font-bold text-white" :style="{ background: accent.value }">
-                {{ (form.name || 'T').trim().slice(0, 2).toUpperCase() }}
+            <div class="mt-6 flex flex-wrap items-center gap-4 border-2 border-dashed border-neutral-300 p-4">
+              <span class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden bg-white text-lg font-bold text-[var(--accent)] shadow-brutal-sm"
+                :style="form.logo ? {} : { background: accent.value, color: '#fff' }">
+                <img v-if="form.logo" :src="form.logo" alt="Logo de {{ form.name || 'tu negocio' }}" class="h-full w-full object-contain" />
+                <template v-else>{{ (form.name || 'T').trim().slice(0, 2).toUpperCase() }}</template>
               </span>
-              <div class="min-w-0">
+              <div class="min-w-0 flex-1">
                 <p class="truncate font-semibold">{{ form.name || 'Nombre del negocio' }}</p>
                 <p class="truncate text-sm text-neutral-500">{{ form.slogan || 'Tu slogan aquí' }}</p>
+              </div>
+              <div class="flex shrink-0 gap-2">
+                <label class="cursor-pointer border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
+                  {{ form.logo ? 'Reemplazar logo' : 'Subir logo' }}
+                  <input type="file" accept="image/*" class="hidden" @change="uploadLogo" />
+                </label>
+                <button v-if="form.logo" @click="removeLogo" class="border-2 border-neutral-300 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:border-red-700">
+                  Quitar logo
+                </button>
               </div>
             </div>
           </section>

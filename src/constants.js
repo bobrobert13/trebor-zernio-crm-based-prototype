@@ -395,8 +395,8 @@
     { id: 'contacts', label: 'Contactos', icon: 'users' },
     { id: 'channels', label: 'Canales', icon: 'layers' },
     { id: 'broadcasts', label: 'Campañas', icon: 'megaphone' },
-    { id: 'billing', label: 'Billing', icon: 'credit-card' },
-    { id: 'system', label: 'Estados', icon: 'activity' },
+    { id: 'billing', label: 'Billing', icon: 'credit-card', hidden: true },
+    { id: 'system', label: 'Estados', icon: 'activity', hidden: true },
     { id: 'team', label: 'Equipo', icon: 'user' },
     { id: 'settings', label: 'Configuración', icon: 'settings' },
   ];

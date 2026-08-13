@@ -187,7 +187,7 @@
       const route = Vue.computed(() => store.route);
       const viewComponent = Vue.computed(() => VIEWS[route.value] || 'dashboard-view');
       const navItems = Vue.computed(() =>
-        ZernioCrm.MODULES.filter((m) => ZernioCrm.can(store.currentUser && store.currentUser.role, m.id))
+        ZernioCrm.MODULES.filter((m) => !m.hidden && ZernioCrm.can(store.currentUser && store.currentUser.role, m.id))
       );
       const unreadTotal = Vue.computed(() =>
         (store.workspace ? store.workspace.conversations : []).reduce((acc, c) => acc + (c.unread || 0), 0)

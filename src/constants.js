@@ -473,9 +473,10 @@
   /** Palabras de intención por nicho (la primera coincidencia gana; fallback 'consulta'). */
   const NICHE_INTENTS = {
     restaurante: {
-      pedido: ['pedido', 'delivery', 'domicilio', 'llevar', 'orden', 'encargar'],
+      pedido: ['pedido', 'pedir', 'comprar', 'delivery', 'domicilio', 'llevar', 'orden', 'encargar'],
       reserva: ['reserva', 'mesa', 'reservar'],
       disponibilidad: ['tienen', 'disponible', 'hay', 'tienen?', 'queda'],
+      precio: ['precio', 'cuanto', 'cuesta', 'costo', 'valor'],
     },
     celulares: {
       pedido: ['pedir', 'comprar'],

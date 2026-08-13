@@ -213,11 +213,11 @@
         ],
       },
       {
-        // Coincidencia parcial: el alias "burger" da score bajo → feedback del agente
+        // Coincidencia parcial (alias separado por palabras) → feedback del agente
         contact: 'Oscar Pino', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Cuánto cuesta la burger clásica?', ts: Date.now() - 7.2 * 3600e3, status: 'read' },
-          { from: 'out', text: 'La clásica a $6.50. ¿Te la armamos?', ts: Date.now() - 7 * 3600e3, status: 'read' },
+          { from: 'in', text: '¿Cuánto cuesta el arroz asado con pollo?', ts: Date.now() - 7.2 * 3600e3, status: 'read' },
+          { from: 'out', text: 'El arroz con pollo a $8.50 la porción.', ts: Date.now() - 7 * 3600e3, status: 'read' },
         ],
       },
       {

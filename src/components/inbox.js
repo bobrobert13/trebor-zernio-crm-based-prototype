@@ -675,10 +675,16 @@
 
       /** Teclado del composer: navega el menú '@' o envía con Enter. */
       function onComposerKeydown(e) {
-        if (atOpen.value && atResults.value.length) {
-          if (e.key === 'ArrowDown') { e.preventDefault(); atIndex.value = (atIndex.value + 1) % atResults.value.length; return; }
-          if (e.key === 'ArrowUp') { e.preventDefault(); atIndex.value = (atIndex.value - 1 + atResults.value.length) % atResults.value.length; return; }
-          if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(atResults.value[atIndex.value] || atResults.value[0]); return; }
+        if (atOpen.value) {
+          if (e.key === 'ArrowDown' && atResults.value.length) { e.preventDefault(); atIndex.value = (atIndex.value + 1) % atResults.value.length; return; }
+          if (e.key === 'ArrowUp' && atResults.value.length) { e.preventDefault(); atIndex.value = (atIndex.value - 1 + atResults.value.length) % atResults.value.length; return; }
+          if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+            // Menú abierto: Enter/Tab selecciona (o cierra si no hay resultados)
+            e.preventDefault();
+            if (atResults.value.length) pickMention(atResults.value[atIndex.value] || atResults.value[0]);
+            else closeAt();
+            return;
+          }
           if (e.key === 'Escape') { e.preventDefault(); closeAt(); return; }
         }
         if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {

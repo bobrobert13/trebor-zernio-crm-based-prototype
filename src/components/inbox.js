@@ -445,7 +445,36 @@
 
       // ── Ficha del cliente (drawer, flujo CRM por conversación) ─────────────
       const contactDrawerOpen = Vue.ref(false);
+      const contactTab = Vue.ref('ficha'); // pestaña del drawer: ficha | actividades
       const contactTags = Vue.computed(() => workspace.value.contactTags || []);
+
+      /** Estadísticas de comunicación del contacto (pestaña Actividades). */
+      const contactStats = Vue.computed(() => {
+        const c = selectedContact.value;
+        if (!c) return null;
+        let totalIn = 0;
+        let totalOut = 0;
+        let first = null;
+        let last = null;
+        const channels = {};
+        contactConvs.value.forEach((x) => {
+          const plat = x.platform || 'whatsapp';
+          channels[plat] = (channels[plat] || 0) + 1;
+          (x.messages || []).forEach((m) => {
+            if (m.from === 'in') totalIn += 1;
+            else totalOut += 1;
+            if (first === null || m.ts < first) first = m.ts;
+            if (last === null || m.ts > last) last = m.ts;
+          });
+        });
+        return {
+          totalIn,
+          totalOut,
+          first,
+          last,
+          channels: Object.entries(channels).sort((a, b) => b[1] - a[1]),
+        };
+      });
 
       /** Alterna una etiqueta de contacto (clasificación general, no lead). */
       function toggleContactTag(tag) {
@@ -894,8 +923,8 @@
         presentPlatforms, tiktokChannel, tiktokEmpty, getPlatform, leadTags,
         tplPickerOpen, tplList, tplSelected, tplParams, tplVariables, tplSending,
         openTemplatePicker, closeTemplatePicker, sendApprovedTemplate,
-        contactDrawerOpen, contactTags, toggleContactTag, setLeadTag, registerContact,
-        bizFields, remInput, addReminderFor, contactReminders, ZernioCrm,
+        contactDrawerOpen, contactTab, contactTags, toggleContactTag, setLeadTag, registerContact,
+        contactStats, bizFields, remInput, addReminderFor, contactReminders, ZernioCrm,
         contactConvs, convRange, formatDate,
         closeOpen, closeTarget, closeForm, closeProductQuery, closeProductResults,
         closeLabel, stageLabel, historyOf, productNameOf, toggleCloseProduct,
@@ -1075,7 +1104,7 @@
                   <!-- Etiquetas vivas del contacto (no el snapshot de la conversación) -->
                   <ui-badge v-for="t in (selectedContact ? selectedContact.tags : [])" :key="t" variant="neutral">{{ t }}</ui-badge>
                   <ui-badge v-if="selectedContact && selectedContact.leadTag" variant="accent" dot>{{ selectedContact.leadTag }}</ui-badge>
-                  <button @click="contactDrawerOpen = true" class="p-1.5 hover:text-[var(--accent)]" aria-label="Ficha del cliente">
+                  <button @click="contactDrawerOpen = true; contactTab = 'ficha'" class="p-1.5 hover:text-[var(--accent)]" aria-label="Ficha del cliente">
                     <ui-icon name="user" class="h-4 w-4"></ui-icon>
                   </button>
                 </div>
@@ -1253,7 +1282,15 @@
         <!-- Drawer: ficha del cliente (gestión por conversación) -->
         <ui-drawer :open="contactDrawerOpen" width="max-w-lg" :title="'Ficha · ' + (selectedContact ? selectedContact.name : 'Sin ficha')" @close="contactDrawerOpen = false">
           <div v-if="selected" class="space-y-5">
-            <template v-if="selectedContact">
+            <!-- Pestañas del drawer -->
+            <div class="flex border-b-2 border-neutral-900">
+              <button @click="contactTab = 'ficha'" class="flex-1 border-r-2 border-neutral-900 px-3 py-2 text-sm font-semibold transition"
+                :class="contactTab === 'ficha' ? 'bg-[var(--accent)] text-white' : 'bg-white hover:bg-stone-100'">Ficha</button>
+              <button @click="contactTab = 'actividades'" class="flex-1 px-3 py-2 text-sm font-semibold transition"
+                :class="contactTab === 'actividades' ? 'bg-[var(--accent)] text-white' : 'bg-white hover:bg-stone-100'">Actividades</button>
+            </div>
+            <template v-if="contactTab === 'ficha'">
+              <template v-if="selectedContact">
               <div class="flex items-center gap-3">
                 <ui-avatar :name="selectedContact.name" size="h-12 w-12 text-base"></ui-avatar>
                 <div class="min-w-0 flex-1">
@@ -1415,44 +1452,79 @@
                   </button>
                 </div>
               </div>
+              </template>
+              <template v-else>
+                <p class="text-sm text-neutral-500">Esta conversación no tiene contacto registrado.</p>
+                <button @click="registerContact"
+                  class="w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                  Registrar contacto
+                </button>
+              </template>
             </template>
-            <template v-else>
-              <p class="text-sm text-neutral-500">Esta conversación no tiene contacto registrado.</p>
-              <button @click="registerContact"
-                class="w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
-                Registrar contacto
-              </button>
-            </template>
+            <template v-else-if="contactTab === 'actividades'">
+              <!-- Estadísticas de comunicación del contacto -->
+              <div v-if="contactStats" class="grid grid-cols-2 gap-2">
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Conversaciones</p>
+                  <p class="mt-0.5 text-lg font-bold tabular-nums">{{ contactConvs.length }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Mensajes recibidos</p>
+                  <p class="mt-0.5 text-lg font-bold tabular-nums">{{ contactStats.totalIn }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Mensajes enviados</p>
+                  <p class="mt-0.5 text-lg font-bold tabular-nums">{{ contactStats.totalOut }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Primera actividad</p>
+                  <p class="mt-0.5 text-xs font-semibold">{{ contactStats.first ? formatDate(contactStats.first) : '—' }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Última actividad</p>
+                  <p class="mt-0.5 text-xs font-semibold">{{ contactStats.last ? timeAgo(contactStats.last) : '—' }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Canales usados</p>
+                  <p class="mt-0.5 flex flex-wrap gap-1">
+                    <span v-for="ch in contactStats.channels" :key="ch[0]" class="flex items-center gap-1 border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                      <ui-icon :name="(getPlatform(ch[0]) || {}).icon" class="h-3 w-3"></ui-icon>
+                      {{ (getPlatform(ch[0]) || {}).nombre }} · {{ ch[1] }}
+                    </span>
+                  </p>
+                </div>
+              </div>
 
-            <!-- Historial detallado del contacto (click = abrir esa conversación) -->
-            <div>
-              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial de conversaciones</p>
-              <ul class="space-y-2">
-                <li v-for="c in contactConvs" :key="c.id">
-                  <button @click="selectConversation(c); contactDrawerOpen = false"
-                    class="w-full border p-3 text-left transition hover:border-neutral-900 hover:bg-stone-50"
-                    :class="c.id === selectedId ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-neutral-200'">
-                    <div class="flex items-center justify-between gap-2">
-                      <span class="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
-                        <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
-                        {{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}
-                        <ui-badge v-if="c.id === selectedId" variant="accent" class="ml-1">Actual</ui-badge>
-                      </span>
-                      <span class="shrink-0 font-mono text-[9px] uppercase text-neutral-400">
-                        {{ formatDate(convRange(c).from) }} → {{ formatDate(convRange(c).to) }}
-                      </span>
-                    </div>
-                    <p class="mt-1 truncate text-xs text-neutral-600">{{ lastMessage(c) }}</p>
-                    <p class="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400">
-                      {{ (c.messages || []).length }} mensajes · {{ timeAgo(c.lastTs) }}
-                    </p>
-                  </button>
-                </li>
-                <li v-if="contactConvs.length === 0" class="text-xs text-neutral-400">
-                  Sin historial previo.
-                </li>
-              </ul>
-            </div>
+              <!-- Historial detallado del contacto (click = abrir esa conversación) -->
+              <div>
+                <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial de conversaciones</p>
+                <ul class="space-y-2">
+                  <li v-for="c in contactConvs" :key="c.id">
+                    <button @click="selectConversation(c); contactDrawerOpen = false"
+                      class="w-full border p-3 text-left transition hover:border-neutral-900 hover:bg-stone-50"
+                      :class="c.id === selectedId ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-neutral-200'">
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
+                          <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
+                          {{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}
+                          <ui-badge v-if="c.id === selectedId" variant="accent" class="ml-1">Actual</ui-badge>
+                        </span>
+                        <span class="shrink-0 font-mono text-[9px] uppercase text-neutral-400">
+                          {{ formatDate(convRange(c).from) }} → {{ formatDate(convRange(c).to) }}
+                        </span>
+                      </div>
+                      <p class="mt-1 truncate text-xs text-neutral-600">{{ lastMessage(c) }}</p>
+                      <p class="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400">
+                        {{ (c.messages || []).length }} mensajes · {{ timeAgo(c.lastTs) }}
+                      </p>
+                    </button>
+                  </li>
+                  <li v-if="contactConvs.length === 0" class="text-xs text-neutral-400">
+                    Sin historial previo.
+                  </li>
+                </ul>
+              </div>
+            </template>
           </div>
         </ui-drawer>
 

@@ -283,8 +283,8 @@
       mention('iPhone 15', 'Francisco Rangel', '¿Tienen el iPhone 15 en azul?', 'disponibilidad', 'parcial', 5),
       // Agotado con demanda (Audífonos, stock false)
       mention('Audífonos inalámbricos', 'Carlos Hernández', '¿Hay audífonos disponibles?', 'disponibilidad', 'exacta', 1),
-      // Interés recurrente + pico de demanda (Samsung S24, mismo contacto, 60d vs 4d)
-      mention('Samsung Galaxy S24', 'Daniela Rojas', '¿Precio del Galaxy S24?', 'precio', 'exacta', 60),
+      // Interés recurrente + pico de demanda (Samsung S24, mismo contacto, 50d vs 4d)
+      mention('Samsung Galaxy S24', 'Daniela Rojas', '¿Precio del Galaxy S24?', 'precio', 'exacta', 50),
       mention('Samsung Galaxy S24', 'Daniela Rojas', '¿Tienen stock del S24?', 'disponibilidad', 'exacta', 20),
       mention('Samsung Galaxy S24', 'Daniela Rojas', 'Quiero pedir un S24', 'pedido', 'exacta', 4),
       mention('Samsung Galaxy S24', 'Oscar Pino', '¿Cuánto cuesta el S24?', 'precio', 'exacta', 6),

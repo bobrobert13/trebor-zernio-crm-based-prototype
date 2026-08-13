@@ -193,6 +193,10 @@
               profileId: liveResult.value.profileId,
               accountId: liveResult.value.accountId,
               phone: liveResult.value.phone,
+              // Sub-key scoped del negocio (creada por live-connect; el workspace
+              // aún no existía al crearla, por eso viaja en el evento 'connected')
+              subKey: liveResult.value.subKey || '',
+              subKeyProfileId: liveResult.value.profileId || '',
             };
             ws.whatsapp = {
               connected: true,
@@ -547,7 +551,7 @@
                   <p class="text-sm text-neutral-500">Meta te guía: autoriza con tu cuenta y verifica tu número con un código SMS. Sin pasos técnicos.</p>
                 </div>
               </div>
-              <live-connect @connected="onLiveConnected"></live-connect>
+              <live-connect :business-name="form.name" @connected="onLiveConnected"></live-connect>
               <p v-if="liveResult" class="mt-3 font-mono text-xs text-emerald-700">
                 ✓ Número vinculado: {{ liveResult.phone }}
               </p>
@@ -573,7 +577,7 @@
                 <p class="text-xs text-neutral-500">
                   Clave de acceso de la plataforma (la proporciona tu proveedor). Sin ella no se puede crear el perfil del negocio.
                 </p>
-                <live-connect @connected="onLiveConnected"></live-connect>
+                <live-connect :business-name="form.name" @connected="onLiveConnected"></live-connect>
               </div>
             </div>
 

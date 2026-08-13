@@ -397,12 +397,20 @@
 
       /** Recibe la reconexión de live-connect y actualiza el canal. */
       function onLiveConnected(result) {
-        // Merge: conserva subKey/health persistidos en zernio (nunca borrar)
-        workspace.value.zernio = Object.assign(workspace.value.zernio || {}, {
+        // Merge: conserva subKey/health persistidos en zernio (nunca borrar).
+        // Si el perfil cambió, la sub-key anterior (scoped al perfil viejo) se
+        // descarta: llega una nueva en result.subKey o se regenera al conectar.
+        const z = workspace.value.zernio || {};
+        const profileChanged = z.profileId && result.profileId && z.profileId !== result.profileId;
+        const subKey = result.subKey
+          || (!profileChanged && (!z.subKeyProfileId || z.subKeyProfileId === result.profileId) ? z.subKey : '');
+        workspace.value.zernio = Object.assign({}, z, {
           profileId: result.profileId,
           accountId: result.accountId,
           phone: result.phone || '',
           health: null,
+          subKey,
+          subKeyProfileId: result.profileId || z.subKeyProfileId || '',
         });
         workspace.value.whatsapp = {
           connected: true,
@@ -1027,7 +1035,7 @@
 
         <!-- Modal: reconexión con la plataforma -->
         <ui-modal :open="reconnectOpen" title="Conectar con la plataforma" @close="reconnectOpen = false">
-          <live-connect @connected="onLiveConnected"></live-connect>
+          <live-connect :business-name="workspace.name" @connected="onLiveConnected"></live-connect>
         </ui-modal>
 
         <!-- Webhooks -->

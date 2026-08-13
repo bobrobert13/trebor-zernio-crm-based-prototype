@@ -333,6 +333,7 @@
         remindersOf, toggleReminder, removeReminder,
         historyOf, stageLabel, closeLabel, CLOSE_REASONS,
         interestScore,
+        formatPrice, INTENT_LABELS,
         closeProductQuery, closeProductResults, toggleCloseProduct, productName,
         getPlatform, timeAgo, canEdit, ZernioCrm,
       };

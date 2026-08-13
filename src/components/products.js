@@ -560,6 +560,7 @@
         demandRange, demandPeriods, demand, demandTotal, bestSellers, topDemand, exportDemandCsv,
         OP_CASES, opportunities, openConversation, goToLeads,
         productNameOf, oppDrawerOpen, oppSelected, oppLeads, openOppDrawer, closeOppDrawer,
+        timeAgo, INTENT_LABELS,
       };
     },
 

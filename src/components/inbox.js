@@ -864,6 +864,93 @@
         toast('Lead reabierto: vuelve al tablero activo', 'success');
       }
 
+      // ── Asistente IA (análisis local de la conversación + historial) ───────
+      const aiOpen = Vue.ref(false);
+
+      /** Nivel de interés comercial compacto (misma lógica que el tablero). */
+      function aiInterest(contact) {
+        const catalog = workspace.value.products || [];
+        const ms = productMentions.value.filter(
+          (m) => m.contactId === (contact || {}).id && catalog.some((p) => p.id === m.productId)
+        );
+        if (!ms.length) return { nivel: null, value: 0, productos: [] };
+        const byP = {};
+        ms.forEach((m) => {
+          const cur = byP[m.productId] || { product: catalog.find((p) => p.id === m.productId), count: 0, last: m };
+          cur.count += 1;
+          if (m.ts >= cur.last.ts) cur.last = m;
+          byP[m.productId] = cur;
+        });
+        const per = Object.values(byP).filter((x) => x.product);
+        const value = per.reduce((acc, x) => acc + (Number(x.product.price) > 0 ? Number(x.product.price) : 0), 0);
+        const priced = catalog.map((p) => Number(p.price)).filter((n) => n > 0).sort((a, b) => a - b);
+        const threshold = priced.length ? priced[Math.floor(0.75 * (priced.length - 1))] : 50;
+        const factors = [];
+        if (ms.some((m) => ['pedido', 'precio', 'reserva'].includes(m.intent))) factors.push('compra');
+        if (ms.length >= 2) factors.push('frecuencia');
+        if (value >= threshold) factors.push('alto_valor');
+        if (per.some((x) => x.product.stock === false)) factors.push('agotado');
+        const nivel = factors.length >= 3 || (factors.includes('compra') && factors.includes('alto_valor'))
+          ? 'alto' : factors.length === 2 ? 'medio' : factors.length === 1 ? 'bajo' : null;
+        return { nivel, value, productos: per.map((x) => ({ product: x.product, count: x.count, intent: x.last.intent })) };
+      }
+
+      /** Análisis completo: diagnóstico, señales, plan de acción y respuestas. */
+      const aiAnalysis = Vue.computed(() => {
+        const conv = selected.value;
+        const contact = selectedContact.value;
+        if (!conv) return null;
+        const interest = aiInterest(contact);
+        const textos = (conv.messages || []).map((m) => m.text || '');
+        const hayTexto = (re) => textos.some((t) => re.test(t));
+        const senales = [];
+        if (interest.productos.some((x) => x.intent === 'pedido')) senales.push('El cliente quiere pedir/comprar (intención de pedido).');
+        if (interest.productos.some((x) => x.intent === 'precio')) senales.push('Preguntó por precios: está evaluando comprar.');
+        if (hayTexto(/pago|pagar|banco|transferencia|referencia/i)) senales.push('La conversación llegó al tema de pago: fase de cierre.');
+        if (hayTexto(/confirm|reserv|apartad|pedido/i)) senales.push('Confirmó o reservó algo: asegura el seguimiento del pedido.');
+        if (hayTexto(/garant|falla|defecto|dañad|repar/i)) senales.push('Inquietud de garantía o calidad: resuélvela para desbloquear la venta.');
+        if (interest.productos.some((x) => x.product.stock === false)) senales.push('Preguntó por un producto agotado: ofrece una alternativa.');
+        if (!senales.length) senales.push('Conversación en fase inicial de consulta.');
+
+        const plan = [];
+        const compra = interest.productos.filter((x) => ['pedido', 'precio', 'reserva'].includes(x.intent));
+        const agotados = interest.productos.filter((x) => x.product.stock === false);
+        if (compra.length) plan.push(`Responde la consulta de ${compra[0].product.name} con la ficha técnica y su precio.`);
+        if (agotados.length) plan.push(`Informa que ${agotados[0].product.name} está agotado y sugiere una alternativa del catálogo.`);
+        if (hayTexto(/pago|pagar|banco|transferencia|referencia/i)) plan.push('El cliente ya habla de pago: envía los datos y pide la referencia para cerrar.');
+        else if (compra.length) plan.push('Ofrece el cierre: pregunta si desea apartar el pedido y envía los datos de pago.');
+        if (contact && !contact.leadTag) plan.push('Asigna una etapa al lead para mantener el seguimiento.');
+        if (outsideWindow.value && conv.platform === 'whatsapp') plan.push('La ventana de 24h venció: re-engancha con una plantilla aprobada antes de continuar.');
+        plan.push('Crea un recordatorio de seguimiento si el cliente no responde en 2-3 horas.');
+
+        const respuestas = [];
+        const p1 = compra[0] && compra[0].product;
+        if (p1) respuestas.push({ label: 'Responder con la ficha', text: `Claro, te paso la ficha de ${p1.name} con todos los detalles.`, product: p1 });
+        if (agotados.length) respuestas.push({ label: 'Ofrecer alternativa', text: `El ${agotados[0].product.name} está agotado por ahora. ¿Te interesa una alternativa similar del catálogo?` });
+        respuestas.push({ label: 'Pedir confirmación de pago', text: '¿Ya pudiste hacer el pago? Con la referencia despachamos hoy mismo. 😊' });
+        respuestas.push({ label: 'Seguimiento', text: '¡Hola! ¿Quedó alguna duda sobre tu pedido? Estamos atentos para ayudarte.' });
+
+        return { interest, senales, plan, respuestas };
+      });
+
+      /** Arma la respuesta sugerida en el composer (y adjunta la ficha si aplica). */
+      function applyAiReply(r) {
+        if (!r) return;
+        draft.value = r.text;
+        if (r.product) attachCard(r.product);
+        aiOpen.value = false;
+        toast('Respuesta lista en el composer: revísala y envía', 'success');
+      }
+
+      /** Crea un recordatorio de seguimiento desde el plan de acción. */
+      function aiReminder() {
+        const c = selectedContact.value;
+        if (!c) return;
+        remInput.text = 'Seguimiento de conversación con ' + c.name;
+        addReminderFor(c);
+        toast('Recordatorio de seguimiento creado', 'success');
+      }
+
       /** Envía la plantilla seleccionada (re-enganche >24h o primer mensaje). */
       async function sendApprovedTemplate() {
         const t = tplSelected.value;
@@ -969,6 +1056,7 @@
         closeOpen, closeTarget, closeForm, closeProductQuery, closeProductResults,
         closeLabel, stageLabel, historyOf, productNameOf, toggleCloseProduct,
         openCloseModal, confirmClose, reopenLead, CLOSE_REASONS,
+        aiOpen, aiAnalysis, applyAiReply, aiReminder,
         productMentions, mentionsOfMessage, contactProductMentions, productOf,
         productPickOpen, productPickTarget, productPickQuery, productPickResults,
         openProductPick, pickProduct, INTENT_LABELS,
@@ -1144,6 +1232,9 @@
                   <!-- Etiquetas vivas del contacto (no el snapshot de la conversación) -->
                   <ui-badge v-for="t in (selectedContact ? selectedContact.tags : [])" :key="t" variant="neutral">{{ t }}</ui-badge>
                   <ui-badge v-if="selectedContact && selectedContact.leadTag" variant="accent" dot>{{ selectedContact.leadTag }}</ui-badge>
+                  <button v-if="selectedContact" @click="aiOpen = true" class="flex items-center gap-1 rounded-full border border-[var(--accent)] px-2 py-1 text-[11px] font-bold text-[var(--accent)] transition hover:bg-[var(--accent)] hover:text-white" aria-label="Asistente IA">
+                    <ui-icon name="sparkles" class="h-3.5 w-3.5"></ui-icon> IA
+                  </button>
                   <button @click="contactDrawerOpen = true; contactTab = 'ficha'" class="p-1.5 hover:text-[var(--accent)]" aria-label="Ficha del cliente">
                     <ui-icon name="user" class="h-4 w-4"></ui-icon>
                   </button>
@@ -1630,6 +1721,82 @@
             </div>
           </div>
         </ui-modal>
+
+        <!-- Drawer: Asistente IA (análisis local de conversación + historial) -->
+        <ui-drawer :open="aiOpen" width="max-w-xl" :title="'Asistente IA · ' + (selectedContact ? selectedContact.name : 'Conversación')" @close="aiOpen = false">
+          <div v-if="aiAnalysis" class="space-y-5">
+            <!-- Diagnóstico -->
+            <div>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Diagnóstico</p>
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Etapa del lead</p>
+                  <p class="mt-0.5 font-semibold">{{ stageLabel(selectedContact ? selectedContact.leadTag : null) }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Interés comercial</p>
+                  <p class="mt-0.5 font-semibold">
+                    {{ aiAnalysis.interest.nivel ? (aiAnalysis.interest.nivel === 'alto' ? 'Alto' : aiAnalysis.interest.nivel === 'medio' ? 'Medio' : 'Bajo') : 'Sin señales' }}
+                    <span v-if="aiAnalysis.interest.value > 0" class="font-mono text-[10px] text-neutral-500">· {{ formatPrice(aiAnalysis.interest.value) }}</span>
+                  </p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Canal</p>
+                  <p class="mt-0.5 font-semibold">{{ (getPlatform(selected ? selected.platform || 'whatsapp' : 'whatsapp') || {}).nombre }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Ventana 24h</p>
+                  <p class="mt-0.5 font-semibold" :class="outsideWindow ? 'text-red-700' : 'text-emerald-700'">{{ outsideWindow ? 'Fuera de ventana' : 'Dentro de ventana' }}</p>
+                </div>
+              </div>
+              <p class="mt-2 text-xs text-neutral-500">
+                {{ (selected ? selected.messages : []).length }} mensajes en este hilo · última actividad {{ timeAgo(selected ? selected.lastTs : Date.now()) }}
+              </p>
+            </div>
+
+            <!-- Análisis de la conversación -->
+            <div>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Análisis de la conversación</p>
+              <ul class="space-y-1.5">
+                <li v-for="(s, i) in aiAnalysis.senales" :key="i" class="flex items-start gap-2 text-xs">
+                  <ui-icon name="check-circle" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-700"></ui-icon>
+                  <span>{{ s }}</span>
+                </li>
+              </ul>
+              <div v-if="aiAnalysis.interest.productos.length" class="mt-2 flex flex-wrap gap-1.5">
+                <span v-for="x in aiAnalysis.interest.productos" :key="x.product.id" class="border border-neutral-200 bg-stone-50 px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                  {{ x.product.name }} · {{ formatPrice(x.product.price) }} · {{ INTENT_LABELS[x.intent] || x.intent }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Plan de acción -->
+            <div class="border-2 border-[var(--accent)] p-3">
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]">Plan de acción sugerido</p>
+              <ol class="space-y-1.5">
+                <li v-for="(p, i) in aiAnalysis.plan" :key="i" class="flex items-start gap-2 text-xs">
+                  <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] font-mono text-[9px] font-bold text-white">{{ i + 1 }}</span>
+                  <span>{{ p }}</span>
+                </li>
+              </ol>
+              <button @click="aiReminder" class="mt-3 flex items-center gap-1.5 border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
+                <ui-icon name="clock" class="h-3.5 w-3.5"></ui-icon> Crear recordatorio de seguimiento
+              </button>
+            </div>
+
+            <!-- Respuestas sugeridas -->
+            <div>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Respuestas sugeridas</p>
+              <div class="space-y-2">
+                <button v-for="r in aiAnalysis.respuestas" :key="r.label" @click="applyAiReply(r)"
+                  class="flex w-full items-center justify-between gap-2 border-2 border-neutral-200 px-3 py-2.5 text-left text-xs transition hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]">
+                  <span class="min-w-0 flex-1">{{ r.text }}</span>
+                  <span class="shrink-0 font-semibold text-[var(--accent)] underline">Usar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </ui-drawer>
 
         <!-- Modal: finalizar lead desde la conversación (mismo flujo que Leads) -->
         <ui-modal :open="closeOpen" :title="'Finalizar lead · ' + (closeTarget ? closeTarget.name : '')" width="max-w-md" @close="closeOpen = false">

@@ -73,176 +73,246 @@
   const RECENT_MINUTES = [4, 18, 45, 90, 240, 1500];
 
   /**
-   * Guiones por nicho con catálogo: conversaciones que cubren todos los casos
-   * de producto (consulta en ventana, fuera de 24h, agotado con demanda, pico,
-   * interés recurrente, intención fuerte y venta cruzada). Los textos usan
-   * nombres/alias reales del catálogo para que la detección los marque.
+   * Guiones por nicho con catálogo: flujos completos de un cliente real
+   * (saludo → dudas de producto → pedido/reserva → concreción → envío de
+   * datos de pago) con variaciones para ejemplificar todos los casos: consulta
+   * en ventana, fuera de 24h, agotado con demanda, pico, interés recurrente,
+   * intención fuerte y venta cruzada. Los textos entrantes usan nombres/alias
+   * reales del catálogo para que la detección los marque; los datos de pago
+   * van en mensajes salientes (no generan menciones).
    */
   const PRODUCT_SCRIPTS = {
     celulares: [
       {
+        // Consulta + colores + apartado + datos de pago enviados (cierre en curso)
         contact: 'Gabriel Acevedo', platform: 'whatsapp', accountId: 'demo_wa', unread: 1,
         msgs: [
-          { from: 'in', text: 'Buenas, ¿cuánto cuesta el iPhone 15?', ts: Date.now() - 35 * 60000, status: 'read' },
-          { from: 'out', text: '¡Hola! Te paso el detalle del iPhone 15 en 128 GB.', ts: Date.now() - 33 * 60000, status: 'read' },
-          { from: 'in', text: '¿Tienen en azul? 😊', ts: Date.now() - 30 * 60000, status: 'delivered' },
+          { from: 'in', text: 'Hola, ¿me pueden dar el precio del iPhone 15? 👋', ts: Date.now() - 3 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Hola, Gabriel! El iPhone 15 de 128 GB está en $899 con garantía de 1 año. ¿Te interesa algún color?', ts: Date.now() - 3 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: '¿Tienen en azul? 😊', ts: Date.now() - 2.5 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Sí! Tenemos azul, negro y rosa. ¿Te lo reservo?', ts: Date.now() - 2.5 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: 'Sí, resérvenme el azul por favor', ts: Date.now() - 3600e3, status: 'read' },
+          { from: 'out', text: '¡Listo! Te lo dejo apartado. Te paso los datos de pago: Pago móvil Banco Nacional, teléfono +58 412 555 0101, monto $899. ¿Me confirmas la referencia?', ts: Date.now() - 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: 'Ya hice el pago, aquí va la referencia P-88231 📲', ts: Date.now() - 35 * 60000, status: 'delivered' },
         ],
       },
       {
+        // Precio + dudas de garantía (consulta profunda sin cierre)
         contact: 'Patricia Villalba', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Cuánto cuesta el iPhone 15?', ts: Date.now() - 96 * 60000, status: 'read' },
-          { from: 'out', text: 'A $899 en 128 GB con garantía de 1 año.', ts: Date.now() - 93 * 60000, status: 'read' },
+          { from: 'in', text: 'Buenas, ¿cuánto cuesta el iPhone 15?', ts: Date.now() - 2.5 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Hola! A $899 en 128 GB con garantía de 1 año.', ts: Date.now() - 2.5 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: '¿La garantía cubre caídas?', ts: Date.now() - 2 * 3600e3, status: 'read' },
+          { from: 'out', text: 'La garantía cubre fallas de fábrica por 1 año; el cambio de pantalla tiene costo adicional.', ts: Date.now() - 2 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: 'Ok, lo consulto con mi esposo y les escribo', ts: Date.now() - 1.5 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Claro! Quedamos atentos, Patricia. 😊', ts: Date.now() - 1.5 * 3600e3 + 300000, status: 'read' },
         ],
       },
       {
+        // Agotado con demanda (stock false) + fuera de ventana → banner de plantilla
         contact: 'Hugo Castillo', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
           { from: 'in', text: '¿Hay audífonos inalámbricos disponibles?', ts: Date.now() - 32 * 3600e3, status: 'read' },
           { from: 'out', text: 'Déjame revisar el stock y te confirmo.', ts: Date.now() - 32 * 3600e3 + 120000, status: 'read' },
+          { from: 'in', text: '¿Y cuánto cuestan los que tienen?', ts: Date.now() - 31 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Los audífonos TWS Pro están a $35, pero justo hoy están agotados. ¿Te interesa un modelo similar o prefieres que te avise cuando lleguen?', ts: Date.now() - 31 * 3600e3 + 120000, status: 'read' },
         ],
       },
       {
+        // Cargador + compatibilidad + pago (cierre en curso)
         contact: 'Luisa Ferrer', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Venden cargador rápido?', ts: Date.now() - 252 * 60000, status: 'read' },
-          { from: 'out', text: 'Sí, de 25W con cable incluido a $15.', ts: Date.now() - 240 * 60000, status: 'read' },
+          { from: 'in', text: '¿Venden cargador rápido?', ts: Date.now() - 5 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Sí! De 25W con cable incluido a $15.', ts: Date.now() - 5 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: '¿Sirve para iPhone?', ts: Date.now() - 4.5 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Sí, es USB-C y carga el iPhone 15 a máxima velocidad. También sirve para Samsung.', ts: Date.now() - 4.5 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: 'Ok, me llevo uno. ¿Cómo pago?', ts: Date.now() - 4.2 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Te paso los datos: Pago móvil Banco Provincial, teléfono +58 414 555 0154, monto $15. Cuando confirmes la referencia despachamos hoy mismo.', ts: Date.now() - 4 * 3600e3, status: 'read' },
         ],
       },
       {
+        // Precio + color + envío (consulta avanzada)
         contact: 'Carlos Hernández', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Cuánto cuesta el iPhone 15?', ts: Date.now() - 6.2 * 3600e3, status: 'read' },
-          { from: 'out', text: 'A $899. ¿Te interesa en otro color?', ts: Date.now() - 6 * 3600e3, status: 'read' },
+          { from: 'in', text: '¿Cuánto cuesta el iPhone 15?', ts: Date.now() - 7 * 3600e3, status: 'read' },
+          { from: 'out', text: 'A $899. ¿Te interesa en algún color en especial?', ts: Date.now() - 7 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: '¿Tienen el rosa?', ts: Date.now() - 6.5 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Sí! Tenemos el rosa en 128 GB.', ts: Date.now() - 6.5 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: '¿Y cuánto tarda el envío?', ts: Date.now() - 6.2 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Si pagas hoy, llega mañana en la tarde.', ts: Date.now() - 6 * 3600e3, status: 'read' },
         ],
       },
       {
-        // Interés recurrente + pico de demanda + intención fuerte (mismo contacto)
+        // Interés recurrente + pico de demanda + intención fuerte (mismo contacto, fuera de 24h)
         contact: 'Daniela Rojas', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
           { from: 'in', text: '¿Cuánto cuesta el Samsung Galaxy S24?', ts: Date.now() - 50 * 864e5, status: 'read' },
           { from: 'out', text: 'A $799 en 256 GB. ¿Te interesa?', ts: Date.now() - 50 * 864e5 + 120000, status: 'read' },
           { from: 'in', text: '¿Tienen stock del Samsung Galaxy S24?', ts: Date.now() - 20 * 864e5, status: 'read' },
           { from: 'out', text: 'Sí, tenemos unidades en negro y violeta.', ts: Date.now() - 20 * 864e5 + 120000, status: 'read' },
-          { from: 'in', text: 'Quiero pedir el Samsung Galaxy S24', ts: Date.now() - 4 * 864e5, status: 'read' },
-          { from: 'out', text: '¡Perfecto! Te confirmo el pedido en unos minutos.', ts: Date.now() - 4 * 864e5 + 120000, status: 'read' },
+          { from: 'in', text: '¿El color negro lo tienen con garantía?', ts: Date.now() - 10 * 864e5, status: 'read' },
+          { from: 'out', text: 'Todos los equipos incluyen garantía de 1 año.', ts: Date.now() - 10 * 864e5 + 120000, status: 'read' },
+          { from: 'in', text: 'Quiero pedir el Samsung Galaxy S24 en negro', ts: Date.now() - 4 * 864e5, status: 'read' },
+          { from: 'out', text: '¡Perfecto! Te lo dejo reservado. Te paso los datos de pago: Pago móvil Banco Nacional, teléfono +58 412 555 0101, monto $799.', ts: Date.now() - 4 * 864e5 + 120000, status: 'read' },
         ],
       },
       {
         // Coincidencia parcial (alias separado por palabras) → feedback del agente
         contact: 'Oscar Pino', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: 'Cuánto cuesta el s24 de samsung', ts: Date.now() - 7.2 * 3600e3, status: 'read' },
-          { from: 'out', text: 'El S24 a $799 en 256 GB.', ts: Date.now() - 7 * 3600e3, status: 'read' },
+          { from: 'in', text: 'Cuánto cuesta el s24 de samsung', ts: Date.now() - 7.5 * 3600e3, status: 'read' },
+          { from: 'out', text: 'El S24 a $799 en 256 GB.', ts: Date.now() - 7.5 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: '¿Y la funda de silicona cuánto cuesta?', ts: Date.now() - 7.2 * 3600e3, status: 'read' },
+          { from: 'out', text: 'A $8 y tenemos varios colores. ¿Te armo el combo con el equipo?', ts: Date.now() - 7 * 3600e3, status: 'read' },
         ],
       },
       {
-        // Venta cruzada: mismo contacto consulta dos productos del catálogo
+        // Venta cruzada (iPhone + Cargador, mismo contacto) + pago enviado
         contact: 'Natalia Briceño', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Cuánto cuesta el iPhone 15?', ts: Date.now() - 9.5 * 3600e3, status: 'read' },
-          { from: 'out', text: 'A $899 en 128 GB.', ts: Date.now() - 9.3 * 3600e3, status: 'read' },
-          { from: 'in', text: '¿Venden cargador rápido?', ts: Date.now() - 9 * 3600e3, status: 'read' },
-          { from: 'out', text: 'Sí, de 25W con cable a $15.', ts: Date.now() - 8.8 * 3600e3, status: 'read' },
+          { from: 'in', text: '¿Cuánto cuesta el iPhone 15?', ts: Date.now() - 10 * 3600e3, status: 'read' },
+          { from: 'out', text: 'A $899 en 128 GB.', ts: Date.now() - 10 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: '¿Venden cargador rápido?', ts: Date.now() - 9.5 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Sí, de 25W con cable a $15.', ts: Date.now() - 9.5 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: 'Ok, quiero el iPhone y el cargador', ts: Date.now() - 9.1 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Perfecto! Te armo el combo a $914 en total. Te paso los datos de pago: Pago móvil Banco Nacional, teléfono +58 412 555 0101, referencia P-77654.', ts: Date.now() - 9 * 3600e3, status: 'read' },
         ],
       },
       {
+        // IG en ventana: consulta de catálogo
         contact: 'Valentina Ríos', platform: 'instagram', accountId: 'demo_ig', unread: 0,
         msgs: [
-          { from: 'in', text: 'Vi su perfil en Instagram, ¿cuánto cuesta el iPhone 15? 😍', ts: Date.now() - 50 * 60000, status: 'delivered' },
-          { from: 'out', text: '¡Hola! A $899 en 128 GB.', ts: Date.now() - 48 * 60000, status: 'read' },
+          { from: 'in', text: 'Vi su perfil en Instagram, ¿cuánto cuesta el iPhone 15? 😍', ts: Date.now() - 60 * 60000, status: 'delivered' },
+          { from: 'out', text: '¡Hola, Valentina! A $899 en 128 GB. ¿Te interesa?', ts: Date.now() - 58 * 60000, status: 'read' },
+          { from: 'in', text: '¿Y tienen en color rosa? 🙈', ts: Date.now() - 52 * 60000, status: 'read' },
+          { from: 'out', text: '¡Sí! Rosa, azul y negro. ¿Te envío el detalle completo?', ts: Date.now() - 50 * 60000, status: 'read' },
         ],
       },
       {
         // Fuera de la ventana de 24h en Instagram → banner HUMAN_AGENT
         contact: 'Sofía Marcano', platform: 'instagram', accountId: 'demo_ig', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Hacen liberación de equipos?', ts: Date.now() - 30 * 3600e3, status: 'read' },
-          { from: 'out', text: '¡Sí! En 24 horas con garantía definitiva.', ts: Date.now() - 30 * 3600e3 + 120000, status: 'read' },
+          { from: 'in', text: '¿Hacen liberación de equipos?', ts: Date.now() - 31 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Sí! En 24 horas con garantía definitiva.', ts: Date.now() - 31 * 3600e3 + 120000, status: 'read' },
+          { from: 'in', text: '¿Cuánto cobran?', ts: Date.now() - 30.5 * 3600e3, status: 'read' },
+          { from: 'out', text: '$20 por equipo. Si nos escribes por WhatsApp lo gestionamos más rápido.', ts: Date.now() - 30.3 * 3600e3, status: 'read' },
         ],
       },
     ],
     restaurante: [
       {
+        // Pedido + pago + confirmación (cierre en curso, unread)
         contact: 'María Pérez', platform: 'whatsapp', accountId: 'demo_wa', unread: 1,
         msgs: [
-          { from: 'in', text: 'Buenas, ¿tienen arroz con pollo hoy?', ts: Date.now() - 25 * 60000, status: 'read' },
-          { from: 'out', text: '¡Claro! Te paso el detalle del arroz con pollo y confirmamos el delivery.', ts: Date.now() - 23 * 60000, status: 'read' },
-          { from: 'in', text: 'Confirmen mi pedido porfa 🙏', ts: Date.now() - 20 * 60000, status: 'delivered' },
+          { from: 'in', text: 'Buenas, ¿tienen arroz con pollo hoy? 🙏', ts: Date.now() - 2 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Hola, María! Sí, lo tenemos por $8.50 la porción. ¿Para llevar a casa o lo buscas?', ts: Date.now() - 2 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: 'Para llevar a mi casa, por favor', ts: Date.now() - 1.5 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Listo! Te paso los datos de pago: Pago móvil Banco Venezolano, teléfono +58 412 555 0101, monto $8.50.', ts: Date.now() - 1.4 * 3600e3, status: 'read' },
+          { from: 'in', text: 'Ya pagué, referencia P-99102 ✅', ts: Date.now() - 45 * 60000, status: 'read' },
+          { from: 'out', text: '¡Recibida! Te confirmamos el envío en 30-45 min. ¡Gracias!', ts: Date.now() - 40 * 60000, status: 'read' },
+          { from: 'in', text: 'Ok, gracias 🙏', ts: Date.now() - 20 * 60000, status: 'delivered' },
         ],
       },
       {
+        // Precio + detalle del plato (consulta)
         contact: 'José Rodríguez', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Cuánto cuesta el arroz con pollo?', ts: Date.now() - 96 * 60000, status: 'read' },
-          { from: 'out', text: 'A $8.50 la porción con ensalada y tajadas.', ts: Date.now() - 93 * 60000, status: 'read' },
+          { from: 'in', text: '¿Cuánto cuesta el arroz con pollo?', ts: Date.now() - 2.5 * 3600e3, status: 'read' },
+          { from: 'out', text: 'A $8.50 la porción con ensalada y tajadas.', ts: Date.now() - 2.5 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: '¿El arroz con pollo trae ensalada?', ts: Date.now() - 2 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Sí, ensalada y tajadas incluidas. ¿Te lo aparto?', ts: Date.now() - 2 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: 'Ok, gracias, lo consulto con mi esposa y les escribo', ts: Date.now() - 1.6 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Claro! Quedamos atentos, José. 😊', ts: Date.now() - 1.5 * 3600e3, status: 'read' },
         ],
       },
       {
-        // Agotado con demanda (stock false) + fuera de ventana → banner de plantilla
+        // Agotado con demanda (postre, stock false) + fuera de ventana + reserva de mesa
         contact: 'Ana González', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Hay postre disponible hoy?', ts: Date.now() - 32 * 3600e3, status: 'read' },
-          { from: 'out', text: 'Hoy tenemos torta de chocolate; te confirmo disponibilidad.', ts: Date.now() - 32 * 3600e3 + 120000, status: 'read' },
+          { from: 'in', text: '¿Hay postre disponible hoy?', ts: Date.now() - 34 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Hoy tenemos torta de chocolate; te confirmo disponibilidad.', ts: Date.now() - 34 * 3600e3 + 120000, status: 'read' },
+          { from: 'in', text: '¿Y tienen mesa para 4 esta noche?', ts: Date.now() - 33 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Sí, tenemos una mesa a las 8 pm. ¿La reservo a su nombre?', ts: Date.now() - 33 * 3600e3 + 120000, status: 'read' },
+          { from: 'in', text: 'Sí, por favor. Ana González', ts: Date.now() - 32.5 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Reservada! Mesa para 4 a las 8 pm. Nos vemos esta noche. 😊', ts: Date.now() - 32.3 * 3600e3, status: 'read' },
         ],
       },
       {
+        // Jugo + pago (cierre en curso)
         contact: 'Luis Martínez', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Venden jugo natural?', ts: Date.now() - 252 * 60000, status: 'read' },
-          { from: 'out', text: 'Sí, jugo del día a $3 el vaso. ¿Qué fruta?', ts: Date.now() - 240 * 60000, status: 'read' },
+          { from: 'in', text: '¿Venden jugo natural?', ts: Date.now() - 5 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Sí, jugo del día a $3 el vaso. ¿Cuál fruta prefieres?', ts: Date.now() - 5 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: 'El de parchita, por favor', ts: Date.now() - 4.6 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Perfecto! Un jugo de parchita. ¿Algo más?', ts: Date.now() - 4.5 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: 'No, así nomás. ¿Cómo pago?', ts: Date.now() - 4.2 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Te paso los datos: Pago móvil Banco Venezolano, teléfono +58 412 555 0101, monto $3.', ts: Date.now() - 4 * 3600e3, status: 'read' },
         ],
       },
       {
+        // Pedido para llevar + pago enviado
         contact: 'Carlos Hernández', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Hacen arroz con pollo para llevar?', ts: Date.now() - 6.2 * 3600e3, status: 'read' },
-          { from: 'out', text: '¡Sí! La porción a $8.50. ¿A qué hora la buscas?', ts: Date.now() - 6 * 3600e3, status: 'read' },
+          { from: 'in', text: '¿Hacen arroz con pollo para llevar?', ts: Date.now() - 7 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Sí! La porción a $8.50. ¿Para qué hora la quieres?', ts: Date.now() - 7 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: 'Para las 2 pm. ¿Pueden pagar con pago móvil?', ts: Date.now() - 6.5 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Claro. Te paso los datos: Pago móvil Banco Venezolano, teléfono +58 412 555 0101, monto $8.50.', ts: Date.now() - 6.2 * 3600e3, status: 'read' },
         ],
       },
       {
-        // Interés recurrente + pico de demanda + intención fuerte (mismo contacto)
+        // Interés recurrente + pico de demanda + intención fuerte (mismo contacto, fuera de 24h)
         contact: 'Daniela Rojas', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
           { from: 'in', text: '¿Cuánto cuesta la hamburguesa clásica?', ts: Date.now() - 50 * 864e5, status: 'read' },
           { from: 'out', text: 'La clásica con papas a $6.50.', ts: Date.now() - 50 * 864e5 + 120000, status: 'read' },
           { from: 'in', text: '¿Tienen hamburguesas para el almuerzo?', ts: Date.now() - 20 * 864e5, status: 'read' },
           { from: 'out', text: '¡Sí! Las preparamos al momento.', ts: Date.now() - 20 * 864e5 + 120000, status: 'read' },
+          { from: 'in', text: '¿La hamburguesa trae doble carne?', ts: Date.now() - 10 * 864e5, status: 'read' },
+          { from: 'out', text: 'La clásica es sencilla; la doble sale a $8.', ts: Date.now() - 10 * 864e5 + 120000, status: 'read' },
           { from: 'in', text: 'Quiero pedir una hamburguesa clásica', ts: Date.now() - 4 * 864e5, status: 'read' },
-          { from: 'out', text: '¡Perfecto! Te confirmo el pedido en unos minutos.', ts: Date.now() - 4 * 864e5 + 120000, status: 'read' },
+          { from: 'out', text: '¡Perfecto! Te confirmo el pedido: hamburguesa clásica con papas, $6.50. Te paso los datos de pago cuando confirmes.', ts: Date.now() - 4 * 864e5 + 120000, status: 'read' },
         ],
       },
       {
         // Coincidencia parcial (alias separado por palabras) → feedback del agente
         contact: 'Oscar Pino', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Cuánto cuesta el arroz asado con pollo?', ts: Date.now() - 7.2 * 3600e3, status: 'read' },
-          { from: 'out', text: 'El arroz con pollo a $8.50 la porción.', ts: Date.now() - 7 * 3600e3, status: 'read' },
+          { from: 'in', text: '¿Cuánto cuesta el arroz asado con pollo?', ts: Date.now() - 7.5 * 3600e3, status: 'read' },
+          { from: 'out', text: 'El arroz con pollo a $8.50 la porción.', ts: Date.now() - 7.5 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: 'Ok, y la margarita de qué tamaño es', ts: Date.now() - 7.2 * 3600e3, status: 'read' },
+          { from: 'out', text: 'La pizza margarita es mediana, a $10, para 2 personas.', ts: Date.now() - 7 * 3600e3, status: 'read' },
         ],
       },
       {
-        // Venta cruzada: mismo contacto consulta dos productos del catálogo
+        // Venta cruzada (Arroz + Bebida, mismo contacto) + combo + pago
         contact: 'Natalia Briceño', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Cuánto cuesta el arroz con pollo?', ts: Date.now() - 9.5 * 3600e3, status: 'read' },
-          { from: 'out', text: 'A $8.50 la porción.', ts: Date.now() - 9.3 * 3600e3, status: 'read' },
-          { from: 'in', text: '¿Venden jugo natural?', ts: Date.now() - 9 * 3600e3, status: 'read' },
-          { from: 'out', text: 'Sí, el jugo del día a $3.', ts: Date.now() - 8.8 * 3600e3, status: 'read' },
+          { from: 'in', text: '¿Cuánto cuesta el arroz con pollo?', ts: Date.now() - 10 * 3600e3, status: 'read' },
+          { from: 'out', text: 'A $8.50 la porción.', ts: Date.now() - 10 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: '¿Venden jugo natural?', ts: Date.now() - 9.5 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Sí, el jugo del día a $3.', ts: Date.now() - 9.5 * 3600e3 + 300000, status: 'read' },
+          { from: 'in', text: 'Ok, quiero el arroz y un jugo de parchita', ts: Date.now() - 9.1 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Perfecto! Te armo el combo a $11.50 en total. Te paso los datos de pago: Pago móvil Banco Venezolano, teléfono +58 412 555 0101, referencia P-66420.', ts: Date.now() - 9 * 3600e3, status: 'read' },
         ],
       },
       {
+        // IG en ventana: consulta de pizza
         contact: 'Valentina Ríos', platform: 'instagram', accountId: 'demo_ig', unread: 0,
         msgs: [
-          { from: 'in', text: 'Vi su perfil en Instagram, ¿cuánto cuesta la pizza margarita? 😍', ts: Date.now() - 50 * 60000, status: 'delivered' },
-          { from: 'out', text: '¡Hola! La mediana a $10. ¿La quieres para llevar?', ts: Date.now() - 48 * 60000, status: 'read' },
+          { from: 'in', text: 'Vi su perfil en Instagram, ¿cuánto cuesta la pizza margarita? 😍', ts: Date.now() - 60 * 60000, status: 'delivered' },
+          { from: 'out', text: '¡Hola, Valentina! La mediana a $10 para 2 personas.', ts: Date.now() - 58 * 60000, status: 'read' },
+          { from: 'in', text: '¿La hacen con pepperoni? 🙈', ts: Date.now() - 52 * 60000, status: 'read' },
+          { from: 'out', text: 'Podemos agregarle pepperoni por $2 extra. ¿Te la reservo para hoy?', ts: Date.now() - 50 * 60000, status: 'read' },
         ],
       },
       {
         // Fuera de la ventana de 24h en Instagram → banner HUMAN_AGENT
         contact: 'Sofía Marcano', platform: 'instagram', accountId: 'demo_ig', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Hacen delivery a mi zona?', ts: Date.now() - 30 * 3600e3, status: 'read' },
-          { from: 'out', text: '¡Sí! Dime tu zona y te confirmo la cobertura.', ts: Date.now() - 30 * 3600e3 + 120000, status: 'read' },
+          { from: 'in', text: '¿Hacen delivery a mi zona?', ts: Date.now() - 31 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Sí! Dime tu zona y te confirmo la cobertura.', ts: Date.now() - 31 * 3600e3 + 120000, status: 'read' },
+          { from: 'in', text: 'Vivo en El Paraíso, cerca del metro', ts: Date.now() - 30.5 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Perfecto! Cubrimos El Paraíso sin costo extra. ¿Qué te gustaría pedir?', ts: Date.now() - 30.3 * 3600e3, status: 'read' },
         ],
       },
     ],

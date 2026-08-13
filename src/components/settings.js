@@ -717,14 +717,14 @@
             <span class="mb-2 block font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-500">Logo de la empresa</span>
             <div class="flex items-center gap-4">
               <span class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-neutral-200 bg-[var(--accent)] text-lg font-bold text-white">
-                <img v-if="workspace.logo" :src="workspace.logo" alt="Logo de {{ workspace.name }}" class="h-full w-full object-contain" />
+                <img v-if="workspace.logo" :src="workspace.logo" :alt="'Logo de ' + workspace.name" class="h-full w-full object-contain" />
                 <span v-else>{{ (workspace.name || 'T').trim().slice(0, 2).toUpperCase() }}</span>
               </span>
               <div class="min-w-0 space-y-1.5">
                 <label class="inline-flex cursor-pointer items-center gap-2 border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
                   <ui-icon name="plus" class="h-3.5 w-3.5"></ui-icon>
                   {{ workspace.logo ? 'Reemplazar logo' : 'Subir logo' }}
-                  <input type="file" accept="image/*" class="hidden" @change="uploadLogo" />
+                  <input type="file" accept="image/*" class="sr-only" @change="uploadLogo" />
                 </label>
                 <button v-if="workspace.logo" @click="removeLogo" class="block text-xs font-medium text-red-700 transition hover:text-red-900">Quitar logo</button>
                 <p class="text-[10px] text-neutral-400">PNG/JPG/WebP · máx 2 MB · se redimensiona a 256 px</p>

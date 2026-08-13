@@ -205,9 +205,10 @@
             };
             store.mode = 'live';
           }
+          // Convenio de uso aceptado (con versión para futuras auditorías)
+          ws.convenio = { acceptedAt: Date.now(), version: 1 };
           store.workspace = ws;
           store.currentUser = ws.users.find((u) => u.role === 'owner');
-          ws.convenio = { acceptedAt: Date.now() };
           applyAccent(ws);
           toast(`¡${ws.name} está listo!`, 'success');
           navigate('dashboard');
@@ -497,7 +498,7 @@
               <div class="flex shrink-0 gap-2">
                 <label class="cursor-pointer border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
                   {{ form.logo ? 'Reemplazar logo' : 'Subir logo' }}
-                  <input type="file" accept="image/*" class="hidden" @change="uploadLogo" />
+                  <input type="file" accept="image/*" class="sr-only" @change="uploadLogo" />
                 </label>
                 <button v-if="form.logo" @click="removeLogo" class="border-2 border-neutral-300 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:border-red-700">
                   Quitar logo

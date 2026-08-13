@@ -138,8 +138,10 @@
         convId: conv.id,
         ts: message.ts || Date.now(),
         intent: m.intent,
-        match: m.score >= 1 ? 'exacta' : 'parcial',
-        status: 'pendiente',
+        // Coincidencia clara (contención 0.85+) se auto-señala y se confirma;
+        // parciales (overlap/edición) quedan pendientes del agente
+        match: m.score >= 0.85 ? 'exacta' : 'parcial',
+        status: m.score >= 0.85 ? 'confirmada' : 'pendiente',
         text: String(text).slice(0, 200),
       });
     });

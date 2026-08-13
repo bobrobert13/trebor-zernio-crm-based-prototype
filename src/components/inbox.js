@@ -592,6 +592,34 @@
         productPickOpen.value = true;
       }
 
+      // ── Modal de información completa del producto detectado (Ver más) ─────
+      const productInfoOpen = Vue.ref(false);
+      const productInfoTarget = Vue.ref(null);
+
+      const cardOfTarget = Vue.computed(() => {
+        const p = productInfoTarget.value;
+        return p ? buildProductCard(p, niche.value.id) : '';
+      });
+
+      function openProductInfo(p) {
+        productInfoTarget.value = p;
+        productInfoOpen.value = true;
+      }
+
+      function closeProductInfo() {
+        productInfoOpen.value = false;
+        productInfoTarget.value = null;
+      }
+
+      /** Envía la ficha del producto visto al chat y cierra el modal. */
+      function sendFichaFromInfo() {
+        const p = productInfoTarget.value;
+        if (!p) return;
+        attachCard(p);
+        closeProductInfo();
+        toast('Ficha adjuntada: ' + p.name, 'success');
+      }
+
       function attachCard(product) {
         if (!product || product.active === false) return;
         cardAttach.value = product;
@@ -779,6 +807,7 @@
         confirmMention, discardMention,
         cardAttach, cardGreeting, cardPreview, openCardPicker, detachCard,
         atOpen, atResults, atIndex, pickMention, onComposerKeydown, formatPrice,
+        productInfoOpen, productInfoTarget, cardOfTarget, openProductInfo, closeProductInfo, sendFichaFromInfo,
         renderWhatsApp,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
@@ -975,10 +1004,20 @@
                       : 'border border-amber-600 bg-amber-50 px-2.5 py-1.5 text-amber-900'">
                     <template v-if="men.match === 'exacta'">
                       <span class="flex items-center gap-1"><ui-icon name="check-circle" class="h-3.5 w-3.5"></ui-icon> Producto detectado: <strong>{{ productOf(men) ? productOf(men).name : '—' }}</strong></span>
+                      <template v-if="productOf(men)">
+                        <span class="font-mono text-[10px] tabular-nums">{{ formatPrice(productOf(men).price) }}</span>
+                        <span :class="productOf(men).stock === false ? 'font-semibold text-red-700' : 'font-semibold text-emerald-700'">{{ productOf(men).stock === false ? 'AGOTADO' : 'Disponible' }}</span>
+                        <button @click="openProductInfo(productOf(men))" class="font-semibold underline">Ver más</button>
+                      </template>
                       <button @click="openProductPick(men.id)" class="font-semibold underline">Cambiar</button>
                     </template>
                     <template v-else>
                       <span>Posible producto: <strong>{{ productOf(men) ? productOf(men).name : '—' }}</strong> (coincidencia parcial)</span>
+                      <template v-if="productOf(men)">
+                        <span class="font-mono text-[10px] tabular-nums">{{ formatPrice(productOf(men).price) }}</span>
+                        <span :class="productOf(men).stock === false ? 'font-semibold text-red-700' : 'font-semibold text-emerald-700'">{{ productOf(men).stock === false ? 'AGOTADO' : 'Disponible' }}</span>
+                        <button @click="openProductInfo(productOf(men))" class="font-semibold underline">Ver más</button>
+                      </template>
                       <span class="flex gap-2">
                         <button v-if="productOf(men)" @click="confirmMention(men.id, men.productId)" class="font-semibold underline">Sí, ese</button>
                         <button @click="openProductPick(men.id)" class="font-semibold underline">Elegir otro</button>
@@ -1278,6 +1317,34 @@
               </li>
               <li v-if="productPickResults.length === 0" class="px-3 py-6 text-center text-sm text-neutral-400">Sin productos para la búsqueda.</li>
             </ul>
+          </div>
+        </ui-modal>
+
+        <!-- Modal: información completa del producto detectado (Ver más) -->
+        <ui-modal :open="productInfoOpen" :title="productInfoTarget ? productInfoTarget.name : ''" width="max-w-lg" @close="closeProductInfo">
+          <div v-if="productInfoTarget" class="space-y-4">
+            <div class="flex flex-wrap items-center gap-2">
+              <ui-badge :variant="productInfoTarget.stock === false ? 'danger' : 'success'" dot>{{ productInfoTarget.stock === false ? 'Agotado' : 'Disponible' }}</ui-badge>
+              <ui-badge variant="accent">{{ formatPrice(productInfoTarget.price) }}</ui-badge>
+              <span class="font-mono text-[10px] uppercase tracking-wider text-neutral-400">{{ productInfoTarget.category || productInfoTarget.type }}<span v-if="productInfoTarget.unit"> · {{ productInfoTarget.unit }}</span></span>
+            </div>
+            <p class="text-sm text-neutral-600">{{ productInfoTarget.description || 'Sin descripción.' }}</p>
+            <div class="border border-neutral-200">
+              <p class="border-b border-neutral-200 bg-stone-50 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Cómo se verá en WhatsApp</p>
+              <div class="p-3">
+                <wa-preview :text="cardOfTarget" :show-header="false"></wa-preview>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button @click="sendFichaFromInfo"
+                class="flex-1 border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                Enviar ficha al chat
+              </button>
+              <button @click="selected ? (openTemplatePicker(selected), closeProductInfo()) : null"
+                class="flex-1 border-2 border-neutral-900 bg-white px-3 py-2 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
+                Responder con plantilla
+              </button>
+            </div>
           </div>
         </ui-modal>
       </div>`,

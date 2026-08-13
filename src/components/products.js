@@ -400,12 +400,36 @@
 
       // ── Oportunidades (6 casos) ────────────────────────────────────────────
       const OP_CASES = {
-        demanda_sin_venta: { label: 'Demanda sin venta', icon: 'chart' },
-        agotado_con_demanda: { label: 'Agotado con demanda', icon: 'alert' },
-        pico_reciente: { label: 'Pico de demanda', icon: 'activity' },
-        interes_recurrente: { label: 'Interés recurrente', icon: 'clock' },
-        intencion_fuerte: { label: 'Intención fuerte', icon: 'zap' },
-        venta_cruzada: { label: 'Venta cruzada', icon: 'link' },
+        demanda_sin_venta: {
+          label: 'Demanda sin venta', icon: 'chart',
+          desc: 'Varios clientes consultaron este producto pero ninguno concretó.',
+          sugerencia: 'Responde con la ficha y cierra: hay demanda sin venta.',
+        },
+        agotado_con_demanda: {
+          label: 'Agotado con demanda', icon: 'alert',
+          desc: 'El producto está agotado y siguen preguntando.',
+          sugerencia: 'Repón stock o deriva a una alternativa.',
+        },
+        pico_reciente: {
+          label: 'Pico de demanda', icon: 'activity',
+          desc: 'Las consultas se duplicaron vs el periodo anterior.',
+          sugerencia: 'Aprovecha el momento: refuerza stock y oferta.',
+        },
+        interes_recurrente: {
+          label: 'Interés recurrente', icon: 'clock',
+          desc: 'Un mismo cliente vuelve a preguntar por este producto.',
+          sugerencia: 'Es un comprador probable: prioriza su seguimiento.',
+        },
+        intencion_fuerte: {
+          label: 'Intención fuerte', icon: 'zap',
+          desc: 'Las consultas muestran intención de compra (pedido/precio/reserva).',
+          sugerencia: 'Prioriza y ofrece cierre con datos de pago.',
+        },
+        venta_cruzada: {
+          label: 'Venta cruzada', icon: 'link',
+          desc: 'Quienes consultan este producto también preguntan por su complemento.',
+          sugerencia: 'Arma combos o sugiere el par al cerrar.',
+        },
       };
 
       const opportunities = Vue.computed(() => {
@@ -857,6 +881,7 @@
                 <template v-if="o.prev != null"> · antes: {{ o.prev }}</template>
                 <template v-if="o.product.stock === false"> · <span class="text-red-700">AGOTADO</span></template>
               </p>
+              <p class="mt-1.5 text-[11px] leading-snug text-neutral-400">{{ OP_CASES[o.caseId].desc }}</p>
               <div class="mt-3 flex flex-wrap gap-2">
                 <button v-if="o.convId" @click.stop="openConversation(o.convId)"
                   class="flex items-center gap-1.5 border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
@@ -906,6 +931,14 @@
                 <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Valor potencial</p>
                 <p class="text-xl font-bold tabular-nums text-[var(--accent)]">{{ formatPrice((oppSelected.product.price || 0) * oppSelected.count) }}</p>
               </div>
+            </div>
+
+            <!-- Qué significa esta oportunidad -->
+            <div class="border border-neutral-200 bg-stone-50 p-3">
+              <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Qué significa esta oportunidad</p>
+              <p class="mt-1 text-xs text-neutral-600">{{ OP_CASES[oppSelected.caseId].desc }}</p>
+              <p class="mt-2 font-mono text-[9px] uppercase tracking-widest text-[var(--accent)]">Qué hacer</p>
+              <p class="mt-1 text-xs font-medium text-neutral-700">{{ OP_CASES[oppSelected.caseId].sugerencia }}</p>
             </div>
 
             <!-- Leads interesadas en el producto (o par) -->

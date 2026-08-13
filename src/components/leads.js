@@ -237,9 +237,11 @@
       // ── Drawer de detalle del contacto ─────────────────────────────────────
       const detailOpen = Vue.ref(false);
       const detailContact = Vue.ref(null);
+      const detailTab = Vue.ref('perfil'); // pestaña del drawer: perfil | actividades
 
       function openDetail(contact) {
         detailContact.value = contact;
+        detailTab.value = 'perfil';
         detailOpen.value = true;
       }
 
@@ -326,7 +328,7 @@
         workspace, isLive, leadTags, columns, cardsOf, metricsOf, lastMessageOf,
         contacts, conversations,
         dragContactId, onDragStart, onDragOver, onDrop, moveContact,
-        detailOpen, detailContact, openDetail, channelBars, openConversation,
+        detailOpen, detailContact, detailTab, openDetail, channelBars, openConversation,
         viewTab, activeContacts, closedContacts,
         closeOpen, closeTarget, closeForm, openCloseModal, confirmClose, reopenLead,
         remInput, remPanelOpen, pendingReminders, hasOverdue, addReminderFor, upcomingReminders,
@@ -495,8 +497,16 @@
               </div>
             </div>
 
-            <!-- Métricas de relación -->
-            <div class="grid grid-cols-2 gap-3">
+            <!-- Pestañas del drawer -->
+            <div class="flex border-b-2 border-neutral-900">
+              <button @click="detailTab = 'perfil'" class="flex-1 border-r-2 border-neutral-900 px-3 py-2 text-sm font-semibold transition"
+                :class="detailTab === 'perfil' ? 'bg-[var(--accent)] text-white' : 'bg-white hover:bg-stone-100'">Perfil</button>
+              <button @click="detailTab = 'actividades'" class="flex-1 px-3 py-2 text-sm font-semibold transition"
+                :class="detailTab === 'actividades' ? 'bg-[var(--accent)] text-white' : 'bg-white hover:bg-stone-100'">Actividades</button>
+            </div>
+
+            <!-- Métricas de relación (Actividades) -->
+            <div v-if="detailTab === 'actividades'" class="grid grid-cols-2 gap-3">
               <div class="border border-neutral-200 p-3">
                 <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Cliente desde</p>
                 <p class="mt-0.5 text-sm font-semibold">{{ detailContact.createdAt ? new Date(detailContact.createdAt).toLocaleDateString('es-VE') : '—' }}</p>
@@ -522,8 +532,8 @@
               </div>
             </div>
 
-            <!-- Canales más frecuentes (barras) -->
-            <div>
+            <!-- Canales más frecuentes (Actividades) -->
+            <div v-if="detailTab === 'actividades'">
               <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Canales más frecuentes</p>
               <div class="space-y-1.5">
                 <div v-for="ch in channelBars(metricsOf(detailContact))" :key="ch.platform" class="flex items-center gap-2">
@@ -539,8 +549,8 @@
               </div>
             </div>
 
-            <!-- Recordatorios del lead -->
-            <div>
+            <!-- Recordatorios del lead (Perfil) -->
+            <div v-if="detailTab === 'perfil'">
               <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Recordatorios</p>
               <div class="space-y-1.5">
                 <div v-for="r in remindersOf(detailContact.id)" :key="r.id"
@@ -575,8 +585,8 @@
               </div>
             </div>
 
-            <!-- Historial de etapas del lead (desde el momento 0) -->
-            <div>
+            <!-- Historial de etapas del lead (Perfil) -->
+            <div v-if="detailTab === 'perfil'">
               <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial de etapas</p>
               <div class="mb-3 flex items-center gap-2 border border-neutral-200 bg-stone-50 px-3 py-2">
                 <span class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Etapa actual</span>
@@ -599,8 +609,8 @@
               <p v-else class="text-xs text-neutral-400">Sin cambios de etapa registrados.</p>
             </div>
 
-            <!-- Cierre del lead -->
-            <div class="border border-neutral-200 p-3">
+            <!-- Cierre del lead (Perfil) -->
+            <div v-if="detailTab === 'perfil'" class="border border-neutral-200 p-3">
               <template v-if="detailContact.leadClosed">
                 <div class="flex items-center justify-between gap-2">
                   <div>
@@ -632,8 +642,8 @@
               </template>
             </div>
 
-            <!-- Etiquetas del contacto -->
-            <div>
+            <!-- Etiquetas del contacto (Perfil) -->
+            <div v-if="detailTab === 'perfil'">
               <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Etiquetas</p>
               <div class="flex flex-wrap gap-1">
                 <ui-badge v-for="t in detailContact.tags" :key="t" variant="neutral">{{ t }}</ui-badge>
@@ -641,8 +651,8 @@
               </div>
             </div>
 
-            <!-- Interés comercial (score por factores de negocio) -->
-            <div v-if="interestScore(detailContact).nivel">
+            <!-- Interés comercial (Perfil) -->
+            <div v-if="detailTab === 'perfil' && interestScore(detailContact).nivel">
               <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Interés comercial</p>
               <div class="mb-2 flex items-center gap-2 border border-neutral-200 bg-stone-50 px-3 py-2">
                 <ui-icon name="flame" class="h-4 w-4" :class="interestScore(detailContact).nivel === 'alto' ? 'text-red-700' : interestScore(detailContact).nivel === 'medio' ? 'text-amber-600' : 'text-neutral-500'"></ui-icon>
@@ -662,8 +672,21 @@
               </div>
             </div>
 
-            <!-- Conversaciones recientes (click = abrir en la bandeja) -->
-            <div>
+            <!-- Productos de interés (Actividades) -->
+            <div v-if="detailTab === 'actividades' && interestScore(detailContact).perProduct.length">
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Productos de interés</p>
+              <ul class="space-y-1.5">
+                <li v-for="x in interestScore(detailContact).perProduct" :key="x.product.id" class="flex items-center gap-2 border border-neutral-200 px-2.5 py-1.5 text-xs">
+                  <span class="min-w-0 flex-1 truncate font-medium">{{ x.product.name }}</span>
+                  <span class="font-mono text-[10px] tabular-nums">{{ formatPrice(x.product.price) }}</span>
+                  <span class="font-mono text-[9px] uppercase tracking-wider text-neutral-400">{{ INTENT_LABELS[x.intent] || x.intent }}</span>
+                  <ui-badge variant="neutral">{{ x.count }}x</ui-badge>
+                </li>
+              </ul>
+            </div>
+
+            <!-- Conversaciones recientes (Actividades) -->
+            <div v-if="detailTab === 'actividades'">
               <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Conversaciones</p>
               <ul class="space-y-2">
                 <li v-for="c in metricsOf(detailContact).convs.slice(-6).reverse()" :key="c.id">

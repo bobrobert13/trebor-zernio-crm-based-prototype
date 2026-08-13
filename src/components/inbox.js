@@ -24,6 +24,9 @@
   /** Respuestas rápidas sugeridas en el composer. */
   const QUICK_REPLIES = ['Hola 👋', '¿Tienes disponibilidad?', 'Quiero hacer un pedido', 'Gracias'];
 
+  /** Motivos de cierre de lead (misma lista que el tablero de Leads). */
+  const CLOSE_REASONS = ['Compró', 'Sin respuesta', 'Se pospuso', 'Eligió otra opción'];
+
   components['inbox-view'] = {
     setup() {
       const search = Vue.ref('');
@@ -37,6 +40,7 @@
       const humanAgent = Vue.ref(false);
       const newConvOpen = Vue.ref(false);
       const newContactId = Vue.ref(null);
+      const tipsOpen = Vue.ref(true);
 
       /** Temporizadores activos (cleanup en onUnmounted). */
       const timers = [];
@@ -112,6 +116,45 @@
           return isLive.value && conv && conv.messagesLoaded === false;
         }
         return Date.now() - conv.messages[conv.messages.length - 1].ts > 24 * 3600 * 1000;
+      });
+
+      /** Consejos de atención contextuales para el equipo (objetivo de conversión). */
+      const attentionTips = Vue.computed(() => {
+        const conv = selected.value;
+        const contact = selectedContact.value;
+        if (!conv) return [];
+        const tips = [];
+        const catalog = workspace.value.products || [];
+        const convMentions = productMentions.value.filter((m) => m.convId === conv.id);
+        const lastOut = (conv.messages || []).filter((m) => m.from === 'out').slice(-1)[0];
+        // 1. Mención con intención de compra: priorizar y ofrecer cierre
+        const compra = convMentions.filter((m) => ['pedido', 'precio', 'reserva'].includes(m.intent));
+        if (compra.length) {
+          const lastCompra = compra.reduce((a, b) => (b.ts > a.ts ? b : a), compra[0]);
+          const p = catalog.find((x) => x.id === lastCompra.productId);
+          const unanswered = !lastOut || lastOut.ts < lastCompra.ts;
+          if (unanswered) tips.push({ icon: 'zap', text: `El cliente preguntó por ${p ? p.name : 'un producto'} — responde con la ficha para cerrar.` });
+          else tips.push({ icon: 'zap', text: 'Intención de compra detectada — ofrece el cierre con datos de pago.' });
+        }
+        // 2. Ventanas de 24h por plataforma
+        if (outsideWindow.value) {
+          if (conv.platform === 'whatsapp') tips.push({ icon: 'clock', text: 'Fuera de la ventana de 24h: usa una plantilla aprobada para re-enganchar.' });
+          else if (['instagram', 'facebook'].includes(conv.platform)) tips.push({ icon: 'clock', text: "El cliente no ha escrito en 24h: activa 'agente humano' para responder." });
+        }
+        // 3. Producto agotado mencionado → ofrecer alternativa
+        const agotado = convMentions
+          .map((m) => catalog.find((x) => x.id === m.productId))
+          .filter((p) => p && p.stock === false);
+        if (agotado.length) tips.push({ icon: 'alert', text: `Preguntó por ${agotado[agotado.length - 1].name} (agotado) — ofrece una alternativa.` });
+        // 4. Lead sin etapa
+        if (contact && !contact.leadTag) tips.push({ icon: 'tag', text: 'Asigna una etapa a este lead para no perder el seguimiento.' });
+        // 5. Clientes especiales (frecuencia a nivel de contacto, no del hilo)
+        if (contact && (contact.tags || []).includes('vip')) tips.push({ icon: 'star', text: 'Cliente VIP — trato preferente y prioridad de respuesta.' });
+        const totalMsgs = contactConvs.value.reduce((n, c) => n + (c.messages || []).length, 0);
+        if (contactConvs.value.length > 1 || totalMsgs >= 12) tips.push({ icon: 'users', text: 'Cliente frecuente — aprovecha para ofrecer fidelización o combos.' });
+        // 6. Primer contacto sin respuesta del equipo
+        if (!lastOut && (conv.messages || []).some((m) => m.from === 'in')) tips.push({ icon: 'message', text: 'Primer contacto: personaliza el saludo con su nombre.' });
+        return tips;
       });
 
       /** IG/FB permiten responder fuera de ventana con HUMAN_AGENT (política Meta). */
@@ -442,7 +485,36 @@
 
       // ── Ficha del cliente (drawer, flujo CRM por conversación) ─────────────
       const contactDrawerOpen = Vue.ref(false);
+      const contactTab = Vue.ref('ficha'); // pestaña del drawer: ficha | actividades
       const contactTags = Vue.computed(() => workspace.value.contactTags || []);
+
+      /** Estadísticas de comunicación del contacto (pestaña Actividades). */
+      const contactStats = Vue.computed(() => {
+        const c = selectedContact.value;
+        if (!c) return null;
+        let totalIn = 0;
+        let totalOut = 0;
+        let first = null;
+        let last = null;
+        const channels = {};
+        contactConvs.value.forEach((x) => {
+          const plat = x.platform || 'whatsapp';
+          channels[plat] = (channels[plat] || 0) + 1;
+          (x.messages || []).forEach((m) => {
+            if (m.from === 'in') totalIn += 1;
+            else totalOut += 1;
+            if (first === null || m.ts < first) first = m.ts;
+            if (last === null || m.ts > last) last = m.ts;
+          });
+        });
+        return {
+          totalIn,
+          totalOut,
+          first,
+          last,
+          channels: Object.entries(channels).sort((a, b) => b[1] - a[1]),
+        };
+      });
 
       /** Alterna una etiqueta de contacto (clasificación general, no lead). */
       function toggleContactTag(tag) {
@@ -706,6 +778,183 @@
         return contact ? ZernioCrm.remindersOf(contact.id) : [];
       }
 
+      // ── Cierre de lead desde la conversación (misma lógica que Leads) ─────
+      const closeOpen = Vue.ref(false);
+      const closeTarget = Vue.ref(null);
+      const closeForm = Vue.reactive({ outcome: 'ganada', note: '', reason: '', products: [] });
+      const closeProductQuery = Vue.ref('');
+
+      /** Resultados del buscador de productos del modal de cierre. */
+      const closeProductResults = Vue.computed(() => {
+        const qq = closeProductQuery.value.trim().toLowerCase();
+        return (workspace.value.products || [])
+          .filter((p) => p.active !== false && (!qq || `${p.name} ${(p.aliases || []).join(' ')}`.toLowerCase().includes(qq)))
+          .slice(0, 6);
+      });
+
+      function closeLabel(outcome) {
+        return outcome === 'ganada' ? 'Concretada' : 'No concretada';
+      }
+
+      /** Etiqueta legible de una entrada del historial (cierres y reaperturas). */
+      function stageLabel(tag) {
+        if (!tag) return 'Sin asignar';
+        if (tag === 'reabierta' || tag === 'reabierto') return 'Reabierta';
+        if (String(tag).startsWith('finalizada:')) return 'Cerrada · ' + closeLabel(tag.split(':')[1]);
+        return tag;
+      }
+
+      /** Historial de etapas del contacto, de la más reciente a la más antigua. */
+      function historyOf(contact) {
+        return ((contact && contact.leadHistory) || []).slice().reverse();
+      }
+
+      /** Nombre de un producto por id (o fallback). */
+      function productNameOf(id) {
+        const p = (workspace.value.products || []).find((x) => x.id === id);
+        return p ? p.name : id;
+      }
+
+      function toggleCloseProduct(id) {
+        const i = closeForm.products.indexOf(id);
+        if (i >= 0) closeForm.products.splice(i, 1);
+        else closeForm.products.push(id);
+      }
+
+      /** Abre el modal de cierre preseleccionando los productos con menciones. */
+      function openCloseModal(contact) {
+        if (!contact) return;
+        closeTarget.value = contact;
+        const catalog = workspace.value.products || [];
+        const ms = productMentions.value.filter(
+          (m) => m.contactId === contact.id && catalog.some((p) => p.id === m.productId)
+        );
+        Object.assign(closeForm, {
+          outcome: 'ganada',
+          note: '',
+          reason: '',
+          products: [...new Set(ms.map((m) => m.productId).filter(Boolean))],
+        });
+        closeProductQuery.value = '';
+        closeOpen.value = true;
+      }
+
+      function confirmClose() {
+        const contact = closeTarget.value;
+        if (!contact) return;
+        contact.leadClosed = { at: Date.now(), outcome: closeForm.outcome, note: closeForm.note.trim(), reason: closeForm.reason || undefined, products: [...closeForm.products] };
+        contact.leadHistory = contact.leadHistory || [];
+        contact.leadHistory.push({
+          tag: `finalizada:${closeForm.outcome}`,
+          at: contact.leadClosed.at,
+          note: closeForm.note.trim() || undefined,
+          reason: closeForm.reason || undefined,
+        });
+        closeOpen.value = false;
+        closeTarget.value = null;
+        contactDrawerOpen.value = false;
+        toast(`Lead cerrado como ${closeLabel(closeForm.outcome).toLowerCase()}`, 'success');
+      }
+
+      function reopenLead(contact) {
+        if (!contact) return;
+        contact.leadHistory = contact.leadHistory || [];
+        // Conserva el cierre previo para que la timeline muestre "antes: …"
+        contact.leadHistory.push({ tag: 'reabierta', at: Date.now(), prev: contact.leadClosed });
+        delete contact.leadClosed;
+        toast('Lead reabierto: vuelve al tablero activo', 'success');
+      }
+
+      // ── Asistente IA (análisis local de la conversación + historial) ───────
+      const aiOpen = Vue.ref(false);
+
+      /** Nivel de interés comercial compacto (misma lógica que el tablero). */
+      function aiInterest(contact) {
+        const catalog = workspace.value.products || [];
+        const ms = productMentions.value.filter(
+          (m) => m.contactId === (contact || {}).id && catalog.some((p) => p.id === m.productId)
+        );
+        if (!ms.length) return { nivel: null, value: 0, productos: [] };
+        const byP = {};
+        ms.forEach((m) => {
+          const cur = byP[m.productId] || { product: catalog.find((p) => p.id === m.productId), count: 0, last: m };
+          cur.count += 1;
+          if (m.ts >= cur.last.ts) cur.last = m;
+          byP[m.productId] = cur;
+        });
+        const per = Object.values(byP).filter((x) => x.product);
+        const value = per.reduce((acc, x) => acc + (Number(x.product.price) > 0 ? Number(x.product.price) : 0), 0);
+        const priced = catalog.map((p) => Number(p.price)).filter((n) => n > 0).sort((a, b) => a - b);
+        const threshold = priced.length ? priced[Math.floor(0.75 * (priced.length - 1))] : 50;
+        const factors = [];
+        if (ms.some((m) => ['pedido', 'precio', 'reserva'].includes(m.intent))) factors.push('compra');
+        if (ms.length >= 2) factors.push('frecuencia');
+        if (value >= threshold) factors.push('alto_valor');
+        if (per.some((x) => x.product.stock === false)) factors.push('agotado');
+        const nivel = factors.length >= 3 || (factors.includes('compra') && factors.includes('alto_valor'))
+          ? 'alto' : factors.length === 2 ? 'medio' : factors.length === 1 ? 'bajo' : null;
+        return { nivel, value, productos: per.map((x) => ({ product: x.product, count: x.count, intent: x.last.intent })) };
+      }
+
+      /** Análisis completo: diagnóstico, señales, plan de acción y respuestas. */
+      const aiAnalysis = Vue.computed(() => {
+        const conv = selected.value;
+        const contact = selectedContact.value;
+        if (!conv) return null;
+        const interest = aiInterest(contact);
+        // Solo los mensajes del CLIENTE generan señales (los del equipo no son evidencia)
+        const textos = (conv.messages || [])
+          .filter((m) => m.from === 'in')
+          .map((m) => m.text || '');
+        const hayTexto = (re) => textos.some((t) => re.test(t));
+        const senales = [];
+        if (interest.productos.some((x) => x.intent === 'pedido')) senales.push('El cliente quiere pedir/comprar (intención de pedido).');
+        if (interest.productos.some((x) => x.intent === 'precio')) senales.push('Preguntó por precios: está evaluando comprar.');
+        if (hayTexto(/pago|pagar|banco|transferencia|referencia/i)) senales.push('La conversación llegó al tema de pago: fase de cierre.');
+        if (hayTexto(/confirm|reserv|apartad|pedido/i)) senales.push('Confirmó o reservó algo: asegura el seguimiento del pedido.');
+        if (hayTexto(/garant|falla|defecto|dañad|repar/i)) senales.push('Inquietud de garantía o calidad: resuélvela para desbloquear la venta.');
+        if (interest.productos.some((x) => x.product.stock === false)) senales.push('Preguntó por un producto agotado: ofrece una alternativa.');
+        if (!senales.length) senales.push('Conversación en fase inicial de consulta.');
+
+        const plan = [];
+        const compra = interest.productos.filter((x) => ['pedido', 'precio', 'reserva'].includes(x.intent));
+        const agotados = interest.productos.filter((x) => x.product.stock === false);
+        if (compra.length) plan.push(`Responde la consulta de ${compra[0].product.name} con la ficha técnica y su precio.`);
+        if (agotados.length) plan.push(`Informa que ${agotados[0].product.name} está agotado y sugiere una alternativa del catálogo.`);
+        if (hayTexto(/pago|pagar|banco|transferencia|referencia/i)) plan.push('El cliente ya habla de pago: envía los datos y pide la referencia para cerrar.');
+        else if (compra.length) plan.push('Ofrece el cierre: pregunta si desea apartar el pedido y envía los datos de pago.');
+        if (contact && !contact.leadTag) plan.push('Asigna una etapa al lead para mantener el seguimiento.');
+        if (outsideWindow.value && conv.platform === 'whatsapp') plan.push('La ventana de 24h venció: re-engancha con una plantilla aprobada antes de continuar.');
+        plan.push('Crea un recordatorio de seguimiento si el cliente no responde en 2-3 horas.');
+
+        const respuestas = [];
+        const p1 = compra[0] && compra[0].product;
+        if (p1) respuestas.push({ label: 'Responder con la ficha', text: `Claro, te paso la ficha de ${p1.name} con todos los detalles.`, product: p1 });
+        if (agotados.length) respuestas.push({ label: 'Ofrecer alternativa', text: `El ${agotados[0].product.name} está agotado por ahora. ¿Te interesa una alternativa similar del catálogo?` });
+        if (hayTexto(/pago|pagar|banco|transferencia|referencia/i)) respuestas.push({ label: 'Pedir confirmación de pago', text: '¿Ya pudiste hacer el pago? Con la referencia despachamos hoy mismo. 😊' });
+        respuestas.push({ label: 'Seguimiento', text: '¡Hola! ¿Quedó alguna duda sobre tu pedido? Estamos atentos para ayudarte.' });
+
+        return { interest, senales, plan, respuestas };
+      });
+
+      /** Arma la respuesta sugerida en el composer (y adjunta la ficha si aplica). */
+      function applyAiReply(r) {
+        if (!r) return;
+        draft.value = r.text;
+        if (r.product) attachCard(r.product);
+        aiOpen.value = false;
+        toast('Respuesta lista en el composer: revísala y envía', 'success');
+      }
+
+      /** Crea un recordatorio de seguimiento desde el plan de acción. */
+      function aiReminder() {
+        const c = selectedContact.value;
+        if (!c) return;
+        remInput.text = 'Seguimiento de conversación con ' + c.name;
+        addReminderFor(c);
+        toast('Recordatorio de seguimiento creado', 'success');
+      }
+
       /** Envía la plantilla seleccionada (re-enganche >24h o primer mensaje). */
       async function sendApprovedTemplate() {
         const t = tplSelected.value;
@@ -801,12 +1050,17 @@
         search, filter, platformFilter, selectedId, draft, sending, loading, syncing, newConvOpen, newContactId,
         workspace, niche, conversations, contacts, filtered, selected, selectedContact, unreadTotal, isLive,
         QUICK_REPLIES, canEdit, humanAgent, outsideWindow, canHumanAgent, blockedByWindow,
+        attentionTips, tipsOpen,
         presentPlatforms, tiktokChannel, tiktokEmpty, getPlatform, leadTags,
         tplPickerOpen, tplList, tplSelected, tplParams, tplVariables, tplSending,
         openTemplatePicker, closeTemplatePicker, sendApprovedTemplate,
-        contactDrawerOpen, contactTags, toggleContactTag, setLeadTag, registerContact,
-        bizFields, remInput, addReminderFor, contactReminders, ZernioCrm,
+        contactDrawerOpen, contactTab, contactTags, toggleContactTag, setLeadTag, registerContact,
+        contactStats, bizFields, remInput, addReminderFor, contactReminders, ZernioCrm,
         contactConvs, convRange, formatDate,
+        closeOpen, closeTarget, closeForm, closeProductQuery, closeProductResults,
+        closeLabel, stageLabel, historyOf, productNameOf, toggleCloseProduct,
+        openCloseModal, confirmClose, reopenLead, CLOSE_REASONS,
+        aiOpen, aiAnalysis, applyAiReply, aiReminder,
         productMentions, mentionsOfMessage, contactProductMentions, productOf,
         productPickOpen, productPickTarget, productPickQuery, productPickResults,
         openProductPick, pickProduct, INTENT_LABELS,
@@ -982,11 +1236,29 @@
                   <!-- Etiquetas vivas del contacto (no el snapshot de la conversación) -->
                   <ui-badge v-for="t in (selectedContact ? selectedContact.tags : [])" :key="t" variant="neutral">{{ t }}</ui-badge>
                   <ui-badge v-if="selectedContact && selectedContact.leadTag" variant="accent" dot>{{ selectedContact.leadTag }}</ui-badge>
-                  <button @click="contactDrawerOpen = true" class="p-1.5 hover:text-[var(--accent)]" aria-label="Ficha del cliente">
+                  <button v-if="selectedContact" @click="aiOpen = true" class="flex items-center gap-1 rounded-full border border-[var(--accent)] px-2 py-1 text-[11px] font-bold text-[var(--accent)] transition hover:bg-[var(--accent)] hover:text-white" aria-label="Asistente IA">
+                    <ui-icon name="sparkles" class="h-3.5 w-3.5"></ui-icon> IA
+                  </button>
+                  <button @click="contactDrawerOpen = true; contactTab = 'ficha'" class="p-1.5 hover:text-[var(--accent)]" aria-label="Ficha del cliente">
                     <ui-icon name="user" class="h-4 w-4"></ui-icon>
                   </button>
                 </div>
               </header>
+
+              <!-- Consejos de atención al equipo -->
+              <div v-if="attentionTips.length" class="shrink-0 border-b border-neutral-200 bg-amber-50/80">
+                <button @click="tipsOpen = !tipsOpen" class="flex w-full items-center gap-2 px-4 py-2 text-left text-xs font-semibold text-amber-900">
+                  <ui-icon name="alert" class="h-3.5 w-3.5 text-amber-700"></ui-icon>
+                  Consejos de atención · {{ attentionTips.length }}
+                  <ui-icon :name="tipsOpen ? 'chevron-up' : 'chevron-down'" class="ml-auto h-3.5 w-3.5 text-amber-700"></ui-icon>
+                </button>
+                <ul v-if="tipsOpen" class="space-y-1.5 px-4 pb-3">
+                  <li v-for="(t, i) in attentionTips" :key="i" class="flex items-start gap-2 text-xs text-amber-900">
+                    <ui-icon :name="t.icon" class="mt-0.5 h-3.5 w-3.5 shrink-0"></ui-icon>
+                    <span>{{ t.text }}</span>
+                  </li>
+                </ul>
+              </div>
 
               <!-- Mensajes -->
               <div class="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5">
@@ -1160,7 +1432,15 @@
         <!-- Drawer: ficha del cliente (gestión por conversación) -->
         <ui-drawer :open="contactDrawerOpen" width="max-w-lg" :title="'Ficha · ' + (selectedContact ? selectedContact.name : 'Sin ficha')" @close="contactDrawerOpen = false">
           <div v-if="selected" class="space-y-5">
-            <template v-if="selectedContact">
+            <!-- Pestañas del drawer -->
+            <div class="flex border-b-2 border-neutral-900">
+              <button @click="contactTab = 'ficha'" class="flex-1 border-r-2 border-neutral-900 px-3 py-2 text-sm font-semibold transition"
+                :class="contactTab === 'ficha' ? 'bg-[var(--accent)] text-white' : 'bg-white hover:bg-stone-100'">Ficha</button>
+              <button @click="contactTab = 'actividades'" class="flex-1 px-3 py-2 text-sm font-semibold transition"
+                :class="contactTab === 'actividades' ? 'bg-[var(--accent)] text-white' : 'bg-white hover:bg-stone-100'">Actividades</button>
+            </div>
+            <template v-if="contactTab === 'ficha'">
+              <template v-if="selectedContact">
               <div class="flex items-center gap-3">
                 <ui-avatar :name="selectedContact.name" size="h-12 w-12 text-base"></ui-avatar>
                 <div class="min-w-0 flex-1">
@@ -1190,6 +1470,63 @@
                   <option value="">Sin asignar</option>
                   <option v-for="t in leadTags" :key="t" :value="t">{{ t }}</option>
                 </select>
+              </div>
+
+              <!-- Historial de etapas del lead (desde el momento 0) -->
+              <div>
+                <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial de etapas</p>
+                <div class="mb-3 flex items-center gap-2 border border-neutral-200 bg-stone-50 px-3 py-2">
+                  <span class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Etapa actual</span>
+                  <ui-badge variant="accent" dot>{{ stageLabel(selectedContact.leadTag) }}</ui-badge>
+                </div>
+                <ol v-if="historyOf(selectedContact).length" class="relative ml-1.5 space-y-2.5 border-l border-neutral-200 pl-4">
+                  <li v-for="(h, i) in historyOf(selectedContact)" :key="h.at + '-' + i" class="relative">
+                    <span class="absolute -left-[21.5px] top-1 h-2.5 w-2.5 rounded-full border-2 border-neutral-900 bg-white"
+                      :class="i === 0 ? 'bg-[var(--accent)]' : ''"></span>
+                    <p class="text-xs">
+                      <span class="font-semibold">{{ stageLabel(h.tag) }}</span>
+                      <span v-if="historyOf(selectedContact)[i + 1]" class="ml-1 font-mono text-[9px] uppercase text-neutral-400">← desde {{ stageLabel(historyOf(selectedContact)[i + 1].tag) }}</span>
+                      <span class="ml-1 font-mono text-[9px] uppercase text-neutral-400">{{ new Date(h.at).toLocaleString('es-VE') }}</span>
+                    </p>
+                    <p v-if="h.note" class="mt-0.5 text-[11px] text-neutral-500">{{ h.note }}</p>
+                    <p v-if="h.reason" class="mt-0.5 text-[11px] text-neutral-500">motivo: {{ h.reason }}</p>
+                    <p v-else-if="h.prev && h.prev.outcome" class="mt-0.5 text-[11px] text-neutral-500">antes: {{ stageLabel('finalizada:' + h.prev.outcome) }}</p>
+                  </li>
+                </ol>
+                <p v-else class="text-xs text-neutral-400">Sin cambios de etapa registrados.</p>
+              </div>
+
+              <!-- Cierre del lead desde la conversación -->
+              <div class="border border-neutral-200 p-3">
+                <template v-if="selectedContact.leadClosed">
+                  <div class="flex items-center justify-between gap-2">
+                    <div>
+                      <p class="font-semibold" :class="selectedContact.leadClosed.outcome === 'ganada' ? 'text-emerald-700' : 'text-red-700'">
+                        Lead cerrado · {{ closeLabel(selectedContact.leadClosed.outcome) }}
+                      </p>
+                      <p class="font-mono text-[10px] text-neutral-400">{{ new Date(selectedContact.leadClosed.at).toLocaleString('es-VE') }}</p>
+                      <div v-if="(selectedContact.leadClosed.products || []).length" class="mt-1 flex flex-wrap gap-1">
+                        <span v-for="pid in selectedContact.leadClosed.products" :key="pid" class="border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                          {{ productNameOf(pid) }}
+                        </span>
+                      </div>
+                      <p v-if="selectedContact.leadClosed.reason" class="mt-1 inline-block border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                        {{ selectedContact.leadClosed.reason }}
+                      </p>
+                      <p v-if="selectedContact.leadClosed.note" class="mt-1 text-xs text-neutral-600">{{ selectedContact.leadClosed.note }}</p>
+                    </div>
+                    <button @click="reopenLead(selectedContact)" class="shrink-0 border border-neutral-300 px-2.5 py-1.5 text-xs font-medium transition hover:border-neutral-900">
+                      Reabrir lead
+                    </button>
+                  </div>
+                </template>
+                <template v-else>
+                  <p class="text-xs text-neutral-500">¿Terminaste el seguimiento de este lead?</p>
+                  <button v-if="canEdit('leads')" @click="openCloseModal(selectedContact)"
+                    class="mt-2 w-full border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                    Finalizar lead
+                  </button>
+                </template>
               </div>
 
               <div v-if="bizFields.length">
@@ -1265,44 +1602,79 @@
                   </button>
                 </div>
               </div>
+              </template>
+              <template v-else>
+                <p class="text-sm text-neutral-500">Esta conversación no tiene contacto registrado.</p>
+                <button @click="registerContact"
+                  class="w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                  Registrar contacto
+                </button>
+              </template>
             </template>
-            <template v-else>
-              <p class="text-sm text-neutral-500">Esta conversación no tiene contacto registrado.</p>
-              <button @click="registerContact"
-                class="w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
-                Registrar contacto
-              </button>
-            </template>
+            <template v-else-if="contactTab === 'actividades'">
+              <!-- Estadísticas de comunicación del contacto -->
+              <div v-if="contactStats" class="grid grid-cols-2 gap-2">
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Conversaciones</p>
+                  <p class="mt-0.5 text-lg font-bold tabular-nums">{{ contactConvs.length }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Mensajes recibidos</p>
+                  <p class="mt-0.5 text-lg font-bold tabular-nums">{{ contactStats.totalIn }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Mensajes enviados</p>
+                  <p class="mt-0.5 text-lg font-bold tabular-nums">{{ contactStats.totalOut }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Primera actividad</p>
+                  <p class="mt-0.5 text-xs font-semibold">{{ contactStats.first ? formatDate(contactStats.first) : '—' }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Última actividad</p>
+                  <p class="mt-0.5 text-xs font-semibold">{{ contactStats.last ? timeAgo(contactStats.last) : '—' }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Canales usados</p>
+                  <p class="mt-0.5 flex flex-wrap gap-1">
+                    <span v-for="ch in contactStats.channels" :key="ch[0]" class="flex items-center gap-1 border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                      <ui-icon :name="(getPlatform(ch[0]) || {}).icon" class="h-3 w-3"></ui-icon>
+                      {{ (getPlatform(ch[0]) || {}).nombre }} · {{ ch[1] }}
+                    </span>
+                  </p>
+                </div>
+              </div>
 
-            <!-- Historial detallado del contacto (click = abrir esa conversación) -->
-            <div>
-              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial de conversaciones</p>
-              <ul class="space-y-2">
-                <li v-for="c in contactConvs" :key="c.id">
-                  <button @click="selectConversation(c); contactDrawerOpen = false"
-                    class="w-full border p-3 text-left transition hover:border-neutral-900 hover:bg-stone-50"
-                    :class="c.id === selectedId ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-neutral-200'">
-                    <div class="flex items-center justify-between gap-2">
-                      <span class="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
-                        <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
-                        {{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}
-                        <ui-badge v-if="c.id === selectedId" variant="accent" class="ml-1">Actual</ui-badge>
-                      </span>
-                      <span class="shrink-0 font-mono text-[9px] uppercase text-neutral-400">
-                        {{ formatDate(convRange(c).from) }} → {{ formatDate(convRange(c).to) }}
-                      </span>
-                    </div>
-                    <p class="mt-1 truncate text-xs text-neutral-600">{{ lastMessage(c) }}</p>
-                    <p class="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400">
-                      {{ (c.messages || []).length }} mensajes · {{ timeAgo(c.lastTs) }}
-                    </p>
-                  </button>
-                </li>
-                <li v-if="contactConvs.length === 0" class="text-xs text-neutral-400">
-                  Sin historial previo.
-                </li>
-              </ul>
-            </div>
+              <!-- Historial detallado del contacto (click = abrir esa conversación) -->
+              <div>
+                <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial de conversaciones</p>
+                <ul class="space-y-2">
+                  <li v-for="c in contactConvs" :key="c.id">
+                    <button @click="selectConversation(c); contactDrawerOpen = false"
+                      class="w-full border p-3 text-left transition hover:border-neutral-900 hover:bg-stone-50"
+                      :class="c.id === selectedId ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-neutral-200'">
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
+                          <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
+                          {{ (getPlatform(c.platform || 'whatsapp') || {}).nombre }}
+                          <ui-badge v-if="c.id === selectedId" variant="accent" class="ml-1">Actual</ui-badge>
+                        </span>
+                        <span class="shrink-0 font-mono text-[9px] uppercase text-neutral-400">
+                          {{ formatDate(convRange(c).from) }} → {{ formatDate(convRange(c).to) }}
+                        </span>
+                      </div>
+                      <p class="mt-1 truncate text-xs text-neutral-600">{{ lastMessage(c) }}</p>
+                      <p class="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400">
+                        {{ (c.messages || []).length }} mensajes · {{ timeAgo(c.lastTs) }}
+                      </p>
+                    </button>
+                  </li>
+                  <li v-if="contactConvs.length === 0" class="text-xs text-neutral-400">
+                    Sin historial previo.
+                  </li>
+                </ul>
+              </div>
+            </template>
           </div>
         </ui-drawer>
 
@@ -1351,6 +1723,148 @@
                 Responder con plantilla
               </button>
             </div>
+          </div>
+        </ui-modal>
+
+        <!-- Drawer: Asistente IA (análisis local de conversación + historial) -->
+        <ui-drawer :open="aiOpen" width="max-w-xl" :title="'Asistente IA · ' + (selectedContact ? selectedContact.name : 'Conversación')" @close="aiOpen = false">
+          <div v-if="aiAnalysis" class="space-y-5">
+            <!-- Diagnóstico -->
+            <div>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Diagnóstico</p>
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Etapa del lead</p>
+                  <p class="mt-0.5 font-semibold">{{ stageLabel(selectedContact ? selectedContact.leadTag : null) }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Interés comercial</p>
+                  <p class="mt-0.5 font-semibold">
+                    {{ aiAnalysis.interest.nivel ? (aiAnalysis.interest.nivel === 'alto' ? 'Alto' : aiAnalysis.interest.nivel === 'medio' ? 'Medio' : 'Bajo') : 'Sin señales' }}
+                    <span v-if="aiAnalysis.interest.value > 0" class="font-mono text-[10px] text-neutral-500">· {{ formatPrice(aiAnalysis.interest.value) }}</span>
+                  </p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Canal</p>
+                  <p class="mt-0.5 font-semibold">{{ (getPlatform(selected ? selected.platform || 'whatsapp' : 'whatsapp') || {}).nombre }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Ventana 24h</p>
+                  <p class="mt-0.5 font-semibold" :class="outsideWindow ? 'text-red-700' : 'text-emerald-700'">{{ outsideWindow ? 'Fuera de ventana' : 'Dentro de ventana' }}</p>
+                </div>
+              </div>
+              <p class="mt-2 text-xs text-neutral-500">
+                {{ (selected ? selected.messages : []).length }} mensajes en este hilo · última actividad {{ timeAgo(selected ? selected.lastTs : Date.now()) }}
+              </p>
+            </div>
+
+            <!-- Análisis de la conversación -->
+            <div>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Análisis de la conversación</p>
+              <ul class="space-y-1.5">
+                <li v-for="(s, i) in aiAnalysis.senales" :key="i" class="flex items-start gap-2 text-xs">
+                  <ui-icon name="check-circle" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-700"></ui-icon>
+                  <span>{{ s }}</span>
+                </li>
+              </ul>
+              <div v-if="aiAnalysis.interest.productos.length" class="mt-2 flex flex-wrap gap-1.5">
+                <span v-for="x in aiAnalysis.interest.productos" :key="x.product.id" class="border border-neutral-200 bg-stone-50 px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                  {{ x.product.name }} · {{ formatPrice(x.product.price) }} · {{ INTENT_LABELS[x.intent] || x.intent }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Plan de acción -->
+            <div class="border-2 border-[var(--accent)] p-3">
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]">Plan de acción sugerido</p>
+              <ol class="space-y-1.5">
+                <li v-for="(p, i) in aiAnalysis.plan" :key="i" class="flex items-start gap-2 text-xs">
+                  <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] font-mono text-[9px] font-bold text-white">{{ i + 1 }}</span>
+                  <span>{{ p }}</span>
+                </li>
+              </ol>
+              <button @click="aiReminder" class="mt-3 flex items-center gap-1.5 border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
+                <ui-icon name="clock" class="h-3.5 w-3.5"></ui-icon> Crear recordatorio de seguimiento
+              </button>
+            </div>
+
+            <!-- Respuestas sugeridas -->
+            <div>
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Respuestas sugeridas</p>
+              <div class="space-y-2">
+                <button v-for="r in aiAnalysis.respuestas" :key="r.label" @click="applyAiReply(r)"
+                  class="flex w-full items-center justify-between gap-2 border-2 border-neutral-200 px-3 py-2.5 text-left text-xs transition hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]">
+                  <span class="min-w-0 flex-1">{{ r.text }}</span>
+                  <span class="shrink-0 font-semibold text-[var(--accent)] underline">Usar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </ui-drawer>
+
+        <!-- Modal: finalizar lead desde la conversación (mismo flujo que Leads) -->
+        <ui-modal :open="closeOpen" :title="'Finalizar lead · ' + (closeTarget ? closeTarget.name : '')" width="max-w-md" @close="closeOpen = false">
+          <div class="space-y-4">
+            <p class="text-sm text-neutral-500">
+              Da por terminado el seguimiento de este lead. Puedes reabrirlo cuando quieras.
+            </p>
+            <div v-if="closeTarget" class="flex items-center gap-3 border border-neutral-200 bg-stone-50 p-3">
+              <ui-avatar :name="closeTarget.name" size="h-10 w-10 text-sm"></ui-avatar>
+              <div class="min-w-0 flex-1">
+                <p class="truncate font-semibold">{{ closeTarget.name }}</p>
+                <p class="truncate font-mono text-[11px] text-neutral-500">
+                  Etapa: {{ stageLabel(closeTarget.leadTag) }}
+                  <span v-if="closeTarget.createdAt"> · Cliente desde {{ new Date(closeTarget.createdAt).toLocaleDateString('es-VE') }}</span>
+                </p>
+              </div>
+            </div>
+            <ui-field label="¿Se concretó?">
+              <div class="flex gap-1.5">
+                <button @click="closeForm.outcome = 'ganada'" class="flex-1 border-2 px-3 py-2 text-sm font-medium transition"
+                  :class="closeForm.outcome === 'ganada' ? 'border-emerald-800 bg-emerald-50 text-emerald-900' : 'border-neutral-300'">
+                  Sí, se concretó
+                </button>
+                <button @click="closeForm.outcome = 'perdida'" class="flex-1 border-2 px-3 py-2 text-sm font-medium transition"
+                  :class="closeForm.outcome === 'perdida' ? 'border-red-800 bg-red-50 text-red-900' : 'border-neutral-300'">
+                  No se concretó
+                </button>
+              </div>
+            </ui-field>
+            <div v-if="(workspace.products || []).length">
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">¿Qué productos/servicios se cerraron?</p>
+              <div v-if="closeForm.products.length" class="mb-2 flex flex-wrap gap-1.5">
+                <button v-for="id in closeForm.products" :key="id" @click="toggleCloseProduct(id)"
+                  class="border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition border-[var(--accent)] bg-[var(--accent)] text-white">
+                  {{ productNameOf(id) }} ✕
+                </button>
+              </div>
+              <input v-model.trim="closeProductQuery" type="search" placeholder="Buscar y agregar producto…"
+                class="w-full border-2 border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900" />
+              <div v-if="closeProductQuery" class="mt-1.5 flex flex-wrap gap-1.5">
+                <button v-for="p in closeProductResults" :key="p.id" @click="toggleCloseProduct(p.id)"
+                  class="border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="closeForm.products.includes(p.id) ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
+                  {{ p.name }}
+                </button>
+              </div>
+            </div>
+            <ui-field label="Motivo (opcional)">
+              <div class="flex flex-wrap gap-1.5">
+                <button v-for="r in CLOSE_REASONS" :key="r" @click="closeForm.reason = closeForm.reason === r ? '' : r"
+                  class="border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="closeForm.reason === r ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
+                  {{ r }}
+                </button>
+              </div>
+            </ui-field>
+            <ui-field label="Nota (opcional)">
+              <textarea v-model.trim="closeForm.note" rows="3" placeholder="Cuéntanos cómo fue el cierre…"
+                class="w-full resize-none border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900"></textarea>
+            </ui-field>
+            <button @click="confirmClose"
+              class="w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+              Confirmar cierre
+            </button>
           </div>
         </ui-modal>
       </div>`,

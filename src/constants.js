@@ -478,6 +478,7 @@
       disponibilidad: ['tienen', 'disponible', 'hay', 'tienen?', 'queda'],
     },
     celulares: {
+      pedido: ['pedir', 'comprar'],
       disponibilidad: ['disponibilidad', 'stock', 'hay', 'tienen', 'queda'],
       precio: ['precio', 'cuánto', 'cuanto', 'costo', 'valor', 'cuesta'],
       garantia: ['garantía', 'garantia', 'cambio', 'falla', 'defecto'],

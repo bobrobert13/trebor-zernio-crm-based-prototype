@@ -24,6 +24,9 @@
   /** Respuestas rápidas sugeridas en el composer. */
   const QUICK_REPLIES = ['Hola 👋', '¿Tienes disponibilidad?', 'Quiero hacer un pedido', 'Gracias'];
 
+  /** Motivos de cierre de lead (misma lista que el tablero de Leads). */
+  const CLOSE_REASONS = ['Compró', 'Sin respuesta', 'Se pospuso', 'Eligió otra opción'];
+
   components['inbox-view'] = {
     setup() {
       const search = Vue.ref('');
@@ -706,6 +709,93 @@
         return contact ? ZernioCrm.remindersOf(contact.id) : [];
       }
 
+      // ── Cierre de lead desde la conversación (misma lógica que Leads) ─────
+      const closeOpen = Vue.ref(false);
+      const closeTarget = Vue.ref(null);
+      const closeForm = Vue.reactive({ outcome: 'ganada', note: '', reason: '', products: [] });
+      const closeProductQuery = Vue.ref('');
+
+      /** Resultados del buscador de productos del modal de cierre. */
+      const closeProductResults = Vue.computed(() => {
+        const qq = closeProductQuery.value.trim().toLowerCase();
+        return (workspace.value.products || [])
+          .filter((p) => p.active !== false && (!qq || `${p.name} ${(p.aliases || []).join(' ')}`.toLowerCase().includes(qq)))
+          .slice(0, 6);
+      });
+
+      function closeLabel(outcome) {
+        return outcome === 'ganada' ? 'Concretada' : 'No concretada';
+      }
+
+      /** Etiqueta legible de una entrada del historial (cierres y reaperturas). */
+      function stageLabel(tag) {
+        if (!tag) return 'Sin asignar';
+        if (tag === 'reabierta' || tag === 'reabierto') return 'Reabierta';
+        if (String(tag).startsWith('finalizada:')) return 'Cerrada · ' + closeLabel(tag.split(':')[1]);
+        return tag;
+      }
+
+      /** Historial de etapas del contacto, de la más reciente a la más antigua. */
+      function historyOf(contact) {
+        return ((contact && contact.leadHistory) || []).slice().reverse();
+      }
+
+      /** Nombre de un producto por id (o fallback). */
+      function productNameOf(id) {
+        const p = (workspace.value.products || []).find((x) => x.id === id);
+        return p ? p.name : id;
+      }
+
+      function toggleCloseProduct(id) {
+        const i = closeForm.products.indexOf(id);
+        if (i >= 0) closeForm.products.splice(i, 1);
+        else closeForm.products.push(id);
+      }
+
+      /** Abre el modal de cierre preseleccionando los productos con menciones. */
+      function openCloseModal(contact) {
+        if (!contact) return;
+        closeTarget.value = contact;
+        const catalog = workspace.value.products || [];
+        const ms = productMentions.value.filter(
+          (m) => m.contactId === contact.id && catalog.some((p) => p.id === m.productId)
+        );
+        Object.assign(closeForm, {
+          outcome: 'ganada',
+          note: '',
+          reason: '',
+          products: [...new Set(ms.map((m) => m.productId).filter(Boolean))],
+        });
+        closeProductQuery.value = '';
+        closeOpen.value = true;
+      }
+
+      function confirmClose() {
+        const contact = closeTarget.value;
+        if (!contact) return;
+        contact.leadClosed = { at: Date.now(), outcome: closeForm.outcome, note: closeForm.note.trim(), reason: closeForm.reason || undefined, products: [...closeForm.products] };
+        contact.leadHistory = contact.leadHistory || [];
+        contact.leadHistory.push({
+          tag: `finalizada:${closeForm.outcome}`,
+          at: contact.leadClosed.at,
+          note: closeForm.note.trim() || undefined,
+          reason: closeForm.reason || undefined,
+        });
+        closeOpen.value = false;
+        closeTarget.value = null;
+        contactDrawerOpen.value = false;
+        toast(`Lead cerrado como ${closeLabel(closeForm.outcome).toLowerCase()}`, 'success');
+      }
+
+      function reopenLead(contact) {
+        if (!contact) return;
+        contact.leadHistory = contact.leadHistory || [];
+        // Conserva el cierre previo para que la timeline muestre "antes: …"
+        contact.leadHistory.push({ tag: 'reabierta', at: Date.now(), prev: contact.leadClosed });
+        delete contact.leadClosed;
+        toast('Lead reabierto: vuelve al tablero activo', 'success');
+      }
+
       /** Envía la plantilla seleccionada (re-enganche >24h o primer mensaje). */
       async function sendApprovedTemplate() {
         const t = tplSelected.value;
@@ -807,6 +897,9 @@
         contactDrawerOpen, contactTags, toggleContactTag, setLeadTag, registerContact,
         bizFields, remInput, addReminderFor, contactReminders, ZernioCrm,
         contactConvs, convRange, formatDate,
+        closeOpen, closeTarget, closeForm, closeProductQuery, closeProductResults,
+        closeLabel, stageLabel, historyOf, productNameOf, toggleCloseProduct,
+        openCloseModal, confirmClose, reopenLead, CLOSE_REASONS,
         productMentions, mentionsOfMessage, contactProductMentions, productOf,
         productPickOpen, productPickTarget, productPickQuery, productPickResults,
         openProductPick, pickProduct, INTENT_LABELS,
@@ -1192,6 +1285,63 @@
                 </select>
               </div>
 
+              <!-- Historial de etapas del lead (desde el momento 0) -->
+              <div>
+                <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Historial de etapas</p>
+                <div class="mb-3 flex items-center gap-2 border border-neutral-200 bg-stone-50 px-3 py-2">
+                  <span class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Etapa actual</span>
+                  <ui-badge variant="accent" dot>{{ stageLabel(selectedContact.leadTag) }}</ui-badge>
+                </div>
+                <ol v-if="historyOf(selectedContact).length" class="relative ml-1.5 space-y-2.5 border-l border-neutral-200 pl-4">
+                  <li v-for="(h, i) in historyOf(selectedContact)" :key="h.at + '-' + i" class="relative">
+                    <span class="absolute -left-[21.5px] top-1 h-2.5 w-2.5 rounded-full border-2 border-neutral-900 bg-white"
+                      :class="i === 0 ? 'bg-[var(--accent)]' : ''"></span>
+                    <p class="text-xs">
+                      <span class="font-semibold">{{ stageLabel(h.tag) }}</span>
+                      <span v-if="historyOf(selectedContact)[i + 1]" class="ml-1 font-mono text-[9px] uppercase text-neutral-400">← desde {{ stageLabel(historyOf(selectedContact)[i + 1].tag) }}</span>
+                      <span class="ml-1 font-mono text-[9px] uppercase text-neutral-400">{{ new Date(h.at).toLocaleString('es-VE') }}</span>
+                    </p>
+                    <p v-if="h.note" class="mt-0.5 text-[11px] text-neutral-500">{{ h.note }}</p>
+                    <p v-if="h.reason" class="mt-0.5 text-[11px] text-neutral-500">motivo: {{ h.reason }}</p>
+                    <p v-else-if="h.prev && h.prev.outcome" class="mt-0.5 text-[11px] text-neutral-500">antes: {{ stageLabel('finalizada:' + h.prev.outcome) }}</p>
+                  </li>
+                </ol>
+                <p v-else class="text-xs text-neutral-400">Sin cambios de etapa registrados.</p>
+              </div>
+
+              <!-- Cierre del lead desde la conversación -->
+              <div class="border border-neutral-200 p-3">
+                <template v-if="selectedContact.leadClosed">
+                  <div class="flex items-center justify-between gap-2">
+                    <div>
+                      <p class="font-semibold" :class="selectedContact.leadClosed.outcome === 'ganada' ? 'text-emerald-700' : 'text-red-700'">
+                        Lead cerrado · {{ closeLabel(selectedContact.leadClosed.outcome) }}
+                      </p>
+                      <p class="font-mono text-[10px] text-neutral-400">{{ new Date(selectedContact.leadClosed.at).toLocaleString('es-VE') }}</p>
+                      <div v-if="(selectedContact.leadClosed.products || []).length" class="mt-1 flex flex-wrap gap-1">
+                        <span v-for="pid in selectedContact.leadClosed.products" :key="pid" class="border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                          {{ productNameOf(pid) }}
+                        </span>
+                      </div>
+                      <p v-if="selectedContact.leadClosed.reason" class="mt-1 inline-block border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                        {{ selectedContact.leadClosed.reason }}
+                      </p>
+                      <p v-if="selectedContact.leadClosed.note" class="mt-1 text-xs text-neutral-600">{{ selectedContact.leadClosed.note }}</p>
+                    </div>
+                    <button @click="reopenLead(selectedContact)" class="shrink-0 border border-neutral-300 px-2.5 py-1.5 text-xs font-medium transition hover:border-neutral-900">
+                      Reabrir lead
+                    </button>
+                  </div>
+                </template>
+                <template v-else>
+                  <p class="text-xs text-neutral-500">¿Terminaste el seguimiento de este lead?</p>
+                  <button v-if="canEdit('leads')" @click="openCloseModal(selectedContact)"
+                    class="mt-2 w-full border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                    Finalizar lead
+                  </button>
+                </template>
+              </div>
+
               <div v-if="bizFields.length">
                 <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Campos del negocio · {{ niche.nombre }}</p>
                 <div class="space-y-2">
@@ -1351,6 +1501,72 @@
                 Responder con plantilla
               </button>
             </div>
+          </div>
+        </ui-modal>
+
+        <!-- Modal: finalizar lead desde la conversación (mismo flujo que Leads) -->
+        <ui-modal :open="closeOpen" :title="'Finalizar lead · ' + (closeTarget ? closeTarget.name : '')" width="max-w-md" @close="closeOpen = false">
+          <div class="space-y-4">
+            <p class="text-sm text-neutral-500">
+              Da por terminado el seguimiento de este lead. Puedes reabrirlo cuando quieras.
+            </p>
+            <div v-if="closeTarget" class="flex items-center gap-3 border border-neutral-200 bg-stone-50 p-3">
+              <ui-avatar :name="closeTarget.name" size="h-10 w-10 text-sm"></ui-avatar>
+              <div class="min-w-0 flex-1">
+                <p class="truncate font-semibold">{{ closeTarget.name }}</p>
+                <p class="truncate font-mono text-[11px] text-neutral-500">
+                  Etapa: {{ stageLabel(closeTarget.leadTag) }}
+                  <span v-if="closeTarget.createdAt"> · Cliente desde {{ new Date(closeTarget.createdAt).toLocaleDateString('es-VE') }}</span>
+                </p>
+              </div>
+            </div>
+            <ui-field label="¿Se concretó?">
+              <div class="flex gap-1.5">
+                <button @click="closeForm.outcome = 'ganada'" class="flex-1 border-2 px-3 py-2 text-sm font-medium transition"
+                  :class="closeForm.outcome === 'ganada' ? 'border-emerald-800 bg-emerald-50 text-emerald-900' : 'border-neutral-300'">
+                  Sí, se concretó
+                </button>
+                <button @click="closeForm.outcome = 'perdida'" class="flex-1 border-2 px-3 py-2 text-sm font-medium transition"
+                  :class="closeForm.outcome === 'perdida' ? 'border-red-800 bg-red-50 text-red-900' : 'border-neutral-300'">
+                  No se concretó
+                </button>
+              </div>
+            </ui-field>
+            <div v-if="(workspace.products || []).length">
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">¿Qué productos/servicios se cerraron?</p>
+              <div v-if="closeForm.products.length" class="mb-2 flex flex-wrap gap-1.5">
+                <button v-for="id in closeForm.products" :key="id" @click="toggleCloseProduct(id)"
+                  class="border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition border-[var(--accent)] bg-[var(--accent)] text-white">
+                  {{ productNameOf(id) }} ✕
+                </button>
+              </div>
+              <input v-model.trim="closeProductQuery" type="search" placeholder="Buscar y agregar producto…"
+                class="w-full border-2 border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900" />
+              <div v-if="closeProductQuery" class="mt-1.5 flex flex-wrap gap-1.5">
+                <button v-for="p in closeProductResults" :key="p.id" @click="toggleCloseProduct(p.id)"
+                  class="border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="closeForm.products.includes(p.id) ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
+                  {{ p.name }}
+                </button>
+              </div>
+            </div>
+            <ui-field label="Motivo (opcional)">
+              <div class="flex flex-wrap gap-1.5">
+                <button v-for="r in CLOSE_REASONS" :key="r" @click="closeForm.reason = closeForm.reason === r ? '' : r"
+                  class="border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="closeForm.reason === r ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
+                  {{ r }}
+                </button>
+              </div>
+            </ui-field>
+            <ui-field label="Nota (opcional)">
+              <textarea v-model.trim="closeForm.note" rows="3" placeholder="Cuéntanos cómo fue el cierre…"
+                class="w-full resize-none border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900"></textarea>
+            </ui-field>
+            <button @click="confirmClose"
+              class="w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+              Confirmar cierre
+            </button>
           </div>
         </ui-modal>
       </div>`,

@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, getNiche, timeAgo, formatTime, formatDate, uid, canEdit, PLATFORMS, getPlatform, recordProductMentions, confirmMention, discardMention, INTENT_LABELS, buildProductCard, PRODUCT_CARD_DEFAULTS, renderWhatsApp } = ZernioCrm;
+  const { store, toast, getNiche, timeAgo, formatTime, formatDate, uid, canEdit, PLATFORMS, getPlatform, recordProductMentions, confirmMention, discardMention, INTENT_LABELS, buildProductCard, PRODUCT_CARD_DEFAULTS, renderWhatsApp, formatPrice } = ZernioCrm;
 
   const components = {};
 
@@ -592,6 +592,34 @@
         productPickOpen.value = true;
       }
 
+      // ── Modal de información completa del producto detectado (Ver más) ─────
+      const productInfoOpen = Vue.ref(false);
+      const productInfoTarget = Vue.ref(null);
+
+      const cardOfTarget = Vue.computed(() => {
+        const p = productInfoTarget.value;
+        return p ? buildProductCard(p, niche.value.id) : '';
+      });
+
+      function openProductInfo(p) {
+        productInfoTarget.value = p;
+        productInfoOpen.value = true;
+      }
+
+      function closeProductInfo() {
+        productInfoOpen.value = false;
+        productInfoTarget.value = null;
+      }
+
+      /** Envía la ficha del producto visto al chat y cierra el modal. */
+      function sendFichaFromInfo() {
+        const p = productInfoTarget.value;
+        if (!p) return;
+        attachCard(p);
+        closeProductInfo();
+        toast('Ficha adjuntada: ' + p.name, 'success');
+      }
+
       function attachCard(product) {
         if (!product || product.active === false) return;
         cardAttach.value = product;
@@ -602,6 +630,67 @@
       function detachCard() {
         cardAttach.value = null;
         cardGreeting.value = '';
+      }
+
+      // ── Autocompletado '@' de productos en el composer ────────────────────
+      const atOpen = Vue.ref(false);
+      const atIndex = Vue.ref(0);
+      const atQuery = Vue.ref('');
+
+      /** Resultados del '@': productos activos filtrados por el texto tecleado. */
+      const atResults = Vue.computed(() => {
+        const qq = atQuery.value.trim().toLowerCase();
+        return (workspace.value.products || [])
+          .filter((p) => p.active !== false && (!qq || `${p.name} ${(p.aliases || []).join(' ')}`.toLowerCase().includes(qq)))
+          .slice(0, 6);
+      });
+
+      /** Detecta el token '@query' al final del borrador y abre el menú. */
+      Vue.watch(draft, (val) => {
+        const m = /(^|\s)@(\S*)$/.exec(val);
+        if (m) {
+          atQuery.value = m[2];
+          atIndex.value = 0;
+          atOpen.value = true;
+        } else {
+          closeAt();
+        }
+      });
+
+      function closeAt() {
+        atOpen.value = false;
+        atQuery.value = '';
+      }
+
+      /** Selecciona un producto del menú '@': quita el token y adjunta la ficha. */
+      function pickMention(product) {
+        if (!product) return;
+        const idx = draft.value.lastIndexOf('@');
+        const before = idx >= 0 ? draft.value.slice(0, idx).replace(/\s+$/, '') : draft.value;
+        draft.value = before;
+        closeAt();
+        attachCard(product);
+        toast('Ficha adjuntada: ' + product.name, 'success');
+      }
+
+      /** Teclado del composer: navega el menú '@' o envía con Enter. */
+      function onComposerKeydown(e) {
+        if (atOpen.value) {
+          if (e.key === 'ArrowDown' && atResults.value.length) { e.preventDefault(); atIndex.value = (atIndex.value + 1) % atResults.value.length; return; }
+          if (e.key === 'ArrowUp' && atResults.value.length) { e.preventDefault(); atIndex.value = (atIndex.value - 1 + atResults.value.length) % atResults.value.length; return; }
+          if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+            // Menú abierto: Enter/Tab selecciona (o cierra si no hay resultados)
+            e.preventDefault();
+            if (atResults.value.length) pickMention(atResults.value[atIndex.value] || atResults.value[0]);
+            else closeAt();
+            return;
+          }
+          if (e.key === 'Escape') { e.preventDefault(); closeAt(); return; }
+        }
+        if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+          e.preventDefault();
+          send();
+        }
       }
 
       function addReminderFor(contact) {
@@ -723,6 +812,8 @@
         openProductPick, pickProduct, INTENT_LABELS,
         confirmMention, discardMention,
         cardAttach, cardGreeting, cardPreview, openCardPicker, detachCard,
+        atOpen, atResults, atIndex, pickMention, onComposerKeydown, formatPrice,
+        productInfoOpen, productInfoTarget, cardOfTarget, openProductInfo, closeProductInfo, sendFichaFromInfo,
         renderWhatsApp,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
@@ -919,10 +1010,20 @@
                       : 'border border-amber-600 bg-amber-50 px-2.5 py-1.5 text-amber-900'">
                     <template v-if="men.match === 'exacta'">
                       <span class="flex items-center gap-1"><ui-icon name="check-circle" class="h-3.5 w-3.5"></ui-icon> Producto detectado: <strong>{{ productOf(men) ? productOf(men).name : '—' }}</strong></span>
+                      <template v-if="productOf(men)">
+                        <span class="font-mono text-[10px] tabular-nums">{{ formatPrice(productOf(men).price) }}</span>
+                        <span :class="productOf(men).stock === false ? 'font-semibold text-red-700' : 'font-semibold text-emerald-700'">{{ productOf(men).stock === false ? 'AGOTADO' : 'Disponible' }}</span>
+                        <button @click="openProductInfo(productOf(men))" class="font-semibold underline">Ver más</button>
+                      </template>
                       <button @click="openProductPick(men.id)" class="font-semibold underline">Cambiar</button>
                     </template>
                     <template v-else>
                       <span>Posible producto: <strong>{{ productOf(men) ? productOf(men).name : '—' }}</strong> (coincidencia parcial)</span>
+                      <template v-if="productOf(men)">
+                        <span class="font-mono text-[10px] tabular-nums">{{ formatPrice(productOf(men).price) }}</span>
+                        <span :class="productOf(men).stock === false ? 'font-semibold text-red-700' : 'font-semibold text-emerald-700'">{{ productOf(men).stock === false ? 'AGOTADO' : 'Disponible' }}</span>
+                        <button @click="openProductInfo(productOf(men))" class="font-semibold underline">Ver más</button>
+                      </template>
                       <span class="flex gap-2">
                         <button v-if="productOf(men)" @click="confirmMention(men.id, men.productId)" class="font-semibold underline">Sí, ese</button>
                         <button @click="openProductPick(men.id)" class="font-semibold underline">Elegir otro</button>
@@ -968,9 +1069,22 @@
                         class="mb-2 w-full border border-neutral-300 px-2 py-1.5 text-sm outline-none focus:border-neutral-900" />
                       <wa-preview :text="cardPreview" :show-header="false"></wa-preview>
                     </div>
-                    <textarea v-model="draft" rows="2" placeholder="Escribe un mensaje… (Enter para enviar)"
-                      @keydown.enter.exact.prevent="send"
-                      class="w-full resize-none border border-neutral-300 bg-stone-50 px-3 py-2.5 text-sm outline-none transition focus:border-neutral-900 focus:bg-white"></textarea>
+                    <div class="relative">
+                      <textarea v-model="draft" rows="2" placeholder="Escribe un mensaje… (@ para adjuntar un producto · Enter para enviar)"
+                        @keydown="onComposerKeydown"
+                        class="w-full resize-none border border-neutral-300 bg-stone-50 px-3 py-2.5 text-sm outline-none transition focus:border-neutral-900 focus:bg-white"></textarea>
+                      <div v-if="atOpen && atResults.length" class="absolute inset-x-0 bottom-full z-20 mb-1.5 max-h-56 overflow-y-auto border-2 border-neutral-900 bg-white shadow-brutal">
+                        <p class="border-b border-neutral-100 px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400">Adjuntar ficha de producto</p>
+                        <button v-for="(p, i) in atResults" :key="p.id" @mousedown.prevent="pickMention(p)" @mouseenter="atIndex = i"
+                          class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition"
+                          :class="i === atIndex ? 'bg-[var(--accent)] text-white' : 'hover:bg-stone-100'">
+                          <ui-icon name="box" class="h-3.5 w-3.5 shrink-0"></ui-icon>
+                          <span class="min-w-0 flex-1 truncate font-medium">{{ p.name }}</span>
+                          <span class="shrink-0 font-mono text-[10px] tabular-nums opacity-80">{{ formatPrice(p.price) }}</span>
+                          <span v-if="p.stock === false" class="shrink-0 font-mono text-[9px] uppercase text-red-600">agotado</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   <div class="flex shrink-0 flex-col gap-1.5">
                     <button v-if="(workspace.products || []).length" @click="openCardPicker"
@@ -1209,6 +1323,34 @@
               </li>
               <li v-if="productPickResults.length === 0" class="px-3 py-6 text-center text-sm text-neutral-400">Sin productos para la búsqueda.</li>
             </ul>
+          </div>
+        </ui-modal>
+
+        <!-- Modal: información completa del producto detectado (Ver más) -->
+        <ui-modal :open="productInfoOpen" :title="productInfoTarget ? productInfoTarget.name : ''" width="max-w-lg" @close="closeProductInfo">
+          <div v-if="productInfoTarget" class="space-y-4">
+            <div class="flex flex-wrap items-center gap-2">
+              <ui-badge :variant="productInfoTarget.stock === false ? 'danger' : 'success'" dot>{{ productInfoTarget.stock === false ? 'Agotado' : 'Disponible' }}</ui-badge>
+              <ui-badge variant="accent">{{ formatPrice(productInfoTarget.price) }}</ui-badge>
+              <span class="font-mono text-[10px] uppercase tracking-wider text-neutral-400">{{ productInfoTarget.category || productInfoTarget.type }}<span v-if="productInfoTarget.unit"> · {{ productInfoTarget.unit }}</span></span>
+            </div>
+            <p class="text-sm text-neutral-600">{{ productInfoTarget.description || 'Sin descripción.' }}</p>
+            <div class="border border-neutral-200">
+              <p class="border-b border-neutral-200 bg-stone-50 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Cómo se verá en WhatsApp</p>
+              <div class="p-3">
+                <wa-preview :text="cardOfTarget" :show-header="false"></wa-preview>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button @click="sendFichaFromInfo"
+                class="flex-1 border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                Enviar ficha al chat
+              </button>
+              <button @click="selected ? (openTemplatePicker(selected), closeProductInfo()) : null"
+                class="flex-1 border-2 border-neutral-900 bg-white px-3 py-2 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
+                Responder con plantilla
+              </button>
+            </div>
           </div>
         </ui-modal>
       </div>`,

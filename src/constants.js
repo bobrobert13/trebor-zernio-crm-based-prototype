@@ -395,8 +395,8 @@
     { id: 'contacts', label: 'Contactos', icon: 'users' },
     { id: 'channels', label: 'Canales', icon: 'layers' },
     { id: 'broadcasts', label: 'Campañas', icon: 'megaphone' },
-    { id: 'billing', label: 'Billing', icon: 'credit-card' },
-    { id: 'system', label: 'Estados', icon: 'activity' },
+    { id: 'billing', label: 'Billing', icon: 'credit-card', hidden: true },
+    { id: 'system', label: 'Estados', icon: 'activity', hidden: true },
     { id: 'team', label: 'Equipo', icon: 'user' },
     { id: 'settings', label: 'Configuración', icon: 'settings' },
   ];
@@ -473,11 +473,13 @@
   /** Palabras de intención por nicho (la primera coincidencia gana; fallback 'consulta'). */
   const NICHE_INTENTS = {
     restaurante: {
-      pedido: ['pedido', 'delivery', 'domicilio', 'llevar', 'orden', 'encargar'],
+      pedido: ['pedido', 'pedir', 'comprar', 'delivery', 'domicilio', 'llevar', 'orden', 'encargar'],
       reserva: ['reserva', 'mesa', 'reservar'],
       disponibilidad: ['tienen', 'disponible', 'hay', 'tienen?', 'queda'],
+      precio: ['precio', 'cuanto', 'cuesta', 'costo', 'valor'],
     },
     celulares: {
+      pedido: ['pedir', 'comprar'],
       disponibilidad: ['disponibilidad', 'stock', 'hay', 'tienen', 'queda'],
       precio: ['precio', 'cuánto', 'cuanto', 'costo', 'valor', 'cuesta'],
       garantia: ['garantía', 'garantia', 'cambio', 'falla', 'defecto'],
@@ -764,6 +766,7 @@
     star: { paths: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>' },
     key: { paths: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>' },
     zap: { paths: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>' },
+    flame: { paths: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>' },
     book: { paths: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>' },
     box: { paths: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>' },
     tag: { paths: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>' },

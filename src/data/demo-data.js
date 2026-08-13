@@ -72,6 +72,182 @@
   /** Minutos desde ahora para las últimas conversaciones. */
   const RECENT_MINUTES = [4, 18, 45, 90, 240, 1500];
 
+  /**
+   * Guiones por nicho con catálogo: conversaciones que cubren todos los casos
+   * de producto (consulta en ventana, fuera de 24h, agotado con demanda, pico,
+   * interés recurrente, intención fuerte y venta cruzada). Los textos usan
+   * nombres/alias reales del catálogo para que la detección los marque.
+   */
+  const PRODUCT_SCRIPTS = {
+    celulares: [
+      {
+        contact: 'Gabriel Acevedo', platform: 'whatsapp', accountId: 'demo_wa', unread: 1,
+        msgs: [
+          { from: 'in', text: 'Buenas, ¿cuánto cuesta el iPhone 15?', ts: Date.now() - 35 * 60000, status: 'read' },
+          { from: 'out', text: '¡Hola! Te paso el detalle del iPhone 15 en 128 GB.', ts: Date.now() - 33 * 60000, status: 'read' },
+          { from: 'in', text: '¿Tienen en azul? 😊', ts: Date.now() - 30 * 60000, status: 'delivered' },
+        ],
+      },
+      {
+        contact: 'Patricia Villalba', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Cuánto cuesta el iPhone 15?', ts: Date.now() - 96 * 60000, status: 'read' },
+          { from: 'out', text: 'A $899 en 128 GB con garantía de 1 año.', ts: Date.now() - 93 * 60000, status: 'read' },
+        ],
+      },
+      {
+        contact: 'Hugo Castillo', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Hay audífonos inalámbricos disponibles?', ts: Date.now() - 32 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Déjame revisar el stock y te confirmo.', ts: Date.now() - 32 * 3600e3 + 120000, status: 'read' },
+        ],
+      },
+      {
+        contact: 'Luisa Ferrer', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Venden cargador rápido?', ts: Date.now() - 252 * 60000, status: 'read' },
+          { from: 'out', text: 'Sí, de 25W con cable incluido a $15.', ts: Date.now() - 240 * 60000, status: 'read' },
+        ],
+      },
+      {
+        contact: 'Carlos Hernández', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Cuánto cuesta el iPhone 15?', ts: Date.now() - 6.2 * 3600e3, status: 'read' },
+          { from: 'out', text: 'A $899. ¿Te interesa en otro color?', ts: Date.now() - 6 * 3600e3, status: 'read' },
+        ],
+      },
+      {
+        // Interés recurrente + pico de demanda + intención fuerte (mismo contacto)
+        contact: 'Daniela Rojas', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Cuánto cuesta el Samsung Galaxy S24?', ts: Date.now() - 50 * 864e5, status: 'read' },
+          { from: 'out', text: 'A $799 en 256 GB. ¿Te interesa?', ts: Date.now() - 50 * 864e5 + 120000, status: 'read' },
+          { from: 'in', text: '¿Tienen stock del Samsung Galaxy S24?', ts: Date.now() - 20 * 864e5, status: 'read' },
+          { from: 'out', text: 'Sí, tenemos unidades en negro y violeta.', ts: Date.now() - 20 * 864e5 + 120000, status: 'read' },
+          { from: 'in', text: 'Quiero pedir el Samsung Galaxy S24', ts: Date.now() - 4 * 864e5, status: 'read' },
+          { from: 'out', text: '¡Perfecto! Te confirmo el pedido en unos minutos.', ts: Date.now() - 4 * 864e5 + 120000, status: 'read' },
+        ],
+      },
+      {
+        // Coincidencia parcial (alias separado por palabras) → feedback del agente
+        contact: 'Oscar Pino', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: 'Cuánto cuesta el s24 de samsung', ts: Date.now() - 7.2 * 3600e3, status: 'read' },
+          { from: 'out', text: 'El S24 a $799 en 256 GB.', ts: Date.now() - 7 * 3600e3, status: 'read' },
+        ],
+      },
+      {
+        // Venta cruzada: mismo contacto consulta dos productos del catálogo
+        contact: 'Natalia Briceño', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Cuánto cuesta el iPhone 15?', ts: Date.now() - 9.5 * 3600e3, status: 'read' },
+          { from: 'out', text: 'A $899 en 128 GB.', ts: Date.now() - 9.3 * 3600e3, status: 'read' },
+          { from: 'in', text: '¿Venden cargador rápido?', ts: Date.now() - 9 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Sí, de 25W con cable a $15.', ts: Date.now() - 8.8 * 3600e3, status: 'read' },
+        ],
+      },
+      {
+        contact: 'Valentina Ríos', platform: 'instagram', accountId: 'demo_ig', unread: 0,
+        msgs: [
+          { from: 'in', text: 'Vi su perfil en Instagram, ¿cuánto cuesta el iPhone 15? 😍', ts: Date.now() - 50 * 60000, status: 'delivered' },
+          { from: 'out', text: '¡Hola! A $899 en 128 GB.', ts: Date.now() - 48 * 60000, status: 'read' },
+        ],
+      },
+      {
+        // Fuera de la ventana de 24h en Instagram → banner HUMAN_AGENT
+        contact: 'Sofía Marcano', platform: 'instagram', accountId: 'demo_ig', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Hacen liberación de equipos?', ts: Date.now() - 30 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Sí! En 24 horas con garantía definitiva.', ts: Date.now() - 30 * 3600e3 + 120000, status: 'read' },
+        ],
+      },
+    ],
+    restaurante: [
+      {
+        contact: 'María Pérez', platform: 'whatsapp', accountId: 'demo_wa', unread: 1,
+        msgs: [
+          { from: 'in', text: 'Buenas, ¿tienen arroz con pollo hoy?', ts: Date.now() - 25 * 60000, status: 'read' },
+          { from: 'out', text: '¡Claro! Te paso el detalle del arroz con pollo y confirmamos el delivery.', ts: Date.now() - 23 * 60000, status: 'read' },
+          { from: 'in', text: 'Confirmen mi pedido porfa 🙏', ts: Date.now() - 20 * 60000, status: 'delivered' },
+        ],
+      },
+      {
+        contact: 'José Rodríguez', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Cuánto cuesta el arroz con pollo?', ts: Date.now() - 96 * 60000, status: 'read' },
+          { from: 'out', text: 'A $8.50 la porción con ensalada y tajadas.', ts: Date.now() - 93 * 60000, status: 'read' },
+        ],
+      },
+      {
+        // Agotado con demanda (stock false) + fuera de ventana → banner de plantilla
+        contact: 'Ana González', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Hay postre disponible hoy?', ts: Date.now() - 32 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Hoy tenemos torta de chocolate; te confirmo disponibilidad.', ts: Date.now() - 32 * 3600e3 + 120000, status: 'read' },
+        ],
+      },
+      {
+        contact: 'Luis Martínez', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Venden jugo natural?', ts: Date.now() - 252 * 60000, status: 'read' },
+          { from: 'out', text: 'Sí, jugo del día a $3 el vaso. ¿Qué fruta?', ts: Date.now() - 240 * 60000, status: 'read' },
+        ],
+      },
+      {
+        contact: 'Carlos Hernández', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Hacen arroz con pollo para llevar?', ts: Date.now() - 6.2 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Sí! La porción a $8.50. ¿A qué hora la buscas?', ts: Date.now() - 6 * 3600e3, status: 'read' },
+        ],
+      },
+      {
+        // Interés recurrente + pico de demanda + intención fuerte (mismo contacto)
+        contact: 'Daniela Rojas', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Cuánto cuesta la hamburguesa clásica?', ts: Date.now() - 50 * 864e5, status: 'read' },
+          { from: 'out', text: 'La clásica con papas a $6.50.', ts: Date.now() - 50 * 864e5 + 120000, status: 'read' },
+          { from: 'in', text: '¿Tienen hamburguesas para el almuerzo?', ts: Date.now() - 20 * 864e5, status: 'read' },
+          { from: 'out', text: '¡Sí! Las preparamos al momento.', ts: Date.now() - 20 * 864e5 + 120000, status: 'read' },
+          { from: 'in', text: 'Quiero pedir una hamburguesa clásica', ts: Date.now() - 4 * 864e5, status: 'read' },
+          { from: 'out', text: '¡Perfecto! Te confirmo el pedido en unos minutos.', ts: Date.now() - 4 * 864e5 + 120000, status: 'read' },
+        ],
+      },
+      {
+        // Coincidencia parcial (alias separado por palabras) → feedback del agente
+        contact: 'Oscar Pino', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Cuánto cuesta el arroz asado con pollo?', ts: Date.now() - 7.2 * 3600e3, status: 'read' },
+          { from: 'out', text: 'El arroz con pollo a $8.50 la porción.', ts: Date.now() - 7 * 3600e3, status: 'read' },
+        ],
+      },
+      {
+        // Venta cruzada: mismo contacto consulta dos productos del catálogo
+        contact: 'Natalia Briceño', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Cuánto cuesta el arroz con pollo?', ts: Date.now() - 9.5 * 3600e3, status: 'read' },
+          { from: 'out', text: 'A $8.50 la porción.', ts: Date.now() - 9.3 * 3600e3, status: 'read' },
+          { from: 'in', text: '¿Venden jugo natural?', ts: Date.now() - 9 * 3600e3, status: 'read' },
+          { from: 'out', text: 'Sí, el jugo del día a $3.', ts: Date.now() - 8.8 * 3600e3, status: 'read' },
+        ],
+      },
+      {
+        contact: 'Valentina Ríos', platform: 'instagram', accountId: 'demo_ig', unread: 0,
+        msgs: [
+          { from: 'in', text: 'Vi su perfil en Instagram, ¿cuánto cuesta la pizza margarita? 😍', ts: Date.now() - 50 * 60000, status: 'delivered' },
+          { from: 'out', text: '¡Hola! La mediana a $10. ¿La quieres para llevar?', ts: Date.now() - 48 * 60000, status: 'read' },
+        ],
+      },
+      {
+        // Fuera de la ventana de 24h en Instagram → banner HUMAN_AGENT
+        contact: 'Sofía Marcano', platform: 'instagram', accountId: 'demo_ig', unread: 0,
+        msgs: [
+          { from: 'in', text: '¿Hacen delivery a mi zona?', ts: Date.now() - 30 * 3600e3, status: 'read' },
+          { from: 'out', text: '¡Sí! Dime tu zona y te confirmo la cobertura.', ts: Date.now() - 30 * 3600e3 + 120000, status: 'read' },
+        ],
+      },
+    ],
+  };
+
   /** Genera un valor de ejemplo para un campo personalizado por su tipo. */
   function sampleFieldValue(field) {
     switch (field.type) {
@@ -140,9 +316,37 @@
     return contacts;
   }
 
-  /** Construye las conversaciones demo a partir de los primeros contactos. */
-  function buildConversations(contacts) {
-    const conversations = contacts.slice(0, 6).map((contact, i) => {
+  /** Construye las conversaciones demo: guiones de producto por nicho (si hay
+   *  catálogo) o guiones genéricos con los primeros contactos (resto de nichos). */
+  function buildConversations(niche, contacts, products) {
+    const conversations = [];
+    const byName = (n) => contacts.find((c) => c.name === n) || null;
+    const scripts = PRODUCT_SCRIPTS[niche.id];
+
+    if (scripts && products.length) {
+      scripts.forEach((s) => {
+        const contact = byName(s.contact);
+        if (!contact) return;
+        const messages = s.msgs.map((m) => ({ id: uid('msg'), ...m }));
+        const lastTs = messages[messages.length - 1].ts;
+        conversations.push({
+          id: uid('conv'),
+          contactId: contact.id,
+          platform: s.platform || 'whatsapp',
+          status: 'active',
+          unread: s.unread || 0,
+          tags: contact.tags.slice(0, 1),
+          messages,
+          lastTs,
+          accountId: s.accountId || 'demo_wa',
+          ...(s.platform === 'instagram' ? { igProfile: contact.igProfile || null } : {}),
+        });
+      });
+      return conversations;
+    }
+
+    // Fallback genérico: nichos sin catálogo de productos
+    contacts.slice(0, 6).forEach((contact, i) => {
       const [incoming, outgoing] = SCRIPTS[i % SCRIPTS.length];
       const ts = Date.now() - RECENT_MINUTES[i] * 60000;
       const unread = i < 2 ? 1 + i : 0;
@@ -151,15 +355,9 @@
         { id: uid('msg'), from: 'out', text: outgoing, ts: ts - 200000, status: 'read' },
       ];
       if (unread > 0) {
-        messages.push({
-          id: uid('msg'),
-          from: 'in',
-          text: '¿Me puedes confirmar? 😊',
-          ts,
-          status: 'delivered',
-        });
+        messages.push({ id: uid('msg'), from: 'in', text: '¿Me puedes confirmar? 😊', ts, status: 'delivered' });
       }
-      return {
+      conversations.push({
         id: uid('conv'),
         contactId: contact.id,
         platform: 'whatsapp',
@@ -169,7 +367,7 @@
         messages,
         lastTs: ts,
         accountId: 'demo_wa',
-      };
+      });
     });
 
     // Conversaciones de Instagram (canal con mensajería)
@@ -252,73 +450,37 @@
   }
 
   /**
-   * Menciones demo de productos: cubren los 6 casos de oportunidad
-   * (demanda sin venta, agotado con demanda, pico, interés recurrente,
-   * intención fuerte y venta cruzada) con fechas escalonadas 0-50 días,
-   * para cada nicho con catálogo semilla (restaurante y celulares).
+   * Menciones demo de productos: se derivan de los mensajes entrantes de las
+   * conversaciones sembradas (misma detección que en vivo), de modo que los
+   * chips siempre aparecen bajo el mensaje correcto y con fechas alineadas.
+   * Exactas (score >= 0.85) quedan auto-confirmadas; parciales, pendientes.
    */
   function buildProductMentions(niche, contacts, conversations, products) {
-    const byName = (n) => contacts.find((c) => c.name === n) || null;
-    const convOf = (c) => conversations.find((x) => x.contactId === c.id) || null;
-    const daysAgo = (d) => Date.now() - d * 864e5;
-    const mention = (productName, contactName, text, intent, match, days) => {
-      const p = products.find((x) => x.name === productName);
-      const c = byName(contactName);
-      if (!p || !c) return null;
-      return {
-        id: uid('men'),
-        productId: p.id,
-        messageId: null,
-        contactId: c.id,
-        convId: (convOf(c) || {}).id || null,
-        ts: daysAgo(days),
-        intent,
-        match,
-        status: 'confirmada',
-        text,
-      };
-    };
-    const SEED_DEFS = {
-      celulares: [
-        // Intención fuerte + demanda sin venta (iPhone 15, 2 contactos distintos)
-        mention('iPhone 15', 'Marina Delgado', '¿Cuánto cuesta el iPhone 15?', 'precio', 'exacta', 2),
-        mention('iPhone 15', 'Francisco Rangel', '¿Tienen el iPhone 15 en azul?', 'disponibilidad', 'parcial', 5),
-        // Agotado con demanda (Audífonos, stock false)
-        mention('Audífonos inalámbricos', 'Carlos Hernández', '¿Hay audífonos disponibles?', 'disponibilidad', 'exacta', 1),
-        // Interés recurrente + pico de demanda (Samsung S24, mismo contacto, 50d vs 4d)
-        mention('Samsung Galaxy S24', 'Daniela Rojas', '¿Precio del Galaxy S24?', 'precio', 'exacta', 50),
-        mention('Samsung Galaxy S24', 'Daniela Rojas', '¿Tienen stock del S24?', 'disponibilidad', 'exacta', 20),
-        mention('Samsung Galaxy S24', 'Daniela Rojas', 'Quiero pedir un S24', 'pedido', 'exacta', 4),
-        mention('Samsung Galaxy S24', 'Oscar Pino', '¿Cuánto cuesta el S24?', 'precio', 'exacta', 6),
-        // Venta cruzada (mismo contacto: iPhone 15 + Cargador)
-        mention('iPhone 15', 'Natalia Briceño', '¿Precio del iPhone 15?', 'precio', 'exacta', 3),
-        mention('Cargador rápido 25W', 'Natalia Briceño', '¿Venden cargadores rápidos?', 'disponibilidad', 'parcial', 3),
-        // Consultas sueltas (demanda base)
-        mention('Reparación de pantalla', 'Valentina Ríos', '¿Reparan pantallas rotas?', 'garantia', 'exacta', 8),
-        mention('Plan de datos 10GB', 'Sofía Marcano', '¿Cuánto cuesta el plan de datos?', 'precio', 'exacta', 12),
-      ],
-      restaurante: [
-        // Intención fuerte + demanda sin venta (Arroz con pollo, 2 contactos)
-        mention('Arroz con pollo', 'Marina Delgado', '¿Cuánto cuesta el arroz con pollo?', 'precio', 'exacta', 2),
-        mention('Arroz con pollo', 'Francisco Rangel', '¿Tienen arroz con pollo para delivery?', 'pedido', 'parcial', 5),
-        // Agotado con demanda (Postre del día, stock false)
-        mention('Postre del día', 'Carlos Hernández', '¿Hay postre disponible hoy?', 'disponibilidad', 'parcial', 1),
-        // Interés recurrente + pico de demanda (Hamburguesa clásica, mismo contacto)
-        mention('Hamburguesa clásica', 'Daniela Rojas', '¿Precio de la hamburguesa?', 'precio', 'exacta', 50),
-        mention('Hamburguesa clásica', 'Daniela Rojas', '¿Tienen hamburguesas?', 'disponibilidad', 'exacta', 20),
-        mention('Hamburguesa clásica', 'Daniela Rojas', 'Quiero pedir una hamburguesa', 'pedido', 'exacta', 4),
-        mention('Hamburguesa clásica', 'Oscar Pino', '¿Cuánto cuesta la burger?', 'precio', 'parcial', 6),
-        // Venta cruzada (mismo contacto: Arroz con pollo + Bebida natural)
-        mention('Arroz con pollo', 'Natalia Briceño', '¿Precio del arroz con pollo?', 'precio', 'exacta', 3),
-        mention('Bebida natural', 'Natalia Briceño', '¿Venden jugo natural?', 'disponibilidad', 'exacta', 3),
-        // Consultas sueltas (demanda base)
-        mention('Pizza margarita', 'Valentina Ríos', '¿Cuánto cuesta la pizza?', 'precio', 'exacta', 8),
-        mention('Delivery express', 'Sofía Marcano', '¿Hacen delivery?', 'pedido', 'exacta', 12),
-      ],
-    };
-    // Solo nichos con catálogo semilla
     if (!products.length) return [];
-    return (SEED_DEFS[niche.id] || []).filter(Boolean);
+    const out = [];
+    conversations.forEach((conv) => {
+      const contact = contacts.find((c) => c.id === conv.contactId);
+      if (!contact) return;
+      (conv.messages || []).forEach((msg) => {
+        if (msg.from !== 'in' || !msg.text) return;
+        const matches = ZernioCrm.matchProducts(msg.text, products, niche.id);
+        matches.forEach((m) => {
+          out.push({
+            id: uid('men'),
+            productId: m.product.id,
+            messageId: msg.id,
+            contactId: contact.id,
+            convId: conv.id,
+            ts: msg.ts || Date.now(),
+            intent: m.intent,
+            match: m.score >= 0.85 ? 'exacta' : 'parcial',
+            status: m.score >= 0.85 ? 'confirmada' : 'pendiente',
+            text: String(msg.text).slice(0, 200),
+          });
+        });
+      });
+    });
+    return out;
   }
 
   /**
@@ -329,8 +491,8 @@
   function buildWorkspace(params) {
     const niche = getNiche(params.nicheId);
     const contacts = buildContacts(niche);
-    const conversations = buildConversations(contacts);
     const products = ZernioCrm.getNicheCatalog(niche.id);
+    const conversations = buildConversations(niche, contacts, products);
     return {
       id: uid('ws'),
       name: params.name,

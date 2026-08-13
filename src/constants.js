@@ -395,7 +395,7 @@
   };
 
   const MODULES = [
-    { id: 'dashboard', label: 'Resumen', icon: 'home' },
+    { id: 'dashboard', label: 'Resumen', icon: 'home', hidden: true },
     { id: 'analytics', label: 'Analítica', icon: 'chart' },
     { id: 'inbox', label: 'Bandeja', icon: 'message' },
     { id: 'leads', label: 'Leads', icon: 'tag' },

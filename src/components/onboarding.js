@@ -211,7 +211,14 @@
           store.currentUser = ws.users.find((u) => u.role === 'owner');
           applyAccent(ws);
           toast(`¡${ws.name} está listo!`, 'success');
-          navigate('dashboard');
+          // Tras la configuración: a Analítica si ya hay canal de mensajería;
+          // si no, a Canales con el aviso de la importancia de conectar uno.
+          if (ws.whatsapp && ws.whatsapp.connected) {
+            navigate('analytics');
+          } else {
+            navigate('channels');
+            toast('Conecta un canal para que tus clientes puedan escribirte', 'info', 7000);
+          }
         }, 1400);
       }
 

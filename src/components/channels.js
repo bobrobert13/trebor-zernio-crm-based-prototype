@@ -42,6 +42,15 @@
 
       const channels = Vue.computed(() => workspace.value.channels || []);
 
+      /** ¿No hay canal de mensajería conectado? (WhatsApp es el canal primario). */
+      const noChannel = Vue.computed(() => {
+        const ws = workspace.value;
+        if (!ws) return false;
+        const wa = ws.whatsapp && ws.whatsapp.connected;
+        const waChannel = channels.value.some((c) => c.platform === 'whatsapp' && c.connected);
+        return !wa && !waChannel;
+      });
+
       /** @param {string} platform — id de plataforma. @returns {object|null} */
       function channelOf(platform) {
         return channels.value.find((c) => c.platform === platform) || null;
@@ -145,6 +154,7 @@
       return {
         connectPlatform, whatsappReplace, healthMap, busyMap, workspace, isLive, channels,
         PLATFORMS, channelOf, onConnected, openConnect, checkHealth, disconnect,
+        noChannel,
         canEdit,
       };
     },
@@ -162,6 +172,25 @@
           </div>
           <ui-badge variant="accent">{{ channels.filter(c => c.connected).length }}/{{ PLATFORMS.length }} conectados</ui-badge>
         </header>
+
+        <!-- Banner: sin canal conectado (importancia de conectar para recibir clientes) -->
+        <div v-if="noChannel" class="flex flex-wrap items-center gap-4 border-2 border-[var(--accent)] bg-[var(--accent-soft)] p-5">
+          <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-brutal-sm">
+            <ui-icon name="whatsapp" class="h-7 w-7"></ui-icon>
+          </span>
+          <div class="min-w-0 flex-1">
+            <p class="text-base font-bold">Conecta un canal para empezar a atender a tus clientes</p>
+            <p class="mt-1 max-w-2xl text-sm leading-relaxed text-neutral-600">
+              Sin un canal conectado, tus clientes no pueden escribirte, hacer pedidos ni recibir respuestas.
+              Conecta tu WhatsApp de negocio y gestiona toda la conversación desde un solo lugar: bandeja,
+              leads, catálogo y métricas.
+            </p>
+          </div>
+          <button @click="openConnect({ id: 'whatsapp' })"
+            class="flex items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+            <ui-icon name="plus" class="h-4 w-4"></ui-icon> Conectar WhatsApp ahora
+          </button>
+        </div>
 
         <!-- Tarjetas por plataforma -->
         <div class="grid gap-5 lg:grid-cols-3">

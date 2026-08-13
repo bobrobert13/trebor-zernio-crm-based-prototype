@@ -132,7 +132,7 @@
         // Coincidencia parcial (alias separado por palabras) → feedback del agente
         contact: 'Oscar Pino', platform: 'whatsapp', accountId: 'demo_wa', unread: 0,
         msgs: [
-          { from: 'in', text: '¿Cuánto cuesta el s24 de samsung?', ts: Date.now() - 7.2 * 3600e3, status: 'read' },
+          { from: 'in', text: 'Cuánto cuesta el s24 de samsung', ts: Date.now() - 7.2 * 3600e3, status: 'read' },
           { from: 'out', text: 'El S24 a $799 en 256 GB.', ts: Date.now() - 7 * 3600e3, status: 'read' },
         ],
       },

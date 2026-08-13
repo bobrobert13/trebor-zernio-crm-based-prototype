@@ -176,6 +176,10 @@
           if (!form.inviteVendor) ws.users = ws.users.filter((u) => u.role !== 'vendedor');
           // Logo del negocio subido en el paso de Marca
           if (form.logo) ws.logo = form.logo;
+          // Migración del workspace recién creado: completa etiquetas, campos,
+          // historial, catálogo y preferencias del panel para que el dashboard
+          // cargue completo a la primera (sin depender de una recarga).
+          ZernioCrm.migrateWorkspace(ws);
           // "Configurar después": workspace sin canal conectado (conecta luego desde Canales)
           if (form.skipConnect && !liveResult.value) {
             ws.zernio = null;

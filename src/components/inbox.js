@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, getNiche, timeAgo, formatTime, formatDate, uid, canEdit, PLATFORMS, getPlatform, recordProductMentions, confirmMention, discardMention, INTENT_LABELS, buildProductCard, PRODUCT_CARD_DEFAULTS, renderWhatsApp } = ZernioCrm;
+  const { store, toast, getNiche, timeAgo, formatTime, formatDate, uid, canEdit, PLATFORMS, getPlatform, recordProductMentions, confirmMention, discardMention, INTENT_LABELS, buildProductCard, PRODUCT_CARD_DEFAULTS, renderWhatsApp, formatPrice } = ZernioCrm;
 
   const components = {};
 
@@ -604,6 +604,61 @@
         cardGreeting.value = '';
       }
 
+      // ── Autocompletado '@' de productos en el composer ────────────────────
+      const atOpen = Vue.ref(false);
+      const atIndex = Vue.ref(0);
+      const atQuery = Vue.ref('');
+
+      /** Resultados del '@': productos activos filtrados por el texto tecleado. */
+      const atResults = Vue.computed(() => {
+        const qq = atQuery.value.trim().toLowerCase();
+        return (workspace.value.products || [])
+          .filter((p) => p.active !== false && (!qq || `${p.name} ${(p.aliases || []).join(' ')}`.toLowerCase().includes(qq)))
+          .slice(0, 6);
+      });
+
+      /** Detecta el token '@query' al final del borrador y abre el menú. */
+      Vue.watch(draft, (val) => {
+        const m = /(^|\s)@(\S*)$/.exec(val);
+        if (m) {
+          atQuery.value = m[2];
+          atIndex.value = 0;
+          atOpen.value = true;
+        } else {
+          closeAt();
+        }
+      });
+
+      function closeAt() {
+        atOpen.value = false;
+        atQuery.value = '';
+      }
+
+      /** Selecciona un producto del menú '@': quita el token y adjunta la ficha. */
+      function pickMention(product) {
+        if (!product) return;
+        const idx = draft.value.lastIndexOf('@');
+        const before = idx >= 0 ? draft.value.slice(0, idx).replace(/\s+$/, '') : draft.value;
+        draft.value = before;
+        closeAt();
+        attachCard(product);
+        toast('Ficha adjuntada: ' + product.name, 'success');
+      }
+
+      /** Teclado del composer: navega el menú '@' o envía con Enter. */
+      function onComposerKeydown(e) {
+        if (atOpen.value && atResults.value.length) {
+          if (e.key === 'ArrowDown') { e.preventDefault(); atIndex.value = (atIndex.value + 1) % atResults.value.length; return; }
+          if (e.key === 'ArrowUp') { e.preventDefault(); atIndex.value = (atIndex.value - 1 + atResults.value.length) % atResults.value.length; return; }
+          if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(atResults.value[atIndex.value] || atResults.value[0]); return; }
+          if (e.key === 'Escape') { e.preventDefault(); closeAt(); return; }
+        }
+        if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+          e.preventDefault();
+          send();
+        }
+      }
+
       function addReminderFor(contact) {
         const text = remInput.text.trim();
         if (!text || !contact) return;
@@ -723,6 +778,7 @@
         openProductPick, pickProduct, INTENT_LABELS,
         confirmMention, discardMention,
         cardAttach, cardGreeting, cardPreview, openCardPicker, detachCard,
+        atOpen, atResults, atIndex, pickMention, onComposerKeydown, formatPrice,
         renderWhatsApp,
         selectConversation, backToList, lastMessage, send, sync, startConversation, timeAgo, formatTime,
       };
@@ -968,9 +1024,22 @@
                         class="mb-2 w-full border border-neutral-300 px-2 py-1.5 text-sm outline-none focus:border-neutral-900" />
                       <wa-preview :text="cardPreview" :show-header="false"></wa-preview>
                     </div>
-                    <textarea v-model="draft" rows="2" placeholder="Escribe un mensaje… (Enter para enviar)"
-                      @keydown.enter.exact.prevent="send"
-                      class="w-full resize-none border border-neutral-300 bg-stone-50 px-3 py-2.5 text-sm outline-none transition focus:border-neutral-900 focus:bg-white"></textarea>
+                    <div class="relative">
+                      <textarea v-model="draft" rows="2" placeholder="Escribe un mensaje… (@ para adjuntar un producto · Enter para enviar)"
+                        @keydown="onComposerKeydown"
+                        class="w-full resize-none border border-neutral-300 bg-stone-50 px-3 py-2.5 text-sm outline-none transition focus:border-neutral-900 focus:bg-white"></textarea>
+                      <div v-if="atOpen && atResults.length" class="absolute inset-x-0 bottom-full z-20 mb-1.5 max-h-56 overflow-y-auto border-2 border-neutral-900 bg-white shadow-brutal">
+                        <p class="border-b border-neutral-100 px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400">Adjuntar ficha de producto</p>
+                        <button v-for="(p, i) in atResults" :key="p.id" @mousedown.prevent="pickMention(p)" @mouseenter="atIndex = i"
+                          class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition"
+                          :class="i === atIndex ? 'bg-[var(--accent)] text-white' : 'hover:bg-stone-100'">
+                          <ui-icon name="box" class="h-3.5 w-3.5 shrink-0"></ui-icon>
+                          <span class="min-w-0 flex-1 truncate font-medium">{{ p.name }}</span>
+                          <span class="shrink-0 font-mono text-[10px] tabular-nums opacity-80">{{ formatPrice(p.price) }}</span>
+                          <span v-if="p.stock === false" class="shrink-0 font-mono text-[9px] uppercase text-red-600">agotado</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   <div class="flex shrink-0 flex-col gap-1.5">
                     <button v-if="(workspace.products || []).length" @click="openCardPicker"

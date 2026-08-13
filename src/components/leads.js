@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, timeAgo, getPlatform, canEdit, getNiche, remindersOf, addReminder, toggleReminder, removeReminder } = ZernioCrm;
+  const { store, toast, timeAgo, getPlatform, canEdit, getNiche, remindersOf, addReminder, toggleReminder, removeReminder, formatPrice, INTENT_LABELS } = ZernioCrm;
 
   const components = {};
 
@@ -266,25 +266,52 @@
         return ((contact && contact.leadHistory) || []).slice().reverse();
       }
 
-      /** Score de intención de compra: menciones de productos del contacto. */
+      /** Score de interés comercial: factores de negocio sobre las menciones
+       *  de producto del contacto (compra, frecuencia, alto valor, agotado).
+       *  Nivel: alto (>=3 factores, o compra + alto valor), medio (2), bajo (1). */
       const productMentions = Vue.computed(() => (workspace.value && workspace.value.productMentions) || []);
 
-      function intentScore(contact) {
-        if (!contact) return { hot: false, products: [] };
+      function interestScore(contact) {
+        const empty = { nivel: null, label: '', products: [], value: 0, factors: [], perProduct: [] };
+        if (!contact) return empty;
         // Ignora menciones de productos eliminados del catálogo
         const catalog = workspace.value.products || [];
         const ms = productMentions.value.filter(
           (m) => m.contactId === contact.id && catalog.some((p) => p.id === m.productId)
         );
-        if (!ms.length) return { hot: false, products: [] };
-        const strong = ms.some((m) => ['pedido', 'precio', 'reserva'].includes(m.intent));
-        const names = ms
-          .map((m) => {
-            const p = catalog.find((x) => x.id === m.productId);
-            return p ? p.name : null;
-          })
-          .filter(Boolean);
-        return { hot: ms.length >= 2 || strong, products: [...new Set(names)] };
+        if (!ms.length) return empty;
+        // Productos únicos con su última mención
+        const byProduct = {};
+        ms.forEach((m) => {
+          const p = catalog.find((x) => x.id === m.productId);
+          if (!p) return;
+          const cur = byProduct[p.id] || { product: p, count: 0, last: m };
+          cur.count += 1;
+          if (m.ts >= cur.last.ts) cur.last = m;
+          byProduct[p.id] = cur;
+        });
+        const perProduct = Object.values(byProduct);
+        const value = perProduct.reduce((acc, x) => acc + (Number(x.product.price) > 0 ? Number(x.product.price) : 0), 0);
+        // Umbral de "alto valor": percentil 75 de precios del catálogo (piso $50 si no hay precios)
+        const priced = catalog.map((p) => Number(p.price)).filter((n) => n > 0).sort((a, b) => a - b);
+        const p75 = priced.length ? priced[Math.floor(0.75 * (priced.length - 1))] : 0;
+        const threshold = p75 > 0 ? p75 : 50;
+        const factors = [];
+        if (ms.some((m) => ['pedido', 'precio', 'reserva'].includes(m.intent))) factors.push({ id: 'compra', label: 'Intención de compra' });
+        if (ms.length >= 2) factors.push({ id: 'frecuencia', label: 'Interés frecuente' });
+        if (value >= threshold) factors.push({ id: 'alto_valor', label: 'Alto valor' });
+        if (perProduct.some((x) => x.product.stock === false)) factors.push({ id: 'agotado', label: 'Agotado con demanda' });
+        let nivel = 'bajo';
+        if (factors.length >= 3 || (factors.some((f) => f.id === 'compra') && factors.some((f) => f.id === 'alto_valor'))) nivel = 'alto';
+        else if (factors.length === 2) nivel = 'medio';
+        const label = nivel === 'alto' ? 'Interés alto' : nivel === 'medio' ? 'Interés medio' : 'Interés';
+        return {
+          nivel, label,
+          factors,
+          products: perProduct.map((x) => x.product.name),
+          value,
+          perProduct: perProduct.map((x) => ({ product: x.product, count: x.count, intent: x.last.intent, lastTs: x.last.ts })),
+        };
       }
 
       /** Etiqueta legible de una entrada del historial (cierres y reaperturas). */
@@ -305,7 +332,7 @@
         remInput, remPanelOpen, pendingReminders, hasOverdue, addReminderFor, upcomingReminders,
         remindersOf, toggleReminder, removeReminder,
         historyOf, stageLabel, closeLabel, CLOSE_REASONS,
-        intentScore,
+        interestScore,
         closeProductQuery, closeProductResults, toggleCloseProduct, productName,
         getPlatform, timeAgo, canEdit, ZernioCrm,
       };
@@ -378,8 +405,10 @@
                 </div>
                 <p class="mt-0.5 truncate font-mono text-[10px] text-neutral-400">{{ c.phone || 'sin teléfono' }}</p>
                 <div class="mt-2 flex flex-wrap items-center gap-1">
-                  <span v-if="intentScore(c).hot" class="relative" :title="'Productos de interés: ' + intentScore(c).products.join(', ')">
-                    <ui-badge variant="danger" dot>Caliente</ui-badge>
+                  <span v-if="interestScore(c).nivel" class="relative" :title="'Productos de interés: ' + interestScore(c).products.join(', ')">
+                    <ui-badge :variant="interestScore(c).nivel === 'alto' ? 'danger' : interestScore(c).nivel === 'medio' ? 'warn' : 'neutral'" dot>
+                      <span class="flex items-center gap-1"><ui-icon name="flame" class="h-3 w-3"></ui-icon>{{ interestScore(c).label }}</span>
+                    </ui-badge>
                   </span>
                   <ui-badge v-if="metricsOf(c).vip" variant="warn" dot>VIP</ui-badge>
                   <ui-badge v-if="metricsOf(c).frecuente" variant="success" dot>Frecuente</ui-badge>
@@ -390,6 +419,9 @@
                     {{ pendingReminders(c).length }} pend.
                   </span>
                 </div>
+                <p v-if="interestScore(c).nivel" class="mt-1.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                  {{ interestScore(c).products.length }} producto(s) · {{ formatPrice(interestScore(c).value) }} estimado
+                </p>
                 <p v-if="lastMessageOf(c)" class="mt-2 truncate border-t border-neutral-100 pt-2 text-xs text-neutral-500">
                   {{ lastMessageOf(c).text }}
                 </p>
@@ -605,6 +637,27 @@
               <div class="flex flex-wrap gap-1">
                 <ui-badge v-for="t in detailContact.tags" :key="t" variant="neutral">{{ t }}</ui-badge>
                 <span v-if="!detailContact.tags || detailContact.tags.length === 0" class="text-xs text-neutral-400">Sin etiquetas</span>
+              </div>
+            </div>
+
+            <!-- Interés comercial (score por factores de negocio) -->
+            <div v-if="interestScore(detailContact).nivel">
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Interés comercial</p>
+              <div class="mb-2 flex items-center gap-2 border border-neutral-200 bg-stone-50 px-3 py-2">
+                <ui-icon name="flame" class="h-4 w-4" :class="interestScore(detailContact).nivel === 'alto' ? 'text-red-700' : interestScore(detailContact).nivel === 'medio' ? 'text-amber-600' : 'text-neutral-500'"></ui-icon>
+                <span class="text-sm font-semibold">{{ interestScore(detailContact).label }}</span>
+                <span class="ml-auto font-mono text-[11px] font-bold tabular-nums text-neutral-600">{{ formatPrice(interestScore(detailContact).value) }} estimado</span>
+              </div>
+              <ul v-if="interestScore(detailContact).perProduct.length" class="mb-2 space-y-1.5">
+                <li v-for="x in interestScore(detailContact).perProduct" :key="x.product.id" class="flex items-center gap-2 border border-neutral-200 px-2.5 py-1.5 text-xs">
+                  <span class="min-w-0 flex-1 truncate font-medium">{{ x.product.name }}</span>
+                  <span class="font-mono text-[10px] tabular-nums">{{ formatPrice(x.product.price) }}</span>
+                  <ui-badge :variant="x.product.stock === false ? 'danger' : 'success'" dot>{{ x.product.stock === false ? 'Agotado' : 'Disponible' }}</ui-badge>
+                  <span class="font-mono text-[9px] uppercase tracking-wider text-neutral-400">{{ INTENT_LABELS[x.intent] || x.intent }}</span>
+                </li>
+              </ul>
+              <div v-if="interestScore(detailContact).factors.length" class="flex flex-wrap gap-1">
+                <span v-for="f in interestScore(detailContact).factors" :key="f.id" class="border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">{{ f.label }}</span>
               </div>
             </div>
 

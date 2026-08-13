@@ -252,6 +252,55 @@
   }
 
   /**
+   * Menciones demo de productos: cubren los 6 casos de oportunidad
+   * (demanda sin venta, agotado con demanda, pico, interés recurrente,
+   * intención fuerte y venta cruzada) con fechas escalonadas 0-60 días.
+   */
+  function buildProductMentions(niche, contacts, conversations, products) {
+    const byName = (n) => contacts.find((c) => c.name === n) || null;
+    const convOf = (c) => conversations.find((x) => x.contactId === c.id) || null;
+    const daysAgo = (d) => Date.now() - d * 864e5;
+    const mention = (productName, contactName, text, intent, match, days, conv) => {
+      const p = products.find((x) => x.name === productName);
+      const c = byName(contactName);
+      if (!p || !c) return null;
+      return {
+        id: uid('men'),
+        productId: p.id,
+        messageId: null,
+        contactId: c.id,
+        convId: (conv || convOf(c) || {}).id || null,
+        ts: daysAgo(days),
+        intent,
+        match,
+        status: 'confirmada',
+        text,
+      };
+    };
+    const seeds = [
+      // Intención fuerte + demanda sin venta (iPhone 15, 2 contactos distintos)
+      mention('iPhone 15', 'Marina Delgado', '¿Cuánto cuesta el iPhone 15?', 'precio', 'exacta', 2),
+      mention('iPhone 15', 'Francisco Rangel', '¿Tienen el iPhone 15 en azul?', 'disponibilidad', 'parcial', 5),
+      // Agotado con demanda (Audífonos, stock false)
+      mention('Audífonos inalámbricos', 'Carlos Hernández', '¿Hay audífonos disponibles?', 'disponibilidad', 'exacta', 1),
+      // Interés recurrente + pico de demanda (Samsung S24, mismo contacto, 60d vs 4d)
+      mention('Samsung Galaxy S24', 'Daniela Rojas', '¿Precio del Galaxy S24?', 'precio', 'exacta', 60),
+      mention('Samsung Galaxy S24', 'Daniela Rojas', '¿Tienen stock del S24?', 'disponibilidad', 'exacta', 20),
+      mention('Samsung Galaxy S24', 'Daniela Rojas', 'Quiero pedir un S24', 'pedido', 'exacta', 4),
+      mention('Samsung Galaxy S24', 'Oscar Pino', '¿Cuánto cuesta el S24?', 'precio', 'exacta', 6),
+      // Venta cruzada (mismo contacto: iPhone 15 + Cargador)
+      mention('iPhone 15', 'Natalia Briceño', '¿Precio del iPhone 15?', 'precio', 'exacta', 3),
+      mention('Cargador rápido 25W', 'Natalia Briceño', '¿Venden cargadores rápidos?', 'disponibilidad', 'parcial', 3),
+      // Consultas sueltas (demanda base)
+      mention('Reparación de pantalla', 'Valentina Ríos', '¿Reparan pantallas rotas?', 'garantia', 'exacta', 8),
+      mention('Plan de datos 10GB', 'Sofía Marcano', '¿Cuánto cuesta el plan de datos?', 'precio', 'exacta', 12),
+    ];
+    // Solo nichos con catálogo semilla (restaurante/celulares)
+    if (!products.length || !['restaurante', 'celulares'].includes(niche.id)) return [];
+    return seeds.filter(Boolean);
+  }
+
+  /**
    * Construye un workspace demo completo a partir de la config del onboarding.
    * @param {object} params — { name, slogan, accentId, nicheId, focus, referrer, referrerDetail, ownerName, ownerEmail }.
    * @returns {object} Workspace con datos sembrados.
@@ -260,6 +309,7 @@
     const niche = getNiche(params.nicheId);
     const contacts = buildContacts(niche);
     const conversations = buildConversations(contacts);
+    const products = ZernioCrm.getNicheCatalog(niche.id);
     return {
       id: uid('ws'),
       name: params.name,
@@ -281,6 +331,8 @@
       users: buildUsers(params.ownerName, params.ownerEmail),
       contacts,
       conversations,
+      products,
+      productMentions: buildProductMentions(niche, contacts, conversations, products),
       templates: buildTemplates(niche),
       broadcasts: buildBroadcasts(niche),
       activity: buildActivity([contacts[0].name, contacts[1].name]),

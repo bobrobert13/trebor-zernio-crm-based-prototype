@@ -148,9 +148,10 @@
         if (agotado.length) tips.push({ icon: 'alert', text: `Preguntó por ${agotado[agotado.length - 1].name} (agotado) — ofrece una alternativa.` });
         // 4. Lead sin etapa
         if (contact && !contact.leadTag) tips.push({ icon: 'tag', text: 'Asigna una etapa a este lead para no perder el seguimiento.' });
-        // 5. Clientes especiales
+        // 5. Clientes especiales (frecuencia a nivel de contacto, no del hilo)
         if (contact && (contact.tags || []).includes('vip')) tips.push({ icon: 'star', text: 'Cliente VIP — trato preferente y prioridad de respuesta.' });
-        if (conv.messages && conv.messages.length >= 12) tips.push({ icon: 'users', text: 'Cliente frecuente — aprovecha para ofrecer fidelización o combos.' });
+        const totalMsgs = contactConvs.value.reduce((n, c) => n + (c.messages || []).length, 0);
+        if (contactConvs.value.length > 1 || totalMsgs >= 12) tips.push({ icon: 'users', text: 'Cliente frecuente — aprovecha para ofrecer fidelización o combos.' });
         // 6. Primer contacto sin respuesta del equipo
         if (!lastOut && (conv.messages || []).some((m) => m.from === 'in')) tips.push({ icon: 'message', text: 'Primer contacto: personaliza el saludo con su nombre.' });
         return tips;
@@ -901,7 +902,10 @@
         const contact = selectedContact.value;
         if (!conv) return null;
         const interest = aiInterest(contact);
-        const textos = (conv.messages || []).map((m) => m.text || '');
+        // Solo los mensajes del CLIENTE generan señales (los del equipo no son evidencia)
+        const textos = (conv.messages || [])
+          .filter((m) => m.from === 'in')
+          .map((m) => m.text || '');
         const hayTexto = (re) => textos.some((t) => re.test(t));
         const senales = [];
         if (interest.productos.some((x) => x.intent === 'pedido')) senales.push('El cliente quiere pedir/comprar (intención de pedido).');
@@ -927,7 +931,7 @@
         const p1 = compra[0] && compra[0].product;
         if (p1) respuestas.push({ label: 'Responder con la ficha', text: `Claro, te paso la ficha de ${p1.name} con todos los detalles.`, product: p1 });
         if (agotados.length) respuestas.push({ label: 'Ofrecer alternativa', text: `El ${agotados[0].product.name} está agotado por ahora. ¿Te interesa una alternativa similar del catálogo?` });
-        respuestas.push({ label: 'Pedir confirmación de pago', text: '¿Ya pudiste hacer el pago? Con la referencia despachamos hoy mismo. 😊' });
+        if (hayTexto(/pago|pagar|banco|transferencia|referencia/i)) respuestas.push({ label: 'Pedir confirmación de pago', text: '¿Ya pudiste hacer el pago? Con la referencia despachamos hoy mismo. 😊' });
         respuestas.push({ label: 'Seguimiento', text: '¡Hola! ¿Quedó alguna duda sobre tu pedido? Estamos atentos para ayudarte.' });
 
         return { interest, senales, plan, respuestas };

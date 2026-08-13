@@ -1100,6 +1100,9 @@
                     <button v-if="productOf(men)" @click="attachCard(productOf(men)); contactDrawerOpen = false" class="shrink-0 font-semibold text-[var(--accent)]">
                       Enviar ficha
                     </button>
+                    <button v-if="productOf(men)" @click="contactDrawerOpen = false; openTemplatePicker(selected)" class="shrink-0 font-semibold text-[var(--accent)]">
+                      Responder con plantilla
+                    </button>
                   </li>
                 </ul>
                 <p v-else class="text-xs text-neutral-400">Sin productos de interés registrados.</p>

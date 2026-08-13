@@ -337,6 +337,151 @@
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
 
+      // ── Demanda y ventas ───────────────────────────────────────────────────
+      const demandRange = Vue.ref(30);
+      const demandPeriods = [
+        { id: 7, label: '7 días' },
+        { id: 30, label: '30 días' },
+        { id: 90, label: '90 días' },
+      ];
+
+      function mentionsInRange(days) {
+        const from = Date.now() - days * 864e5;
+        return mentions.value.filter((m) => m.ts >= from);
+      }
+
+      /** Ventas por producto: cierres ganados con products en el periodo. */
+      function salesInRange(days) {
+        const from = Date.now() - days * 864e5;
+        const sold = {};
+        (workspace.value.contacts || []).forEach((c) => {
+          const cl = c.leadClosed;
+          if (cl && cl.outcome === 'ganada' && cl.at >= from && Array.isArray(cl.products)) {
+            cl.products.forEach((pid) => {
+              sold[pid] = (sold[pid] || 0) + 1;
+            });
+          }
+        });
+        return sold;
+      }
+
+      /** Ranking demanda/ventas por producto del periodo. */
+      const demand = Vue.computed(() => {
+        const range = demandRange.value;
+        const cons = {};
+        mentionsInRange(range).forEach((m) => {
+          cons[m.productId] = (cons[m.productId] || 0) + 1;
+        });
+        const sold = salesInRange(range);
+        const rows = products.value.map((p) => ({
+          product: p,
+          consultas: cons[p.id] || 0,
+          vendidos: sold[p.id] || 0,
+          conversion: cons[p.id] ? Math.round(((sold[p.id] || 0) / cons[p.id]) * 100) : 0,
+        }));
+        rows.sort((a, b) => b.consultas - a.consultas);
+        return rows.filter((r) => r.consultas > 0 || r.vendidos > 0);
+      });
+
+      const demandTotal = Vue.computed(() => demand.value.reduce((acc, r) => acc + r.consultas, 0));
+      const bestSellers = Vue.computed(() => demand.value.filter((r) => r.vendidos > 0).sort((a, b) => b.vendidos - a.vendidos));
+      const topDemand = Vue.computed(() => demand.value[0] || null);
+
+      function exportDemandCsv() {
+        const lines = ['producto,tipo,consultas,vendidos,conversion'];
+        demand.value.forEach((r) => {
+          lines.push(`"${r.product.name}",${r.product.type},${r.consultas},${r.vendidos},${r.conversion}`);
+        });
+        downloadText('demanda-productos.csv', lines.join('\n'), 'text/csv');
+      }
+
+      // ── Oportunidades (6 casos) ────────────────────────────────────────────
+      const OP_CASES = {
+        demanda_sin_venta: { label: 'Demanda sin venta', icon: 'chart' },
+        agotado_con_demanda: { label: 'Agotado con demanda', icon: 'alert' },
+        pico_reciente: { label: 'Pico de demanda', icon: 'activity' },
+        interes_recurrente: { label: 'Interés recurrente', icon: 'clock' },
+        intencion_fuerte: { label: 'Intención fuerte', icon: 'zap' },
+        venta_cruzada: { label: 'Venta cruzada', icon: 'link' },
+      };
+
+      const opportunities = Vue.computed(() => {
+        const out = [];
+        const range = demandRange.value;
+        const now = Date.now();
+        const from = now - range * 864e5;
+        const cons = mentionsInRange(range);
+        const sold = salesInRange(range);
+        const prevFrom = from - range * 864e5;
+        const prevCons = mentions.value.filter((m) => m.ts >= prevFrom && m.ts < from);
+        const contacts = workspace.value.contacts || [];
+
+        products.value.forEach((p) => {
+          const pc = cons.filter((m) => m.productId === p.id);
+          if (!pc.length) return;
+          const soldCount = sold[p.id] || 0;
+          const lastM = pc.reduce((a, b) => (b.ts > a.ts ? b : a), pc[0]);
+          const base = {
+            product: p,
+            count: pc.length,
+            lastTs: lastM.ts,
+            convId: lastM.convId,
+            contact: contacts.find((c) => c.id === lastM.contactId) || null,
+          };
+          if (pc.length >= 2 && !soldCount) out.push({ ...base, caseId: 'demanda_sin_venta' });
+          if (p.stock === false) out.push({ ...base, caseId: 'agotado_con_demanda' });
+          const prevCount = prevCons.filter((m) => m.productId === p.id).length;
+          if (prevCount > 0 && pc.length >= prevCount * 2) out.push({ ...base, caseId: 'pico_reciente', prev: prevCount });
+          const byContact = {};
+          pc.forEach((m) => {
+            byContact[m.contactId] = (byContact[m.contactId] || 0) + 1;
+          });
+          const rec = Object.entries(byContact).find(([, n]) => n >= 2);
+          if (rec) {
+            out.push({ ...base, caseId: 'interes_recurrente', contact: contacts.find((c) => c.id === rec[0]) || null });
+          }
+          if (!soldCount && pc.some((m) => ['pedido', 'precio', 'reserva'].includes(m.intent))) {
+            out.push({ ...base, caseId: 'intencion_fuerte' });
+          }
+        });
+
+        // Venta cruzada: pares co-ocurrentes por contacto
+        const byContactMap = {};
+        cons.forEach((m) => {
+          (byContactMap[m.contactId] = byContactMap[m.contactId] || new Set()).add(m.productId);
+        });
+        const pairs = {};
+        Object.values(byContactMap).forEach((set) => {
+          const arr = [...set];
+          for (let i = 0; i < arr.length; i += 1) {
+            for (let j = i + 1; j < arr.length; j += 1) {
+              const key = arr[i] < arr[j] ? arr[i] + '|' + arr[j] : arr[j] + '|' + arr[i];
+              pairs[key] = (pairs[key] || 0) + 1;
+            }
+          }
+        });
+        const topPair = Object.entries(pairs).sort((a, b) => b[1] - a[1])[0];
+        if (topPair) {
+          const [idA, idB] = topPair[0].split('|');
+          const pa = products.value.find((p) => p.id === idA);
+          const pb = products.value.find((p) => p.id === idB);
+          if (pa && pb) out.push({ caseId: 'venta_cruzada', product: pa, productB: pb, count: topPair[1] });
+        }
+
+        out.sort((a, b) => b.count - a.count);
+        return out;
+      });
+
+      function openConversation(convId) {
+        if (!convId) return;
+        store.pendingConversationId = convId;
+        ZernioCrm.navigate('inbox');
+      }
+
+      function goToLeads() {
+        ZernioCrm.navigate('leads');
+      }
+
       return {
         workspace, niche, products, mentions, cardDefaults,
         tab, tabs,
@@ -349,6 +494,8 @@
         parseImport, doImport, exportCsv,
         tplLabel, csvPlaceholder, jsonPlaceholder, separatorMarkup,
         canEdit, formatPrice,
+        demandRange, demandPeriods, demand, demandTotal, bestSellers, topDemand, exportDemandCsv,
+        OP_CASES, opportunities, openConversation, goToLeads,
       };
     },
 
@@ -549,13 +696,116 @@
         </div>
 
         <!-- ── Demanda y ventas ─────────────────────────────────────────── -->
-        <div v-if="tab === 'demanda'" class="border-2 border-dashed border-neutral-300 bg-white p-10 text-center text-sm text-neutral-400">
-          Demandas y ventas por producto (próximamente en esta iteración).
+        <div v-if="tab === 'demanda'" class="space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 class="text-lg font-bold">Demanda y ventas por producto</h3>
+              <p class="text-sm text-neutral-500">Consultas detectadas en conversaciones y cierres ganados vinculados.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <select v-model.number="demandRange" class="border-2 border-neutral-300 bg-white px-2 py-1.5 font-mono text-xs outline-none focus:border-neutral-900">
+                <option v-for="p in demandPeriods" :key="p.id" :value="p.id">{{ p.label }}</option>
+              </select>
+              <button @click="exportDemandCsv" class="flex items-center gap-2 border-2 border-neutral-900 bg-white px-3 py-1.5 text-sm font-medium shadow-brutal-sm transition hover:shadow-none">
+                <ui-icon name="download" class="h-4 w-4"></ui-icon> Exportar CSV
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div class="border-2 border-neutral-900 bg-white p-4">
+              <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Consultas del periodo</p>
+              <p class="mt-1 text-2xl font-bold tabular-nums">{{ demandTotal }}</p>
+            </div>
+            <div class="border-2 border-neutral-900 bg-white p-4">
+              <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Productos con demanda</p>
+              <p class="mt-1 text-2xl font-bold tabular-nums">{{ demand.length }}</p>
+            </div>
+            <div class="border-2 border-neutral-900 bg-white p-4">
+              <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Más consultado</p>
+              <p class="mt-1 truncate text-lg font-bold">{{ topDemand ? topDemand.product.name : '—' }}</p>
+            </div>
+            <div class="border-2 border-neutral-900 bg-white p-4">
+              <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Ventas del periodo</p>
+              <p class="mt-1 text-2xl font-bold tabular-nums">{{ bestSellers.reduce((a, r) => a + r.vendidos, 0) }}</p>
+            </div>
+          </div>
+
+          <div class="border-2 border-neutral-900 bg-white p-5">
+            <p class="mb-3 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Consultas por producto</p>
+            <div v-if="demand.length" class="space-y-2.5">
+              <div v-for="r in demand" :key="r.product.id" class="flex items-center gap-3">
+                <span class="w-44 truncate text-sm font-medium">{{ r.product.name }}</span>
+                <div class="h-2.5 flex-1 border border-neutral-200 bg-neutral-100">
+                  <div class="h-full bg-[var(--accent)]" :style="{ width: Math.round((r.consultas / demand[0].consultas) * 100) + '%' }"></div>
+                </div>
+                <span class="w-10 text-right font-mono text-xs tabular-nums">{{ r.consultas }}</span>
+                <span class="w-24 text-right font-mono text-[10px] text-neutral-400">{{ r.vendidos }} vendidos · {{ r.conversion }}%</span>
+              </div>
+            </div>
+            <p v-else class="py-6 text-center text-sm text-neutral-400">Sin consultas de productos en este periodo.</p>
+          </div>
+
+          <div class="border-2 border-neutral-900 bg-white p-5">
+            <p class="mb-3 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Más vendidos</p>
+            <div v-if="bestSellers.length" class="space-y-2">
+              <div v-for="r in bestSellers" :key="r.product.id" class="flex items-center gap-3">
+                <ui-icon name="star" class="h-4 w-4 text-amber-600"></ui-icon>
+                <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ r.product.name }}</span>
+                <span class="font-mono text-xs tabular-nums">{{ r.vendidos }} venta(s)</span>
+              </div>
+            </div>
+            <p v-else class="py-6 text-center text-sm text-neutral-400">Sin ventas vinculadas: cierra leads ganados con productos para verlos aquí.</p>
+          </div>
         </div>
 
         <!-- ── Oportunidades ────────────────────────────────────────────── -->
-        <div v-if="tab === 'oportunidades'" class="border-2 border-dashed border-neutral-300 bg-white p-10 text-center text-sm text-neutral-400">
-          Oportunidades de negocio por producto (próximamente en esta iteración).
+        <div v-if="tab === 'oportunidades'" class="space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 class="text-lg font-bold">Oportunidades de negocio</h3>
+              <p class="text-sm text-neutral-500">Señales accionables por producto según las consultas del periodo ({{ demandRange }} días).</p>
+            </div>
+            <select v-model.number="demandRange" class="border-2 border-neutral-300 bg-white px-2 py-1.5 font-mono text-xs outline-none focus:border-neutral-900">
+              <option v-for="p in demandPeriods" :key="p.id" :value="p.id">{{ p.label }}</option>
+            </select>
+          </div>
+
+          <div v-if="opportunities.length" class="grid gap-4 lg:grid-cols-2">
+            <article v-for="(o, i) in opportunities" :key="o.caseId + '-' + i" class="border-2 border-neutral-900 bg-white p-4">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]">
+                    <ui-icon :name="OP_CASES[o.caseId].icon" class="h-4 w-4"></ui-icon>
+                  </span>
+                  <div>
+                    <p class="font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]">{{ OP_CASES[o.caseId].label }}</p>
+                    <p class="font-semibold">{{ o.product.name }}<span v-if="o.productB"> + {{ o.productB.name }}</span></p>
+                  </div>
+                </div>
+                <ui-badge variant="accent">{{ o.count }} consulta(s)</ui-badge>
+              </div>
+              <p class="mt-2 text-xs text-neutral-500">
+                Última: {{ new Date(o.lastTs || Date.now()).toLocaleDateString('es-VE') }}
+                <template v-if="o.contact"> · {{ o.contact.name }}</template>
+                <template v-if="o.prev != null"> · antes: {{ o.prev }}</template>
+                <template v-if="o.product.stock === false"> · <span class="text-red-700">AGOTADO</span></template>
+              </p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button v-if="o.convId" @click="openConversation(o.convId)"
+                  class="flex items-center gap-1.5 border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
+                  <ui-icon name="message" class="h-3.5 w-3.5"></ui-icon> Ver conversación
+                </button>
+                <button @click="goToLeads"
+                  class="border-2 border-neutral-900 bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                  Ir al lead
+                </button>
+              </div>
+            </article>
+          </div>
+          <div v-else class="border-2 border-dashed border-neutral-300 bg-white p-10 text-center text-sm text-neutral-400">
+            Sin oportunidades en este periodo: las consultas de productos generarán señales aquí.
+          </div>
         </div>
 
         <!-- Modal: nuevo/editar producto con ficha técnica -->

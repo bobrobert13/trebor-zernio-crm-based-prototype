@@ -40,6 +40,7 @@
       const humanAgent = Vue.ref(false);
       const newConvOpen = Vue.ref(false);
       const newContactId = Vue.ref(null);
+      const tipsOpen = Vue.ref(true);
 
       /** Temporizadores activos (cleanup en onUnmounted). */
       const timers = [];
@@ -115,6 +116,44 @@
           return isLive.value && conv && conv.messagesLoaded === false;
         }
         return Date.now() - conv.messages[conv.messages.length - 1].ts > 24 * 3600 * 1000;
+      });
+
+      /** Consejos de atención contextuales para el equipo (objetivo de conversión). */
+      const attentionTips = Vue.computed(() => {
+        const conv = selected.value;
+        const contact = selectedContact.value;
+        if (!conv) return [];
+        const tips = [];
+        const catalog = workspace.value.products || [];
+        const convMentions = productMentions.value.filter((m) => m.convId === conv.id);
+        const lastOut = (conv.messages || []).filter((m) => m.from === 'out').slice(-1)[0];
+        // 1. Mención con intención de compra: priorizar y ofrecer cierre
+        const compra = convMentions.filter((m) => ['pedido', 'precio', 'reserva'].includes(m.intent));
+        if (compra.length) {
+          const lastCompra = compra.reduce((a, b) => (b.ts > a.ts ? b : a), compra[0]);
+          const p = catalog.find((x) => x.id === lastCompra.productId);
+          const unanswered = !lastOut || lastOut.ts < lastCompra.ts;
+          if (unanswered) tips.push({ icon: 'zap', text: `El cliente preguntó por ${p ? p.name : 'un producto'} — responde con la ficha para cerrar.` });
+          else tips.push({ icon: 'zap', text: 'Intención de compra detectada — ofrece el cierre con datos de pago.' });
+        }
+        // 2. Ventanas de 24h por plataforma
+        if (outsideWindow.value) {
+          if (conv.platform === 'whatsapp') tips.push({ icon: 'clock', text: 'Fuera de la ventana de 24h: usa una plantilla aprobada para re-enganchar.' });
+          else if (['instagram', 'facebook'].includes(conv.platform)) tips.push({ icon: 'clock', text: "El cliente no ha escrito en 24h: activa 'agente humano' para responder." });
+        }
+        // 3. Producto agotado mencionado → ofrecer alternativa
+        const agotado = convMentions
+          .map((m) => catalog.find((x) => x.id === m.productId))
+          .filter((p) => p && p.stock === false);
+        if (agotado.length) tips.push({ icon: 'alert', text: `Preguntó por ${agotado[agotado.length - 1].name} (agotado) — ofrece una alternativa.` });
+        // 4. Lead sin etapa
+        if (contact && !contact.leadTag) tips.push({ icon: 'tag', text: 'Asigna una etapa a este lead para no perder el seguimiento.' });
+        // 5. Clientes especiales
+        if (contact && (contact.tags || []).includes('vip')) tips.push({ icon: 'star', text: 'Cliente VIP — trato preferente y prioridad de respuesta.' });
+        if (conv.messages && conv.messages.length >= 12) tips.push({ icon: 'users', text: 'Cliente frecuente — aprovecha para ofrecer fidelización o combos.' });
+        // 6. Primer contacto sin respuesta del equipo
+        if (!lastOut && (conv.messages || []).some((m) => m.from === 'in')) tips.push({ icon: 'message', text: 'Primer contacto: personaliza el saludo con su nombre.' });
+        return tips;
       });
 
       /** IG/FB permiten responder fuera de ventana con HUMAN_AGENT (política Meta). */
@@ -920,6 +959,7 @@
         search, filter, platformFilter, selectedId, draft, sending, loading, syncing, newConvOpen, newContactId,
         workspace, niche, conversations, contacts, filtered, selected, selectedContact, unreadTotal, isLive,
         QUICK_REPLIES, canEdit, humanAgent, outsideWindow, canHumanAgent, blockedByWindow,
+        attentionTips, tipsOpen,
         presentPlatforms, tiktokChannel, tiktokEmpty, getPlatform, leadTags,
         tplPickerOpen, tplList, tplSelected, tplParams, tplVariables, tplSending,
         openTemplatePicker, closeTemplatePicker, sendApprovedTemplate,
@@ -1109,6 +1149,21 @@
                   </button>
                 </div>
               </header>
+
+              <!-- Consejos de atención al equipo -->
+              <div v-if="attentionTips.length" class="shrink-0 border-b border-neutral-200 bg-amber-50/80">
+                <button @click="tipsOpen = !tipsOpen" class="flex w-full items-center gap-2 px-4 py-2 text-left text-xs font-semibold text-amber-900">
+                  <ui-icon name="alert" class="h-3.5 w-3.5 text-amber-700"></ui-icon>
+                  Consejos de atención · {{ attentionTips.length }}
+                  <ui-icon :name="tipsOpen ? 'chevron-up' : 'chevron-down'" class="ml-auto h-3.5 w-3.5 text-amber-700"></ui-icon>
+                </button>
+                <ul v-if="tipsOpen" class="space-y-1.5 px-4 pb-3">
+                  <li v-for="(t, i) in attentionTips" :key="i" class="flex items-start gap-2 text-xs text-amber-900">
+                    <ui-icon :name="t.icon" class="mt-0.5 h-3.5 w-3.5 shrink-0"></ui-icon>
+                    <span>{{ t.text }}</span>
+                  </li>
+                </ul>
+              </div>
 
               <!-- Mensajes -->
               <div class="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5">

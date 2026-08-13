@@ -215,7 +215,8 @@
   function navigate(route) {
     const module = ZernioCrm.MODULES.find((m) => m.id === route);
     const allowed = !module || ZernioCrm.can(store.currentUser?.role, module.id);
-    location.hash = allowed ? `#/${route}` : '#/dashboard';
+    // Fallback a Analítica (el panel Resumen quedó oculto en la iteración 15)
+    location.hash = allowed ? `#/${route}` : '#/analytics';
   }
 
   /** Marca la app como degradada a demo por CORS y notifica una vez. */

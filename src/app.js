@@ -38,7 +38,8 @@
     if (!store.workspace && target !== 'onboarding') target = 'onboarding';
     else if (store.workspace) {
       const module = ZernioCrm.MODULES.find((m) => m.id === target);
-      if (!module || !ZernioCrm.can(store.currentUser && store.currentUser.role, module.id)) target = 'dashboard';
+      // Módulo sin permiso (o ruta oculta): a Analítica (el panel Resumen quedó oculto)
+      if (!module || !ZernioCrm.can(store.currentUser && store.currentUser.role, module.id)) target = 'analytics';
     }
     if (target !== currentRoute()) {
       location.replace(`#/${target}`);

@@ -88,11 +88,19 @@
 
         // WhatsApp primario: mantiene workspace.zernio sincronizado SIN borrar subKey/health
         if (platform === 'whatsapp') {
-          ws.zernio = Object.assign(ws.zernio || {}, {
+          const z = ws.zernio || {};
+          const profileChanged = z.profileId && result.profileId && z.profileId !== result.profileId;
+          // Sub-key activa: llega con el resultado, o se conserva si pertenece
+          // al mismo perfil; si el perfil cambió se descarta (scoped al anterior)
+          const subKey = result.subKey
+            || (!profileChanged && (!z.subKeyProfileId || z.subKeyProfileId === result.profileId) ? z.subKey : '');
+          ws.zernio = Object.assign({}, z, {
             profileId: result.profileId,
             accountId: result.accountId,
             phone: result.phone || entry.username,
             health: null,
+            subKey,
+            subKeyProfileId: result.profileId || z.subKeyProfileId || '',
           });
           ws.whatsapp = {
             connected: true,
@@ -179,11 +187,10 @@
             <ui-icon name="whatsapp" class="h-7 w-7"></ui-icon>
           </span>
           <div class="min-w-0 flex-1">
-            <p class="text-base font-bold">Conecta un canal para empezar a atender a tus clientes</p>
+            <p class="text-base font-bold">Tu WhatsApp de negocio aún no está conectado</p>
             <p class="mt-1 max-w-2xl text-sm leading-relaxed text-neutral-600">
-              Sin un canal conectado, tus clientes no pueden escribirte, hacer pedidos ni recibir respuestas.
-              Conecta tu WhatsApp de negocio y gestiona toda la conversación desde un solo lugar: bandeja,
-              leads, catálogo y métricas.
+              Es el canal principal por el que tus clientes te escriben: pedidos, dudas y reservas
+              llegan directo a tu bandeja. Conéctalo y gestiona toda la conversación desde un solo lugar.
             </p>
           </div>
           <button @click="openConnect({ id: 'whatsapp' })"
@@ -276,7 +283,7 @@
         <!-- Modal: conexión por plataforma -->
         <ui-modal :open="Boolean(connectPlatform)" :title="'Conectar ' + ((PLATFORMS.find(p => p.id === connectPlatform) || {}).nombre || '')"
           @close="connectPlatform = null">
-          <live-connect v-if="connectPlatform" :platform="connectPlatform" @connected="onConnected"></live-connect>
+          <live-connect v-if="connectPlatform" :platform="connectPlatform" :business-name="workspace.name" @connected="onConnected"></live-connect>
         </ui-modal>
 
         <!-- Modal: reemplazo del número WhatsApp (límite 1 por negocio) -->

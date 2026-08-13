@@ -1,7 +1,8 @@
 /**
  * @file onboarding.js — Wizard de configuración inicial (7 pasos).
- * Paso 1→nicho, 2→foco, 3→branding, 4→referencia, 5→canales,
- * 6→equipo inicial. Conexión real de WhatsApp vía live-connect.
+ * Paso 1→nicho, 2→convenio de uso, 3→branding (nombre, logo, color),
+ * 4→referencia, 5→canales, 6→equipo inicial. Conexión real de WhatsApp
+ * vía live-connect.
  */
 (function () {
   'use strict';
@@ -9,7 +10,7 @@
   const { Vue, ZernioCrm } = window;
   const { store, toast, applyAccent, navigate } = ZernioCrm;
 
-  const STEPS = ['Bienvenida', 'Nicho', 'Foco', 'Marca', 'Referencia', 'WhatsApp', 'Equipo'];
+  const STEPS = ['Bienvenida', 'Nicho', 'Convenio', 'Marca', 'Referencia', 'WhatsApp', 'Equipo'];
 
   const components = {};
 
@@ -29,6 +30,7 @@
         inviteAgent: true,
         inviteVendor: true,
         skipConnect: false, // "Configurar después": termina sin canal conectado
+        accepted: false, // convenio de uso aceptado (paso 2, obligatorio)
       });
 
       const current = Vue.ref(0);
@@ -69,6 +71,7 @@
       const canContinue = Vue.computed(() => {
         switch (current.value) {
           case 1: return Boolean(form.nicheId);
+          case 2: return Boolean(form.accepted); // convenio de uso obligatorio
           case 3: return form.name.trim().length > 0;
           case 4: return Boolean(form.referrer);
           case 5: return Boolean(liveResult.value) || form.skipConnect;
@@ -155,6 +158,7 @@
           }
           store.workspace = ws;
           store.currentUser = ws.users.find((u) => u.role === 'owner');
+          ws.convenio = { acceptedAt: Date.now() };
           applyAccent(ws);
           toast(`¡${ws.name} está listo!`, 'success');
           navigate('dashboard');
@@ -339,19 +343,70 @@
             </div>
           </section>
 
-          <!-- 2 · Foco -->
+          <!-- 2 · Convenio de uso -->
           <section v-else-if="current === 2" class="bg-white p-8">
-            <h2 class="text-2xl font-bold">¿En qué se enfocará tu equipo?</h2>
-            <p class="mt-1 text-sm text-neutral-500">Pre-seleccionamos la mejor opción para {{ niche.nombre.toLowerCase() }}, puedes cambiarla.</p>
-            <div class="mt-6 grid gap-3 sm:grid-cols-3">
-              <button v-for="f in ui.FOCUS_MODES" :key="f.id" @click="form.focus = f.id"
-                class="flex flex-col items-center gap-2 border-2 p-5 text-center transition"
-                :class="form.focus === f.id ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-brutal-sm' : 'border-neutral-200 hover:border-neutral-900'">
-                <ui-icon :name="f.icon" class="h-6 w-6" :class="form.focus === f.id ? 'text-[var(--accent)]' : 'text-neutral-400'"></ui-icon>
-                <h3 class="font-semibold">{{ f.nombre }}</h3>
-                <p class="text-xs text-neutral-500">{{ f.desc }}</p>
-              </button>
+            <h2 class="text-2xl font-bold">Convenio de uso</h2>
+            <p class="mt-1 text-sm text-neutral-500">Conoce lo que podrás hacer con tu espacio y acepta las condiciones para empezar.</p>
+
+            <!-- Resumen de capacidades -->
+            <div class="mt-6 border-2 border-neutral-900 bg-stone-50 p-5">
+              <p class="mb-3 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Lo que podrás hacer</p>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div class="flex items-start gap-3">
+                  <span class="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--accent)] text-white">
+                    <ui-icon name="message" class="h-4 w-4"></ui-icon>
+                  </span>
+                  <div>
+                    <p class="text-sm font-semibold">Responder a tus clientes</p>
+                    <p class="text-xs text-neutral-500">Bandeja unificada por WhatsApp e Instagram con historial completo.</p>
+                  </div>
+                </div>
+                <div class="flex items-start gap-3">
+                  <span class="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--accent)] text-white">
+                    <ui-icon name="tag" class="h-4 w-4"></ui-icon>
+                  </span>
+                  <div>
+                    <p class="text-sm font-semibold">Gestionar leads y pedidos</p>
+                    <p class="text-xs text-neutral-500">Seguimiento por etapas, cierres y recordatorios para no perder ventas.</p>
+                  </div>
+                </div>
+                <div class="flex items-start gap-3">
+                  <span class="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--accent)] text-white">
+                    <ui-icon name="box" class="h-4 w-4"></ui-icon>
+                  </span>
+                  <div>
+                    <p class="text-sm font-semibold">Catálogo con fichas técnicas</p>
+                    <p class="text-xs text-neutral-500">Productos y servicios con detalle listo para enviar en el chat.</p>
+                  </div>
+                </div>
+                <div class="flex items-start gap-3">
+                  <span class="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--accent)] text-white">
+                    <ui-icon name="users" class="h-4 w-4"></ui-icon>
+                  </span>
+                  <div>
+                    <p class="text-sm font-semibold">Equipo y métricas</p>
+                    <p class="text-xs text-neutral-500">Roles con permisos y resumen del desempeño de tu negocio.</p>
+                  </div>
+                </div>
+              </div>
             </div>
+
+            <!-- Cláusulas del convenio -->
+            <div class="mt-5 space-y-2.5">
+              <p class="mb-3 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Al usar este espacio aceptas</p>
+              <p v-for="(c, i) in ui.CONVENIO_CLAUSULAS" :key="i" class="flex items-start gap-2.5 text-sm text-neutral-600">
+                <ui-icon name="check-circle" class="mt-0.5 h-4 w-4 shrink-0 text-emerald-700"></ui-icon>
+                <span>{{ c }}</span>
+              </p>
+            </div>
+
+            <!-- Aceptación obligatoria -->
+            <label class="mt-6 flex cursor-pointer items-start gap-3 border-2 p-4 transition"
+              :class="form.accepted ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-neutral-300 hover:border-neutral-900'">
+              <input type="checkbox" v-model="form.accepted" class="mt-0.5 h-4 w-4 accent-[var(--accent)]" />
+              <span class="text-sm font-medium">Acepto el convenio de uso y las políticas de datos de clientes.</span>
+            </label>
+            <p v-if="!form.accepted" class="mt-2 text-xs text-neutral-400">Debes aceptar el convenio para continuar con la configuración.</p>
           </section>
 
           <!-- 3 · Branding -->

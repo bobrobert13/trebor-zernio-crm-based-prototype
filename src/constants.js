@@ -39,6 +39,14 @@
     { id: 'ventas', nombre: 'Ventas + campañas', desc: 'Preventa, campañas y mensajes masivos.', icon: 'megaphone' },
   ];
 
+  /** Cláusulas del convenio de uso aceptado en el onboarding (paso 2). */
+  const CONVENIO_CLAUSULAS = [
+    'Protegerás los datos de tus clientes y solo los usarás para atender su relación comercial.',
+    'Usarás el espacio solo para fines lícitos de tu negocio.',
+    'No usarás la plataforma para spam, fraude, suplantación ni fines maliciosos.',
+    'Cumplirás las políticas de Meta/WhatsApp aplicables a la mensajería.',
+  ];
+
   /** Tipos de contenido del plan del nicho (panel "Lo que incluye tu plan"). */
   const ROADMAP_TYPES = {
     channel: { label: 'Canal', icon: 'link' },
@@ -862,6 +870,7 @@
     ACCENTS,
     REFERRERS,
     FOCUS_MODES,
+    CONVENIO_CLAUSULAS,
     ROADMAP_TYPES,
     NICHES,
     GENERIC_NICHE,

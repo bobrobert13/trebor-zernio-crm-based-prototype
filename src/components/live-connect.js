@@ -41,6 +41,25 @@
       /** Sub-key activa del flujo actual (viaja en el evento 'connected'). */
       const createdSubKey = Vue.ref('');
 
+      /** Sub-keys creadas durante onboarding (workspace aún inexistente): se guardan en
+       * sesión para que un remonte de live-connect (volver/avanzar de paso o callback
+       * del túnel) reutilice la misma sub-key en lugar de crear otra. Se limpian al
+       * salir del workspace (clearSession/resetAll) para no compartir key entre espacios. */
+      const SUBKEYS_SESSION_KEY = 'tzcrm.subkeys';
+      function loadSubKeySession() {
+        try {
+          return JSON.parse(sessionStorage.getItem(SUBKEYS_SESSION_KEY) || '{}');
+        } catch {
+          return {};
+        }
+      }
+      function saveSubKeySession(map) {
+        try {
+          sessionStorage.setItem(SUBKEYS_SESSION_KEY, JSON.stringify(map));
+        } catch { /* sesión no disponible: sin persistencia, sin duplicar igualmente */ }
+      }
+      if (!store.workspace) Object.assign(subKeyCache, loadSubKeySession());
+
       /** OAuth amigable de WhatsApp (Embedded Signup de Meta). */
       const waOAuthStarted = Vue.ref(false);
       const waPhoneNumbers = Vue.ref([]); // WABA multi-número
@@ -134,6 +153,12 @@
             store.workspace.zernio = store.workspace.zernio || {};
             store.workspace.zernio.subKey = subKey;
             store.workspace.zernio.subKeyProfileId = profileId;
+          } else {
+            // Onboarding: el workspace se crea en finish(); la key viaja por sesión
+            // hasta que el padre la persista en workspace.zernio
+            const map = loadSubKeySession();
+            map[profileId] = subKey;
+            saveSubKeySession(map);
           }
           store.apiKey = subKey;
           toast('Sub-key del negocio creada (aislamiento por perfil)', 'success');
@@ -152,7 +177,8 @@
       /** Adjunta la sub-key activa del flujo al resultado antes de emitir. */
       function attachKey(result) {
         result.subKey = createdSubKey.value || '';
-        result.subKeyProfileId = selectedProfileId.value || '';
+        // El perfil del resultado manda (en el callback del túnel puede no estar seleccionado aún)
+        result.subKeyProfileId = result.profileId || selectedProfileId.value || '';
         return result;
       }
 
@@ -358,6 +384,7 @@
         if (!params || params.connected !== 'whatsapp') return;
         // WABA multi-número: pedir la selección amigable del número
         const cbProfileId = params.profileId || selectedProfileId.value;
+        if (cbProfileId) selectedProfileId.value = cbProfileId; // el callback puede llegar tras un reload (túnel)
         if (params.step === 'select_phone_number' || params.tempToken) {
           waTempToken.value = params.tempToken || '';
           await ensureSubKey(cbProfileId); // sub-key activa antes de operar con el número

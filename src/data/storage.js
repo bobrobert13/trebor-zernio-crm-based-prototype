@@ -77,11 +77,18 @@
   /** Limpia la sesión (mantiene los workspaces guardados). */
   function clearSession() {
     localStorage.removeItem(KEYS.session);
+    // Sub-keys temporales de onboarding: no compartirlas con otro workspace
+    try {
+      sessionStorage.removeItem('tzcrm.subkeys');
+    } catch { /* sesión no disponible */ }
   }
 
   /** Elimina todos los datos del prototipo (reset demo). */
   function resetAll() {
     Object.values(KEYS).forEach((k) => localStorage.removeItem(k));
+    try {
+      sessionStorage.removeItem('tzcrm.subkeys');
+    } catch { /* sesión no disponible */ }
   }
 
   /**

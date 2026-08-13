@@ -487,7 +487,7 @@
             <div class="mt-6 flex flex-wrap items-center gap-4 border-2 border-dashed border-neutral-300 p-4">
               <span class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden bg-white text-lg font-bold text-[var(--accent)] shadow-brutal-sm"
                 :style="form.logo ? {} : { background: accent.value, color: '#fff' }">
-                <img v-if="form.logo" :src="form.logo" alt="Logo de {{ form.name || 'tu negocio' }}" class="h-full w-full object-contain" />
+                <img v-if="form.logo" :src="form.logo" :alt="'Logo de ' + (form.name || 'tu negocio')" class="h-full w-full object-contain" />
                 <template v-else>{{ (form.name || 'T').trim().slice(0, 2).toUpperCase() }}</template>
               </span>
               <div class="min-w-0 flex-1">

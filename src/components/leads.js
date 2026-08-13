@@ -87,8 +87,28 @@
       // ── Cierre de leads (flujo amigable: concretada / no concretada) ───────
       const closeOpen = Vue.ref(false);
       const closeTarget = Vue.ref(null);
-      const closeForm = Vue.reactive({ outcome: 'ganada', note: '', reason: '' });
+      const closeForm = Vue.reactive({ outcome: 'ganada', note: '', reason: '', products: [] });
       const CLOSE_REASONS = ['Compró', 'Sin respuesta', 'Se pospuso', 'Eligió otra opción'];
+      const closeProductQuery = Vue.ref('');
+
+      /** Resultados del buscador de productos del modal de cierre. */
+      const closeProductResults = Vue.computed(() => {
+        const qq = closeProductQuery.value.trim().toLowerCase();
+        return (workspace.value.products || [])
+          .filter((p) => p.active !== false && (!qq || `${p.name} ${(p.aliases || []).join(' ')}`.toLowerCase().includes(qq)))
+          .slice(0, 6);
+      });
+
+      function toggleCloseProduct(id) {
+        const i = closeForm.products.indexOf(id);
+        if (i >= 0) closeForm.products.splice(i, 1);
+        else closeForm.products.push(id);
+      }
+
+      function productName(id) {
+        const p = (workspace.value.products || []).find((x) => x.id === id);
+        return p ? p.name : id;
+      }
 
       /** Etiqueta amigable del resultado interno (ganada/perdida). */
       function closeLabel(outcome) {
@@ -97,14 +117,26 @@
 
       function openCloseModal(contact) {
         closeTarget.value = contact;
-        Object.assign(closeForm, { outcome: 'ganada', note: '', reason: '' });
+        // Preselecciona los productos con menciones del contacto (interés real,
+        // ignorando productos eliminados del catálogo)
+        const catalog = workspace.value.products || [];
+        const ms = productMentions.value.filter(
+          (m) => m.contactId === contact.id && catalog.some((p) => p.id === m.productId)
+        );
+        Object.assign(closeForm, {
+          outcome: 'ganada',
+          note: '',
+          reason: '',
+          products: [...new Set(ms.map((m) => m.productId).filter(Boolean))],
+        });
+        closeProductQuery.value = '';
         closeOpen.value = true;
       }
 
       function confirmClose() {
         const contact = closeTarget.value;
         if (!contact) return;
-        contact.leadClosed = { at: Date.now(), outcome: closeForm.outcome, note: closeForm.note.trim(), reason: closeForm.reason || undefined };
+        contact.leadClosed = { at: Date.now(), outcome: closeForm.outcome, note: closeForm.note.trim(), reason: closeForm.reason || undefined, products: [...closeForm.products] };
         // El cierre queda registrado en el historial de etapas (timeline del drawer)
         contact.leadHistory = contact.leadHistory || [];
         contact.leadHistory.push({
@@ -234,6 +266,27 @@
         return ((contact && contact.leadHistory) || []).slice().reverse();
       }
 
+      /** Score de intención de compra: menciones de productos del contacto. */
+      const productMentions = Vue.computed(() => (workspace.value && workspace.value.productMentions) || []);
+
+      function intentScore(contact) {
+        if (!contact) return { hot: false, products: [] };
+        // Ignora menciones de productos eliminados del catálogo
+        const catalog = workspace.value.products || [];
+        const ms = productMentions.value.filter(
+          (m) => m.contactId === contact.id && catalog.some((p) => p.id === m.productId)
+        );
+        if (!ms.length) return { hot: false, products: [] };
+        const strong = ms.some((m) => ['pedido', 'precio', 'reserva'].includes(m.intent));
+        const names = ms
+          .map((m) => {
+            const p = catalog.find((x) => x.id === m.productId);
+            return p ? p.name : null;
+          })
+          .filter(Boolean);
+        return { hot: ms.length >= 2 || strong, products: [...new Set(names)] };
+      }
+
       /** Etiqueta legible de una entrada del historial (cierres y reaperturas). */
       function stageLabel(tag) {
         if (!tag) return 'Sin asignar';
@@ -252,6 +305,8 @@
         remInput, remPanelOpen, pendingReminders, hasOverdue, addReminderFor, upcomingReminders,
         remindersOf, toggleReminder, removeReminder,
         historyOf, stageLabel, closeLabel, CLOSE_REASONS,
+        intentScore,
+        closeProductQuery, closeProductResults, toggleCloseProduct, productName,
         getPlatform, timeAgo, canEdit, ZernioCrm,
       };
     },
@@ -323,6 +378,9 @@
                 </div>
                 <p class="mt-0.5 truncate font-mono text-[10px] text-neutral-400">{{ c.phone || 'sin teléfono' }}</p>
                 <div class="mt-2 flex flex-wrap items-center gap-1">
+                  <span v-if="intentScore(c).hot" class="relative" :title="'Productos de interés: ' + intentScore(c).products.join(', ')">
+                    <ui-badge variant="danger" dot>Caliente</ui-badge>
+                  </span>
                   <ui-badge v-if="metricsOf(c).vip" variant="warn" dot>VIP</ui-badge>
                   <ui-badge v-if="metricsOf(c).frecuente" variant="success" dot>Frecuente</ui-badge>
                   <ui-badge variant="neutral">{{ metricsOf(c).totalMsgs }} msgs</ui-badge>
@@ -372,6 +430,11 @@
                 </ui-badge>
               </div>
               <p class="mt-0.5 truncate font-mono text-[10px] text-neutral-400">{{ c.phone || 'sin teléfono' }}</p>
+              <div v-if="(c.leadClosed.products || []).length" class="mt-2 flex flex-wrap gap-1">
+                <span v-for="pid in c.leadClosed.products" :key="pid" class="border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                  {{ productName(pid) }}
+                </span>
+              </div>
               <p v-if="c.leadClosed.reason" class="mt-2 inline-block border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">{{ c.leadClosed.reason }}</p>
               <p v-if="c.leadClosed.note" class="mt-2 border-t border-neutral-100 pt-2 text-xs text-neutral-600">{{ c.leadClosed.note }}</p>
               <div class="mt-2 flex items-center justify-between">
@@ -512,6 +575,11 @@
                       Lead cerrado · {{ closeLabel(detailContact.leadClosed.outcome) }}
                     </p>
                     <p class="font-mono text-[10px] text-neutral-400">{{ new Date(detailContact.leadClosed.at).toLocaleString('es-VE') }}</p>
+                    <div v-if="(detailContact.leadClosed.products || []).length" class="mt-1 flex flex-wrap gap-1">
+                      <span v-for="pid in detailContact.leadClosed.products" :key="pid" class="border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                        {{ productName(pid) }}
+                      </span>
+                    </div>
                     <p v-if="detailContact.leadClosed.reason" class="mt-1 inline-block border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
                       {{ detailContact.leadClosed.reason }}
                     </p>
@@ -618,6 +686,26 @@
                 </button>
               </div>
             </ui-field>
+
+            <!-- Productos/servicios vinculados al cierre (preselección desde menciones) -->
+            <div v-if="(workspace.products || []).length">
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">¿Qué productos/servicios se cerraron?</p>
+              <div v-if="closeForm.products.length" class="mb-2 flex flex-wrap gap-1.5">
+                <button v-for="id in closeForm.products" :key="id" @click="toggleCloseProduct(id)"
+                  class="border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition border-[var(--accent)] bg-[var(--accent)] text-white">
+                  {{ productName(id) }} ✕
+                </button>
+              </div>
+              <input v-model.trim="closeProductQuery" type="search" placeholder="Buscar y agregar producto…"
+                class="w-full border-2 border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900" />
+              <div v-if="closeProductQuery" class="mt-1.5 flex flex-wrap gap-1.5">
+                <button v-for="p in closeProductResults" :key="p.id" @click="toggleCloseProduct(p.id)"
+                  class="border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition"
+                  :class="closeForm.products.includes(p.id) ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
+                  {{ p.name }}
+                </button>
+              </div>
+            </div>
 
             <ui-field label="Motivo (opcional)">
               <div class="flex flex-wrap gap-1.5">

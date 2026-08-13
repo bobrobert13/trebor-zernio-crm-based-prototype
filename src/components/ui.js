@@ -238,6 +238,31 @@
       </label>`,
   };
 
+  /**
+   * Preview de un texto con formato WhatsApp (burbuja simulada).
+   * Renderiza el markup con ZernioCrm.renderWhatsApp (negritas, cursivas,
+   * tachado, mono, listas y separadores) sobre texto escapado (anti-XSS).
+   */
+  components['wa-preview'] = {
+    props: { text: { type: String, default: '' }, showHeader: { type: Boolean, default: true } },
+    setup(props) {
+      const html = Vue.computed(() => ZernioCrm.renderWhatsApp(props.text || ''));
+      return { html };
+    },
+    template: `
+      <div>
+        <p v-if="showHeader" class="mb-1.5 text-center font-mono text-[9px] uppercase tracking-widest text-neutral-400">
+          Vista previa en WhatsApp · el cliente lo verá formateado por la app
+        </p>
+        <div class="rounded-lg border border-neutral-200 bg-[#efeae2] p-3.5">
+          <div class="ml-auto max-w-[92%] rounded-lg border border-neutral-200 bg-white px-3.5 py-2.5 text-sm leading-relaxed shadow-sm">
+            <div v-if="!text" class="text-neutral-300">…</div>
+            <div v-else class="wa-rich" v-html="html"></div>
+          </div>
+        </div>
+      </div>`,
+  };
+
   window.ZernioCrm = window.ZernioCrm || {};
   window.ZernioCrm.components = Object.assign(window.ZernioCrm.components || {}, components);
 })();

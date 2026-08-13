@@ -16,6 +16,7 @@
     contacts: 'contacts-view',
     channels: 'channels-view',
     leads: 'leads-view',
+    products: 'products-view',
     team: 'team-view',
     broadcasts: 'broadcasts-view',
     billing: 'billing-view',
@@ -80,6 +81,19 @@
           if (!c.leadHistory) {
             c.leadHistory = [{ tag: c.leadTag || null, at: c.createdAt || Date.now() }];
           }
+        });
+        // Migración: catálogo de productos y servicios (default del nicho)
+        if (!workspace.products) workspace.products = ZernioCrm.getNicheCatalog(workspace.nicheId);
+        if (!workspace.productMentions) workspace.productMentions = [];
+        // Backfill por producto: ficha técnica, plantilla y stock con defaults
+        const nicheFields = ZernioCrm.getNicheProductFields(workspace.nicheId);
+        const cardDefaults = (ZernioCrm.PRODUCT_CARD_DEFAULTS || {})[workspace.nicheId] || (ZernioCrm.PRODUCT_CARD_DEFAULTS || {}).generic;
+        (workspace.products || []).forEach((p) => {
+          if (p.details === undefined) p.details = nicheFields.map((label) => ({ label, value: '' }));
+          if (p.cardTemplate === undefined) p.cardTemplate = cardDefaults.template;
+          if (p.stock === undefined) p.stock = true;
+          if (p.description === undefined) p.description = '';
+          if (p.active === undefined) p.active = true;
         });
         // Migración: preferencias del panel (secciones y KPIs visibles)
         if (!workspace.dashboardPrefs) {

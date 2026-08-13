@@ -59,50 +59,10 @@
         store.workspace = workspace;
         store.currentUser =
           workspace.users.find((u) => u.id === session.userId) || workspace.users[0] || null;
-        // Migración: etiquetas de leads personalizables (default del nicho)
-        if (!workspace.leadTags) {
-          const n = ZernioCrm.getNiche(workspace.nicheId);
-          workspace.leadTags = [...((n && n.tags) || ['cliente'])];
-        }
-        // Migración: etiquetas de contacto administrables (separadas de las leads)
-        if (!workspace.contactTags) {
-          const n = ZernioCrm.getNiche(workspace.nicheId);
-          workspace.contactTags = [...((n && n.tags) || []), 'cliente'];
-        }
-        // Migración: campos del negocio personalizables (default del nicho)
-        if (!workspace.customFields) {
-          const n = ZernioCrm.getNiche(workspace.nicheId);
-          workspace.customFields = ((n && n.customFields) || []).map((f) => ({ ...f }));
-        }
-        // Migración: historial de etapas de leads — backfill del momento 0 para
-        // contactos existentes (idempotente: solo si no tienen leadHistory).
-        // Incluye contactos sin leadTag (sync/webhooks previos) → "Sin asignar".
-        (workspace.contacts || []).forEach((c) => {
-          if (!c.leadHistory) {
-            c.leadHistory = [{ tag: c.leadTag || null, at: c.createdAt || Date.now() }];
-          }
-        });
-        // Migración: catálogo de productos y servicios (default del nicho)
-        if (!workspace.products) workspace.products = ZernioCrm.getNicheCatalog(workspace.nicheId);
-        if (!workspace.productMentions) workspace.productMentions = [];
-        // Backfill por producto: ficha técnica, plantilla y stock con defaults
-        const nicheFields = ZernioCrm.getNicheProductFields(workspace.nicheId);
-        const cardDefaults = (ZernioCrm.PRODUCT_CARD_DEFAULTS || {})[workspace.nicheId] || (ZernioCrm.PRODUCT_CARD_DEFAULTS || {}).generic;
-        (workspace.products || []).forEach((p) => {
-          if (p.details === undefined) p.details = nicheFields.map((label) => ({ label, value: '' }));
-          if (p.cardTemplate === undefined) p.cardTemplate = cardDefaults.template;
-          if (p.stock === undefined) p.stock = true;
-          if (p.description === undefined) p.description = '';
-          if (p.active === undefined) p.active = true;
-        });
-        // Migración: preferencias del panel (secciones y KPIs visibles)
-        if (!workspace.dashboardPrefs) {
-          const n = ZernioCrm.getNiche(workspace.nicheId);
-          workspace.dashboardPrefs = {
-            sections: { kpis: true, canal: true, acciones: true, roadmap: true, actividad: true },
-            kpis: ((n && n.kpis) || []).map((k) => k.id),
-          };
-        }
+        // Migración idempotente del workspace (etiquetas, campos, historial,
+        // catálogo, preferencias del panel…). También se ejecuta al crear un
+        // workspace nuevo (onboarding) para que el dashboard cargue a la primera.
+        ZernioCrm.migrateWorkspace(workspace);
         // La master key del centro vive solo en sessionStorage (nunca en el workspace/export)
         const master = sessionStorage.getItem('tzcrm.masterKey');
         if (master) store.masterKey = master;

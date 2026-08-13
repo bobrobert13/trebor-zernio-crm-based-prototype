@@ -296,11 +296,65 @@
     }
   }
 
+  /**
+   * Migración idempotente del workspace: completa estructuras que versiones
+   * anteriores no tenían (etiquetas, campos, historial de etapas, catálogo,
+   * preferencias del panel…). Se ejecuta al restaurar sesión (app.js) y al
+   * crear un workspace nuevo desde el onboarding para que todo cargue a la
+   * primera, sin depender de una recarga.
+   * @param {object} workspace — workspace a migrar (se muta en su lugar).
+   */
+  function migrateWorkspace(workspace) {
+    if (!workspace) return;
+    const n = ZernioCrm.getNiche(workspace.nicheId);
+    // Migración: etiquetas de leads personalizables (default del nicho)
+    if (!workspace.leadTags) {
+      workspace.leadTags = [...((n && n.tags) || ['cliente'])];
+    }
+    // Migración: etiquetas de contacto administrables (separadas de las leads)
+    if (!workspace.contactTags) {
+      workspace.contactTags = [...((n && n.tags) || []), 'cliente'];
+    }
+    // Migración: campos del negocio personalizables (default del nicho)
+    if (!workspace.customFields) {
+      workspace.customFields = ((n && n.customFields) || []).map((f) => ({ ...f }));
+    }
+    // Migración: historial de etapas de leads — backfill del momento 0 para
+    // contactos existentes (idempotente: solo si no tienen leadHistory).
+    // Incluye contactos sin leadTag (sync/webhooks previos) → "Sin asignar".
+    (workspace.contacts || []).forEach((c) => {
+      if (!c.leadHistory) {
+        c.leadHistory = [{ tag: c.leadTag || null, at: c.createdAt || Date.now() }];
+      }
+    });
+    // Migración: catálogo de productos y servicios (default del nicho)
+    if (!workspace.products) workspace.products = ZernioCrm.getNicheCatalog(workspace.nicheId);
+    if (!workspace.productMentions) workspace.productMentions = [];
+    // Backfill por producto: ficha técnica, plantilla y stock con defaults
+    const nicheFields = ZernioCrm.getNicheProductFields(workspace.nicheId);
+    const cardDefaults = (ZernioCrm.PRODUCT_CARD_DEFAULTS || {})[workspace.nicheId] || (ZernioCrm.PRODUCT_CARD_DEFAULTS || {}).generic;
+    (workspace.products || []).forEach((p) => {
+      if (p.details === undefined) p.details = nicheFields.map((label) => ({ label, value: '' }));
+      if (p.cardTemplate === undefined) p.cardTemplate = cardDefaults.template;
+      if (p.stock === undefined) p.stock = true;
+      if (p.description === undefined) p.description = '';
+      if (p.active === undefined) p.active = true;
+    });
+    // Migración: preferencias del panel (secciones y KPIs visibles)
+    if (!workspace.dashboardPrefs) {
+      workspace.dashboardPrefs = {
+        sections: { kpis: true, canal: true, acciones: true, roadmap: true, actividad: true },
+        kpis: ((n && n.kpis) || []).map((k) => k.id),
+      };
+    }
+  }
+
   window.ZernioCrm = window.ZernioCrm || {};
   Object.assign(window.ZernioCrm, {
     store, toast, applyAccent, navigate, flagCorsBlocked, canEdit, detectServer,
     pushWebhookEvent, reflectIncomingMessage, applyLeadTag,
     remindersOf, addReminder, toggleReminder, removeReminder,
     recordProductMentions, confirmMention, discardMention,
+    migrateWorkspace,
   });
 })();

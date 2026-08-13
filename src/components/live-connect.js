@@ -14,7 +14,11 @@
   const components = {};
 
   components['live-connect'] = {
-    props: { platform: { type: String, default: 'whatsapp' } },
+    props: {
+      platform: { type: String, default: 'whatsapp' },
+      /** Nombre del negocio (el padre lo conoce; el workspace puede no existir aún). */
+      businessName: { type: String, default: '' },
+    },
     emits: ['connected'],
     setup(props, { emit }) {
       /** Paso actual del sub-flujo. */
@@ -29,8 +33,13 @@
       const selectedAccountId = Vue.ref(null);
       const selectedPhoneId = Vue.ref(null);
 
-      const creds = Vue.reactive({ wabaId: '', phoneNumberId: '', token: '' });
+      const creds = Vue.reactive({ wabaId: '', phoneNumberId: '', token: '', pin: '' });
       const showCreds = Vue.ref(false);
+
+      /** Sub-keys creadas/reutilizadas en este flujo (una por perfil: evita duplicados). */
+      const subKeyCache = {};
+      /** Sub-key activa del flujo actual (viaja en el evento 'connected'). */
+      const createdSubKey = Vue.ref('');
 
       /** OAuth amigable de WhatsApp (Embedded Signup de Meta). */
       const waOAuthStarted = Vue.ref(false);
@@ -87,28 +96,44 @@
 
       /**
        * Crea la sub-key scoped al perfil (una por negocio) y la activa como
-       * key operativa. Si ya existe (workspace.zernio.subKey) la reutiliza.
-       * La master key NUNCA se persiste en el workspace (solo en sesión).
+       * key operativa. Reutiliza: (1) la cache del flujo actual (una sola
+       * creación por perfil) y (2) la sub-key persistida en el workspace si
+       * pertenece a este perfil. Cuando el workspace aún no existe (onboarding)
+       * la sub-key viaja en el evento 'connected' para que el padre la persista
+       * al crear el espacio. La master key NUNCA se persiste (solo en sesión).
        * @param {string} profileId — id del perfil del negocio.
        * @returns {Promise<string|null>} Sub-key activa o null si no se pudo crear.
        */
       async function ensureSubKey(profileId) {
         if (!profileId) return null;
+        // (1) Cache del flujo: evita duplicados al re-elegir perfil o al llamar
+        // desde createProfile + loadChannelOptions en el mismo registro
+        if (subKeyCache[profileId]) {
+          store.apiKey = subKeyCache[profileId];
+          createdSubKey.value = subKeyCache[profileId];
+          return subKeyCache[profileId];
+        }
+        // (2) Sub-key persistida en el workspace: solo si pertenece a este perfil
         const z = store.workspace && store.workspace.zernio;
-        if (z && z.subKey) {
+        if (z && z.subKey && (!z.subKeyProfileId || z.subKeyProfileId === profileId)) {
+          subKeyCache[profileId] = z.subKey;
+          createdSubKey.value = z.subKey;
           if (store.apiKey !== z.subKey) store.apiKey = z.subKey;
           return z.subKey;
         }
         try {
           const data = await api.createApiKey({
-            name: `negocio-${((store.workspace && store.workspace.name) || 'mvp').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`,
+            name: `negocio-${resolveBusinessName().toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`,
             profileIds: [profileId],
           });
           const subKey = (data.apiKey && data.apiKey.key) || data.key;
           if (!subKey) throw new Error('el API no devolvió la sub-key');
+          subKeyCache[profileId] = subKey;
+          createdSubKey.value = subKey;
           if (store.workspace) {
             store.workspace.zernio = store.workspace.zernio || {};
             store.workspace.zernio.subKey = subKey;
+            store.workspace.zernio.subKeyProfileId = profileId;
           }
           store.apiKey = subKey;
           toast('Sub-key del negocio creada (aislamiento por perfil)', 'success');
@@ -119,11 +144,23 @@
         }
       }
 
+      /** Nombre del negocio para el perfil/sub-key de Zernio (prop del padre). */
+      function resolveBusinessName() {
+        return props.businessName || (store.workspace && store.workspace.name) || 'Mi negocio';
+      }
+
+      /** Adjunta la sub-key activa del flujo al resultado antes de emitir. */
+      function attachKey(result) {
+        result.subKey = createdSubKey.value || '';
+        result.subKeyProfileId = selectedProfileId.value || '';
+        return result;
+      }
+
       /** Crea un perfil de negocio con su sub-key. */
       async function createProfile() {
         busy.value = true;
         try {
-          const data = await api.createProfile((store.workspace && store.workspace.name) || 'Mi negocio');
+          const data = await api.createProfile(resolveBusinessName());
           const profile = asArray(data)[0] || data.profile || data;
           profiles.value.unshift(profile);
           selectedProfileId.value = profile.id || profile._id;
@@ -169,13 +206,13 @@
         const phone = isWhatsApp.value
           ? meta.displayPhoneNumber || account.username || account.displayName || 'Número vinculado'
           : account.username || account.displayName || 'Cuenta conectada';
-        result.value = {
+        result.value = attachKey({
           platform: props.platform,
           profileId: selectedProfileId.value,
           accountId: account.id || account._id,
           phone,
           username: account.username || account.displayName || '',
-        };
+        });
         step.value = 'done';
         toast(`${props.platform === 'whatsapp' ? 'Cuenta WhatsApp' : 'Cuenta ' + props.platform} vinculada`, 'success');
         emit('connected', result.value);
@@ -188,11 +225,11 @@
           toast('El número no tiene cuenta vinculada: elige una cuenta existente o conéctalo por credenciales', 'error');
           return;
         }
-        result.value = {
+        result.value = attachKey({
           profileId: selectedProfileId.value,
           accountId,
           phone: phone.phoneNumber || phone.displayName || 'Número de la plataforma',
-        };
+        });
         step.value = 'done';
         toast('Número seleccionado', 'success');
         emit('connected', result.value);
@@ -206,13 +243,14 @@
           const account = await api.connectWhatsAppCredentials(selectedProfileId.value, {
             wabaId: creds.wabaId.trim(),
             phoneNumberId: creds.phoneNumberId.trim(),
-            token: creds.token.trim(),
+            accessToken: creds.token.trim(),
+            ...(creds.pin.trim() ? { pin: creds.pin.trim() } : {}),
           });
-          result.value = {
+          result.value = attachKey({
             profileId: selectedProfileId.value,
             accountId: account.id || account._id,
             phone: account.displayName || account.username || 'Número vinculado',
-          };
+          });
           step.value = 'done';
           toast('WhatsApp conectado por credenciales', 'success');
           emit('connected', result.value);
@@ -319,20 +357,23 @@
         const params = JSON.parse(raw);
         if (!params || params.connected !== 'whatsapp') return;
         // WABA multi-número: pedir la selección amigable del número
+        const cbProfileId = params.profileId || selectedProfileId.value;
         if (params.step === 'select_phone_number' || params.tempToken) {
           waTempToken.value = params.tempToken || '';
-          await loadWaPhoneNumbers(params.profileId || selectedProfileId.value);
+          await ensureSubKey(cbProfileId); // sub-key activa antes de operar con el número
+          await loadWaPhoneNumbers(cbProfileId);
           return;
         }
         // Conexión directa: accountId viene en el callback
         if (params.accountId) {
-          result.value = {
+          await ensureSubKey(cbProfileId);
+          result.value = attachKey({
             platform: 'whatsapp',
-            profileId: params.profileId || selectedProfileId.value,
+            profileId: cbProfileId,
             accountId: params.accountId,
             phone: params.username || params.displayName || 'Número vinculado',
             username: params.username || '',
-          };
+          });
           step.value = 'done';
           toast('WhatsApp conectado desde Meta', 'success');
           emit('connected', result.value);
@@ -372,13 +413,13 @@
             tempToken: waTempToken.value,
             phoneNumberId: phone.id || phone.phoneNumberId || '',
           });
-          result.value = {
+          result.value = attachKey({
             platform: 'whatsapp',
             profileId: selectedProfileId.value,
             accountId: account.id || account._id || account.accountId || '',
             phone: phone.display_phone_number || phone.displayPhoneNumber || account.username || 'Número vinculado',
             username: phone.display_phone_number || '',
-          };
+          });
           step.value = 'done';
           toast(`Número ${result.value.phone} conectado`, 'success');
           emit('connected', result.value);
@@ -567,6 +608,10 @@
                 </ui-field>
                 <ui-field label="Token de acceso (Meta)">
                   <input v-model.trim="creds.token" type="password" placeholder="EAAG…" autocomplete="off"
+                    class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
+                </ui-field>
+                <ui-field label="PIN de verificación en 2 pasos (opcional)" hint="6 dígitos — solo si tu número lo tiene activado">
+                  <input v-model.trim="creds.pin" type="password" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="off"
                     class="w-full border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900" />
                 </ui-field>
                 <button @click="connectCredentials" :disabled="busy || !creds.wabaId.trim() || !creds.phoneNumberId.trim() || !creds.token.trim()"

@@ -399,20 +399,28 @@
             <div class="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-2.5">
               <article v-for="c in cardsOf(col)" :key="c.id" draggable="true"
                 @dragstart="onDragStart($event, c)" @dragend="onDragEnd" @click="openDetail(c)"
-                class="cursor-grab border-2 border-neutral-900 bg-white p-3 shadow-brutal-sm transition hover:-translate-y-0.5 active:cursor-grabbing">
-                <div class="flex items-start justify-between gap-2">
-                  <p class="min-w-0 truncate text-sm font-semibold">{{ c.name }}</p>
-                  <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full" :class="(getPlatform(c.platform || 'whatsapp') || {}).tone">
-                    <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3 w-3"></ui-icon>
+                class="cursor-grab border-2 border-neutral-900 bg-white p-4 shadow-brutal-sm transition hover:-translate-y-0.5 active:cursor-grabbing">
+                <!-- Encabezado: avatar + nombre + canal -->
+                <div class="flex items-center gap-3">
+                  <ui-avatar :name="c.name" size="h-10 w-10 text-sm"></ui-avatar>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-sm font-semibold">{{ c.name }}</p>
+                    <p class="truncate font-mono text-[10px] text-neutral-400">{{ c.phone || 'sin teléfono' }}</p>
+                  </div>
+                  <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full" :class="(getPlatform(c.platform || 'whatsapp') || {}).tone">
+                    <ui-icon :name="(getPlatform(c.platform || 'whatsapp') || {}).icon" class="h-3.5 w-3.5"></ui-icon>
                   </span>
                 </div>
-                <p class="mt-0.5 truncate font-mono text-[10px] text-neutral-400">{{ c.phone || 'sin teléfono' }}</p>
-                <div class="mt-2 flex flex-wrap items-center gap-1">
-                  <span v-if="interestScore(c).nivel" class="relative" :title="'Productos de interés: ' + interestScore(c).products.join(', ')">
-                    <ui-badge :variant="interestScore(c).nivel === 'alto' ? 'danger' : interestScore(c).nivel === 'medio' ? 'warn' : 'neutral'" dot>
-                      <span class="flex items-center gap-1"><ui-icon name="flame" class="h-3 w-3"></ui-icon>{{ interestScore(c).label }}</span>
-                    </ui-badge>
-                  </span>
+
+                <!-- Interés comercial (nivel + valor estimado) -->
+                <div v-if="interestScore(c).nivel" class="mt-3 flex items-center gap-2 border border-neutral-200 bg-stone-50 px-3 py-2">
+                  <ui-icon name="flame" class="h-4 w-4" :class="interestScore(c).nivel === 'alto' ? 'text-red-700' : interestScore(c).nivel === 'medio' ? 'text-amber-600' : 'text-neutral-500'"></ui-icon>
+                  <span class="text-xs font-semibold">{{ interestScore(c).label }}</span>
+                  <span class="ml-auto font-mono text-[10px] tabular-nums text-neutral-500">{{ formatPrice(interestScore(c).value) }} estimado</span>
+                </div>
+
+                <!-- Chips de relación -->
+                <div class="mt-3 flex flex-wrap items-center gap-1.5">
                   <ui-badge v-if="metricsOf(c).vip" variant="warn" dot>VIP</ui-badge>
                   <ui-badge v-if="metricsOf(c).frecuente" variant="success" dot>Frecuente</ui-badge>
                   <ui-badge variant="neutral">{{ metricsOf(c).totalMsgs }} msgs</ui-badge>
@@ -421,26 +429,28 @@
                     <ui-icon name="clock" class="h-3 w-3"></ui-icon>
                     {{ pendingReminders(c).length }} pend.
                   </span>
+                  <span v-if="interestScore(c).products.length" class="font-mono text-[9px] uppercase tracking-wider text-neutral-400">{{ interestScore(c).products.length }} producto(s)</span>
                 </div>
-                <p v-if="interestScore(c).nivel" class="mt-1.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
-                  {{ interestScore(c).products.length }} producto(s) · {{ formatPrice(interestScore(c).value) }} estimado
-                </p>
-                <p v-if="lastMessageOf(c)" class="mt-2 truncate border-t border-neutral-100 pt-2 text-xs text-neutral-500">
+
+                <!-- Último mensaje -->
+                <p v-if="lastMessageOf(c)" class="mt-3 line-clamp-2 border-t border-neutral-100 pt-2.5 text-xs leading-relaxed text-neutral-500">
                   {{ lastMessageOf(c).text }}
                 </p>
-                <div class="mt-1.5 flex items-center justify-between">
+
+                <!-- Footer: fecha + acciones -->
+                <div class="mt-3 flex items-center justify-between border-t border-neutral-100 pt-2.5">
                   <span class="font-mono text-[9px] uppercase tracking-wider text-neutral-400">
                     {{ lastMessageOf(c) ? timeAgo(lastMessageOf(c).ts) : 'sin actividad' }}
                   </span>
-                  <div class="flex gap-0.5">
-                    <button v-if="canEdit('leads')" @click.stop="openCloseModal(c)" class="p-0.5 text-neutral-400 hover:text-red-700" aria-label="Cerrar lead">
-                      <ui-icon name="check-circle" class="h-3.5 w-3.5"></ui-icon>
+                  <div class="flex gap-1">
+                    <button v-if="canEdit('leads')" @click.stop="openCloseModal(c)" class="p-1.5 text-neutral-400 transition hover:text-red-700" aria-label="Cerrar lead">
+                      <ui-icon name="check-circle" class="h-4 w-4"></ui-icon>
                     </button>
-                    <button @click.stop="moveContact(c, -1)" class="p-0.5 text-neutral-400 hover:text-neutral-900" aria-label="Mover atrás">
-                      <ui-icon name="chevron-left" class="h-3.5 w-3.5"></ui-icon>
+                    <button @click.stop="moveContact(c, -1)" class="p-1.5 text-neutral-400 transition hover:text-neutral-900" aria-label="Mover atrás">
+                      <ui-icon name="chevron-left" class="h-4 w-4"></ui-icon>
                     </button>
-                    <button @click.stop="moveContact(c, 1)" class="p-0.5 text-neutral-400 hover:text-neutral-900" aria-label="Mover adelante">
-                      <ui-icon name="chevron-right" class="h-3.5 w-3.5"></ui-icon>
+                    <button @click.stop="moveContact(c, 1)" class="p-1.5 text-neutral-400 transition hover:text-neutral-900" aria-label="Mover adelante">
+                      <ui-icon name="chevron-right" class="h-4 w-4"></ui-icon>
                     </button>
                   </div>
                 </div>
@@ -458,25 +468,29 @@
           <div v-else class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <article v-for="c in closedContacts" :key="c.id" @click="openDetail(c)"
               class="cursor-pointer border-2 border-neutral-900 bg-white p-4 shadow-brutal-sm transition hover:-translate-y-0.5">
-              <div class="flex items-start justify-between gap-2">
-                <p class="min-w-0 truncate text-sm font-semibold">{{ c.name }}</p>
-                <ui-badge :variant="c.leadClosed.outcome === 'ganada' ? 'success' : 'danger'" dot>
+              <!-- Encabezado: avatar + nombre + resultado -->
+              <div class="flex items-center gap-3">
+                <ui-avatar :name="c.name" size="h-10 w-10 text-sm"></ui-avatar>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-semibold">{{ c.name }}</p>
+                  <p class="truncate font-mono text-[10px] text-neutral-400">{{ c.phone || 'sin teléfono' }}</p>
+                </div>
+                <ui-badge :variant="c.leadClosed.outcome === 'ganada' ? 'success' : 'danger'" dot class="shrink-0">
                   Cerrada · {{ closeLabel(c.leadClosed.outcome) }}
                 </ui-badge>
               </div>
-              <p class="mt-0.5 truncate font-mono text-[10px] text-neutral-400">{{ c.phone || 'sin teléfono' }}</p>
-              <div v-if="(c.leadClosed.products || []).length" class="mt-2 flex flex-wrap gap-1">
+              <div v-if="(c.leadClosed.products || []).length" class="mt-3 flex flex-wrap gap-1.5">
                 <span v-for="pid in c.leadClosed.products" :key="pid" class="border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
                   {{ productName(pid) }}
                 </span>
               </div>
               <p v-if="c.leadClosed.reason" class="mt-2 inline-block border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">{{ c.leadClosed.reason }}</p>
-              <p v-if="c.leadClosed.note" class="mt-2 border-t border-neutral-100 pt-2 text-xs text-neutral-600">{{ c.leadClosed.note }}</p>
-              <div class="mt-2 flex items-center justify-between">
+              <p v-if="c.leadClosed.note" class="mt-3 border-t border-neutral-100 pt-2.5 text-xs leading-relaxed text-neutral-600">{{ c.leadClosed.note }}</p>
+              <div class="mt-3 flex items-center justify-between border-t border-neutral-100 pt-2.5">
                 <span class="font-mono text-[9px] uppercase tracking-wider text-neutral-400">
                   {{ c.leadClosed.at ? new Date(c.leadClosed.at).toLocaleDateString('es-VE') : '' }}
                 </span>
-                <button @click.stop="reopenLead(c)" class="border border-neutral-300 px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition hover:border-neutral-900">
+                <button @click.stop="reopenLead(c)" class="border border-neutral-300 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition hover:border-neutral-900">
                   Reabrir
                 </button>
               </div>

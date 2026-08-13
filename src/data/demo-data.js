@@ -254,13 +254,14 @@
   /**
    * Menciones demo de productos: cubren los 6 casos de oportunidad
    * (demanda sin venta, agotado con demanda, pico, interés recurrente,
-   * intención fuerte y venta cruzada) con fechas escalonadas 0-60 días.
+   * intención fuerte y venta cruzada) con fechas escalonadas 0-50 días,
+   * para cada nicho con catálogo semilla (restaurante y celulares).
    */
   function buildProductMentions(niche, contacts, conversations, products) {
     const byName = (n) => contacts.find((c) => c.name === n) || null;
     const convOf = (c) => conversations.find((x) => x.contactId === c.id) || null;
     const daysAgo = (d) => Date.now() - d * 864e5;
-    const mention = (productName, contactName, text, intent, match, days, conv) => {
+    const mention = (productName, contactName, text, intent, match, days) => {
       const p = products.find((x) => x.name === productName);
       const c = byName(contactName);
       if (!p || !c) return null;
@@ -269,7 +270,7 @@
         productId: p.id,
         messageId: null,
         contactId: c.id,
-        convId: (conv || convOf(c) || {}).id || null,
+        convId: (convOf(c) || {}).id || null,
         ts: daysAgo(days),
         intent,
         match,
@@ -277,27 +278,47 @@
         text,
       };
     };
-    const seeds = [
-      // Intención fuerte + demanda sin venta (iPhone 15, 2 contactos distintos)
-      mention('iPhone 15', 'Marina Delgado', '¿Cuánto cuesta el iPhone 15?', 'precio', 'exacta', 2),
-      mention('iPhone 15', 'Francisco Rangel', '¿Tienen el iPhone 15 en azul?', 'disponibilidad', 'parcial', 5),
-      // Agotado con demanda (Audífonos, stock false)
-      mention('Audífonos inalámbricos', 'Carlos Hernández', '¿Hay audífonos disponibles?', 'disponibilidad', 'exacta', 1),
-      // Interés recurrente + pico de demanda (Samsung S24, mismo contacto, 50d vs 4d)
-      mention('Samsung Galaxy S24', 'Daniela Rojas', '¿Precio del Galaxy S24?', 'precio', 'exacta', 50),
-      mention('Samsung Galaxy S24', 'Daniela Rojas', '¿Tienen stock del S24?', 'disponibilidad', 'exacta', 20),
-      mention('Samsung Galaxy S24', 'Daniela Rojas', 'Quiero pedir un S24', 'pedido', 'exacta', 4),
-      mention('Samsung Galaxy S24', 'Oscar Pino', '¿Cuánto cuesta el S24?', 'precio', 'exacta', 6),
-      // Venta cruzada (mismo contacto: iPhone 15 + Cargador)
-      mention('iPhone 15', 'Natalia Briceño', '¿Precio del iPhone 15?', 'precio', 'exacta', 3),
-      mention('Cargador rápido 25W', 'Natalia Briceño', '¿Venden cargadores rápidos?', 'disponibilidad', 'parcial', 3),
-      // Consultas sueltas (demanda base)
-      mention('Reparación de pantalla', 'Valentina Ríos', '¿Reparan pantallas rotas?', 'garantia', 'exacta', 8),
-      mention('Plan de datos 10GB', 'Sofía Marcano', '¿Cuánto cuesta el plan de datos?', 'precio', 'exacta', 12),
-    ];
-    // Solo nichos con catálogo semilla (restaurante/celulares)
-    if (!products.length || !['restaurante', 'celulares'].includes(niche.id)) return [];
-    return seeds.filter(Boolean);
+    const SEED_DEFS = {
+      celulares: [
+        // Intención fuerte + demanda sin venta (iPhone 15, 2 contactos distintos)
+        mention('iPhone 15', 'Marina Delgado', '¿Cuánto cuesta el iPhone 15?', 'precio', 'exacta', 2),
+        mention('iPhone 15', 'Francisco Rangel', '¿Tienen el iPhone 15 en azul?', 'disponibilidad', 'parcial', 5),
+        // Agotado con demanda (Audífonos, stock false)
+        mention('Audífonos inalámbricos', 'Carlos Hernández', '¿Hay audífonos disponibles?', 'disponibilidad', 'exacta', 1),
+        // Interés recurrente + pico de demanda (Samsung S24, mismo contacto, 50d vs 4d)
+        mention('Samsung Galaxy S24', 'Daniela Rojas', '¿Precio del Galaxy S24?', 'precio', 'exacta', 50),
+        mention('Samsung Galaxy S24', 'Daniela Rojas', '¿Tienen stock del S24?', 'disponibilidad', 'exacta', 20),
+        mention('Samsung Galaxy S24', 'Daniela Rojas', 'Quiero pedir un S24', 'pedido', 'exacta', 4),
+        mention('Samsung Galaxy S24', 'Oscar Pino', '¿Cuánto cuesta el S24?', 'precio', 'exacta', 6),
+        // Venta cruzada (mismo contacto: iPhone 15 + Cargador)
+        mention('iPhone 15', 'Natalia Briceño', '¿Precio del iPhone 15?', 'precio', 'exacta', 3),
+        mention('Cargador rápido 25W', 'Natalia Briceño', '¿Venden cargadores rápidos?', 'disponibilidad', 'parcial', 3),
+        // Consultas sueltas (demanda base)
+        mention('Reparación de pantalla', 'Valentina Ríos', '¿Reparan pantallas rotas?', 'garantia', 'exacta', 8),
+        mention('Plan de datos 10GB', 'Sofía Marcano', '¿Cuánto cuesta el plan de datos?', 'precio', 'exacta', 12),
+      ],
+      restaurante: [
+        // Intención fuerte + demanda sin venta (Arroz con pollo, 2 contactos)
+        mention('Arroz con pollo', 'Marina Delgado', '¿Cuánto cuesta el arroz con pollo?', 'precio', 'exacta', 2),
+        mention('Arroz con pollo', 'Francisco Rangel', '¿Tienen arroz con pollo para delivery?', 'pedido', 'parcial', 5),
+        // Agotado con demanda (Postre del día, stock false)
+        mention('Postre del día', 'Carlos Hernández', '¿Hay postre disponible hoy?', 'disponibilidad', 'parcial', 1),
+        // Interés recurrente + pico de demanda (Hamburguesa clásica, mismo contacto)
+        mention('Hamburguesa clásica', 'Daniela Rojas', '¿Precio de la hamburguesa?', 'precio', 'exacta', 50),
+        mention('Hamburguesa clásica', 'Daniela Rojas', '¿Tienen hamburguesas?', 'disponibilidad', 'exacta', 20),
+        mention('Hamburguesa clásica', 'Daniela Rojas', 'Quiero pedir una hamburguesa', 'pedido', 'exacta', 4),
+        mention('Hamburguesa clásica', 'Oscar Pino', '¿Cuánto cuesta la burger?', 'precio', 'parcial', 6),
+        // Venta cruzada (mismo contacto: Arroz con pollo + Bebida natural)
+        mention('Arroz con pollo', 'Natalia Briceño', '¿Precio del arroz con pollo?', 'precio', 'exacta', 3),
+        mention('Bebida natural', 'Natalia Briceño', '¿Venden jugo natural?', 'disponibilidad', 'exacta', 3),
+        // Consultas sueltas (demanda base)
+        mention('Pizza margarita', 'Valentina Ríos', '¿Cuánto cuesta la pizza?', 'precio', 'exacta', 8),
+        mention('Delivery express', 'Sofía Marcano', '¿Hacen delivery?', 'pedido', 'exacta', 12),
+      ],
+    };
+    // Solo nichos con catálogo semilla
+    if (!products.length) return [];
+    return (SEED_DEFS[niche.id] || []).filter(Boolean);
   }
 
   /**

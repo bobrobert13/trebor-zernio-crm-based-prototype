@@ -602,6 +602,8 @@
    */
   function matchProducts(text, products, nicheId) {
     const hay = normalizeText(text);
+    // Guard: textos vacíos o demasiado cortos no generan candidatos
+    if (!hay || hay.length < 2) return [];
     const tokens = hay.split(/\s+/).filter(Boolean);
     const intent = detectIntent(text, nicheId);
     const out = [];
@@ -643,11 +645,17 @@
    */
   function renderWhatsApp(text) {
     const esc = escapeHtml(text);
-    let body = esc
-      .replace(/```([^`]+)```/g, '<code>$1</code>')
+    // Protege bloques de código antes de aplicar el resto del markup
+    const codeBlocks = [];
+    let body = esc.replace(/```([^`]+)```/g, (_, m) => {
+      codeBlocks.push(m);
+      return '\u0000' + (codeBlocks.length - 1) + '\u0000';
+    });
+    body = body
       .replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>')
       .replace(/~([^~\n]+)~/g, '<del>$1</del>')
       .replace(/(^|[\s(])(_([^_\n]+)_)(?=$|[\s).,;!?])/g, '$1<em>$3</em>');
+    body = body.replace(/\u0000(\d+)\u0000/g, (_, i) => '<code>' + codeBlocks[Number(i)] + '</code>');
     const lines = body.split('\n');
     const html = [];
     let inList = false;

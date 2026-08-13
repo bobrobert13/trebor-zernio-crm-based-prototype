@@ -117,8 +117,12 @@
 
       function openCloseModal(contact) {
         closeTarget.value = contact;
-        // Preselecciona los productos con menciones del contacto (interés real)
-        const ms = productMentions.value.filter((m) => m.contactId === contact.id);
+        // Preselecciona los productos con menciones del contacto (interés real,
+        // ignorando productos eliminados del catálogo)
+        const catalog = workspace.value.products || [];
+        const ms = productMentions.value.filter(
+          (m) => m.contactId === contact.id && catalog.some((p) => p.id === m.productId)
+        );
         Object.assign(closeForm, {
           outcome: 'ganada',
           note: '',
@@ -267,12 +271,16 @@
 
       function intentScore(contact) {
         if (!contact) return { hot: false, products: [] };
-        const ms = productMentions.value.filter((m) => m.contactId === contact.id);
+        // Ignora menciones de productos eliminados del catálogo
+        const catalog = workspace.value.products || [];
+        const ms = productMentions.value.filter(
+          (m) => m.contactId === contact.id && catalog.some((p) => p.id === m.productId)
+        );
         if (!ms.length) return { hot: false, products: [] };
         const strong = ms.some((m) => ['pedido', 'precio', 'reserva'].includes(m.intent));
         const names = ms
           .map((m) => {
-            const p = (workspace.value.products || []).find((x) => x.id === m.productId);
+            const p = catalog.find((x) => x.id === m.productId);
             return p ? p.name : null;
           })
           .filter(Boolean);

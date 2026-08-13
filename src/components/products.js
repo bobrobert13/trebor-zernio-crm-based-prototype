@@ -60,7 +60,10 @@
         total: products.value.length,
         servicios: products.value.filter((p) => p.type === 'servicio').length,
         agotados: products.value.filter((p) => p.stock === false).length,
-        consultas: mentions.value.filter((m) => m.ts >= Date.now() - 30 * 864e5).length,
+        // Solo menciones de productos vigentes (coherente con el ranking)
+        consultas: mentions.value.filter(
+          (m) => m.ts >= Date.now() - 30 * 864e5 && products.value.some((p) => p.id === m.productId)
+        ).length,
       }));
 
       // ── CRUD con ficha técnica ─────────────────────────────────────────────
@@ -319,7 +322,7 @@
               `"${String(p.category || '').replace(/"/g, '""')}"`,
               p.price != null ? p.price : '',
               `"${String(p.unit || '').replace(/"/g, '""')}"`,
-              `"${(p.aliases || []).join('|').replace(/"/g, '""')}"`,
+              `"${(p.aliases || []).join(',')}"`,
               p.stock === false ? 'no' : 'si',
             ].join(',')
           );
@@ -465,7 +468,19 @@
           const [idA, idB] = topPair[0].split('|');
           const pa = products.value.find((p) => p.id === idA);
           const pb = products.value.find((p) => p.id === idB);
-          if (pa && pb) out.push({ caseId: 'venta_cruzada', product: pa, productB: pb, count: topPair[1] });
+          if (pa && pb) {
+            const pairMentions = cons.filter((m) => m.productId === idA || m.productId === idB);
+            const lastM = pairMentions.reduce((a, b) => (b.ts > a.ts ? b : a), pairMentions[0]);
+            out.push({
+              caseId: 'venta_cruzada',
+              product: pa,
+              productB: pb,
+              count: topPair[1],
+              lastTs: lastM.ts,
+              convId: lastM.convId,
+              contact: contacts.find((c) => c.id === lastM.contactId) || null,
+            });
+          }
         }
 
         out.sort((a, b) => b.count - a.count);

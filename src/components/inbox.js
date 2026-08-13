@@ -131,6 +131,7 @@
       async function selectConversation(conv) {
         selectedId.value = conv.id;
         humanAgent.value = false;
+        detachCard(); // la ficha adjunta pertenece a la conversación anterior
         if (conv.unread > 0) conv.unread = 0;
         if (isLive.value && (conv.messages || []).length === 0) {
           // Cada conversación pide sus mensajes con SU cuenta (puede haber varias por perfil)
@@ -574,12 +575,15 @@
       const cardAttach = Vue.ref(null); // producto adjunto al draft
       const cardGreeting = Vue.ref('');
 
-      /** Preview del mensaje final compuesto (saludo + tarjeta formateada). */
+      /** Preview del mensaje final compuesto (saludo + draft + tarjeta formateada). */
       const cardPreview = Vue.computed(() => {
         if (!cardAttach.value) return '';
         const card = buildProductCard(cardAttach.value, niche.value.id);
-        const g = cardGreeting.value.trim();
-        return g ? g + '\n\n' + card : card;
+        const parts = [];
+        if (cardGreeting.value.trim()) parts.push(cardGreeting.value.trim());
+        if (draft.value.trim()) parts.push(draft.value.trim());
+        parts.push(card);
+        return parts.join('\n\n');
       });
 
       function openCardPicker() {
@@ -589,6 +593,7 @@
       }
 
       function attachCard(product) {
+        if (!product || product.active === false) return;
         cardAttach.value = product;
         const defaults = (PRODUCT_CARD_DEFAULTS || {})[niche.value.id] || (PRODUCT_CARD_DEFAULTS || {}).generic || {};
         cardGreeting.value = defaults.greeting || '';

@@ -9,7 +9,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, formatDate, formatTime, uid, canEdit, getNiche, api, asArray } = ZernioCrm;
+  const { store, toast, formatDate, formatTime, uid, canEdit, getNiche, api, asArray, activeAgents, askAgent } = ZernioCrm;
 
   const components = {};
 
@@ -158,6 +158,27 @@
       }
 
       Vue.onMounted(load);
+
+      // ── Agente IA conectado (módulo Agente): borradores de campaña ─────────
+      const campaignAgents = Vue.computed(() => activeAgents('campaigns'));
+      const agentBusy = Vue.ref(false);
+      const agentSuggestion = Vue.ref(null); // { agent, action, error }
+
+      /** Pide al agente un borrador de campaña (nombre + texto sugerido). */
+      async function askCampaignAgent(agent) {
+        if (agentBusy.value) return;
+        agentBusy.value = true;
+        agentSuggestion.value = null;
+        try {
+          const res = await askAgent(agent, 'campaign.draft', { extra: niche.value ? niche.value.nombre : '' });
+          agentSuggestion.value = Object.assign({ agent }, res);
+          if (res.ok && res.action && res.action.text && !form.name.trim()) {
+            form.name = res.action.text;
+          }
+        } finally {
+          agentBusy.value = false;
+        }
+      }
 
       /** Crea un broadcast (live: draft → segmento → send). */
       async function createBroadcast() {
@@ -538,6 +559,7 @@
         approvedTemplates, draftTemplates, allTemplates,
         saveDraftTemplate, submitTemplateForApproval, discardDraft,
         previewTpl, previewOpen, openPreview, guideOpen,
+        campaignAgents, agentBusy, agentSuggestion, askCampaignAgent,
         canEdit, createBroadcast, createTemplate, openRecipients, tplId,
         addSeqStep, removeSeqStep, createSequence, toggleSequence, enrollSequence,
         createFlow, sendFlow, seqStatusTone, formatDate, formatTime,
@@ -791,6 +813,23 @@
             <ui-field label="Nombre de la campaña">
               <input v-model.trim="form.name" type="text" placeholder="Ej: Promoción de fin de semana"
                 class="w-full border-2 border-neutral-300 px-3 py-2.5 outline-none focus:border-neutral-900" />
+              <!-- Borrador sugerido por el agente IA conectado (módulo Agente) -->
+              <div v-if="campaignAgents.length" class="mt-2 space-y-1.5">
+                <div v-for="a in campaignAgents" :key="a.id" class="flex items-center justify-between gap-2 border border-neutral-200 px-2.5 py-1.5">
+                  <span class="text-[11px] text-neutral-500">
+                    <ui-icon name="sparkles" class="mr-1 inline h-3 w-3 text-[var(--accent)] align-[-2px]"></ui-icon>
+                    {{ agentSuggestion && agentSuggestion.agent && agentSuggestion.agent.id === a.id && agentSuggestion.action && agentSuggestion.action.text
+                      ? 'Borrador de ' + a.name + ' listo en el campo nombre'
+                      : 'Sugerir un borrador con ' + a.name }}
+                    <span v-if="agentSuggestion && agentSuggestion.agent && agentSuggestion.agent.id === a.id && agentSuggestion.error" class="text-red-700">{{ agentSuggestion.error }}</span>
+                  </span>
+                  <button @click="askCampaignAgent(a)" :disabled="agentBusy"
+                    class="shrink-0 border border-neutral-900 px-2 py-0.5 text-[10px] font-semibold transition hover:bg-neutral-900 hover:text-white disabled:opacity-40">
+                    <ui-spinner v-if="agentBusy" size="h-3 w-3"></ui-spinner>
+                    <span v-else>Sugerir</span>
+                  </button>
+                </div>
+              </div>
             </ui-field>
             <ui-field label="Plantilla" hint="Solo plantillas APROBADAS salen de la ventana de 24h.">
               <select v-model="form.templateId" class="w-full border-2 border-neutral-300 bg-white px-3 py-2.5 outline-none focus:border-neutral-900">

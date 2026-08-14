@@ -40,6 +40,75 @@
   /** Tope de caracteres del texto que un agente puede insertar (guarda contra respuestas gigantes). */
   const MAX_ACTION_TEXT = 2000;
 
+  /**
+   * Herramientas (MCP) del CRM expuestas al agente: qué puede modificar, con qué
+   * barreras y cuándo se disparan. Se muestran en la configuración del agente
+   * para que el cliente sepa exactamente qué nutrimos y qué puede tocar.
+   */
+  const CRM_TOOLS = [
+    {
+      id: 'send_reply',
+      action: 'reply',
+      name: 'Responder mensaje',
+      icon: 'message',
+      desc: 'Escribe y envía un mensaje al cliente en su conversación de WhatsApp.',
+      modifies: 'Agrega un mensaje saliente al hilo y lo envía por el canal conectado.',
+      barrier: 'Política de 24h: fuera de ventana no se envían mensajes libres (se requiere plantilla aprobada). Una sola respuesta por mensaje entrante.',
+      trigger: 'Al recibir un mensaje del cliente (con auto-respuesta activa) o bajo demanda desde el panel IA.',
+    },
+    {
+      id: 'classify_lead',
+      action: 'classify',
+      name: 'Clasificar lead',
+      icon: 'tag',
+      desc: 'Asigna la etapa del pipeline al contacto (stock, cotización, pedido…).',
+      modifies: 'Actualiza la etapa del lead y su historial de cambios.',
+      barrier: 'Solo acepta etapas existentes del negocio; las demás se ignoran.',
+      trigger: 'Automático con cada mensaje entrante o al pedir una sugerencia en el panel IA.',
+    },
+    {
+      id: 'close_sale',
+      action: 'close_sale',
+      name: 'Cerrar venta',
+      icon: 'check-circle',
+      desc: 'Finaliza el lead como concretada o no concretada, con nota y motivo.',
+      modifies: 'Marca el cierre en el contacto y lo registra en su historial de etapas.',
+      barrier: 'Requiere «Cierre de ventas» activado por agente y un resultado válido (ganada/perdida).',
+      trigger: 'Solo cuando el agente detecta el cierre de la negociación y tú activaste «Cierre de ventas».',
+    },
+    {
+      id: 'attach_product',
+      action: 'attach_product',
+      name: 'Adjuntar ficha de producto',
+      icon: 'box',
+      desc: 'Adjunta la ficha formateada de un producto del catálogo a la conversación.',
+      modifies: 'Inserta la tarjeta del producto (precio, stock, detalle) en el mensaje.',
+      barrier: 'Solo productos existentes y activos del catálogo; cualquier otro se ignora.',
+      trigger: 'Cuando el agente detecta interés por un producto (pedido, precio, reserva).',
+    },
+    {
+      id: 'create_reminder',
+      action: 'reminder',
+      name: 'Crear recordatorio',
+      icon: 'clock',
+      desc: 'Programa un seguimiento del contacto para no perder la conversación.',
+      modifies: 'Agrega un recordatorio de seguimiento al contacto.',
+      barrier: 'Fecha opcional y validada; si llega inválida se crea sin fecha.',
+      trigger: 'Cuando el agente propone seguimiento (cliente sin responder, pedido en curso).',
+    },
+  ];
+
+  /**
+   * Pipelines: secuencias de herramientas que el agente encadena para cumplir
+   * objetivos completos de venta (varias cosas requeridas a la vez).
+   */
+  const TOOL_PIPELINES = [
+    { id: 'bienvenida', name: 'Atención de primer contacto', tools: ['send_reply', 'classify_lead'], goal: 'Responder la consulta inicial y clasificar al lead en su etapa.' },
+    { id: 'recomendacion', name: 'Recomendación de producto', tools: ['attach_product', 'send_reply'], goal: 'Detectar interés, adjuntar la ficha del producto y enviar la respuesta.' },
+    { id: 'reenganche', name: 'Re-enganche fuera de ventana', tools: ['send_reply', 'create_reminder'], goal: 'Re-enganchar al cliente (el CRM exige plantilla aprobada fuera de 24h) y dejar seguimiento.' },
+    { id: 'cierre', name: 'Cierre de venta completo', tools: ['classify_lead', 'attach_product', 'send_reply', 'create_reminder', 'close_sale'], goal: 'Clasificar, adjuntar ficha, responder, programar seguimiento y cerrar la venta.' },
+  ];
+
   /** Preset de adaptación del proveedor Mary (personalizable campo a campo). */
   const MARY_MAPPING = {
     action: 'action',
@@ -231,6 +300,7 @@
   window.ZernioCrm = window.ZernioCrm || {};
   Object.assign(window.ZernioCrm, {
     AGENT_FLOWS, CANONICAL_FIELDS, MARY_MAPPING, MARY_EXAMPLE,
+    CRM_TOOLS, TOOL_PIPELINES,
     activeAgents, askAgent, testAgent, adapt, buildContext, getPath,
   });
 })();

@@ -8,9 +8,14 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, getNiche, timeAgo, formatTime, formatDate, uid, canEdit, PLATFORMS, getPlatform, recordProductMentions, confirmMention, discardMention, INTENT_LABELS, buildProductCard, PRODUCT_CARD_DEFAULTS, renderWhatsApp, formatPrice } = ZernioCrm;
+  const { store, toast, getNiche, timeAgo, formatTime, formatDate, uid, canEdit, PLATFORMS, getPlatform, recordProductMentions, confirmMention, discardMention, INTENT_LABELS, buildProductCard, PRODUCT_CARD_DEFAULTS, renderWhatsApp, formatPrice, activeAgents, askAgent } = ZernioCrm;
 
   const components = {};
+
+  /** Auto-respondedor del agente IA: la instancia montada lo asigna; el hook de
+   *  mensajes entrantes se registra UNA vez por página (evita duplicados en remounts). */
+  let agentAutoReply = null;
+  let agentHookRegistered = false;
 
   /** Respuestas entrantes simuladas para el modo demo. */
   const DEMO_REPLIES = [
@@ -241,6 +246,8 @@
           if (selectedId.value !== conv.id) conv.unread += 1;
           const contact = contacts.value.find((c) => c.id === conv.contactId);
           if (contact) recordProductMentions(contact, conv, msg, reply);
+          // Auto-respuesta del agente IA (demo) — solo envío, sin nueva simulación
+          if (agentAutoReply) agentAutoReply(contact, conv, msg);
         }, delay);
       }
 
@@ -887,6 +894,11 @@
       // ── Asistente IA (análisis local de la conversación + historial) ───────
       const aiOpen = Vue.ref(false);
 
+      /** Agentes IA activos con el flujo de bandeja (módulo Agente). */
+      const inboxAgents = Vue.computed(() => activeAgents('inbox'));
+      const aiAgentBusy = Vue.ref(false);
+      const aiAgentResult = Vue.ref(null); // { agent, action, error }
+
       /** Nivel de interés comercial compacto (misma lógica que el tablero). */
       function aiInterest(contact) {
         const catalog = workspace.value.products || [];
@@ -972,6 +984,117 @@
         remInput.text = 'Seguimiento de conversación con ' + c.name;
         addReminderFor(c);
         toast('Recordatorio de seguimiento creado', 'success');
+      }
+
+      // ── Agente IA conectado (módulo Agente): sugerencias y autonomía ────────
+
+      /** Pregunta al agente conectado por la conversación seleccionada. */
+      async function askAgentForSuggestion(agent) {
+        if (aiAgentBusy.value) return;
+        aiAgentBusy.value = true;
+        aiAgentResult.value = null;
+        try {
+          const res = await askAgent(agent, 'suggestion.requested', { contact: selectedContact.value, conversation: selected.value });
+          aiAgentResult.value = Object.assign({ agent }, res);
+        } finally {
+          aiAgentBusy.value = false;
+        }
+      }
+
+      /** Cierra un lead con la acción close_sale del agente (misma mutación que confirmClose). */
+      function closeAgentSale(contact, action) {
+        if (!contact || !canEdit('inbox')) return;
+        const outcome = action.outcome === 'perdida' ? 'perdida' : 'ganada';
+        contact.leadClosed = { at: Date.now(), outcome, note: action.note || 'Cierre autónomo del agente', reason: action.reason || undefined };
+        contact.leadHistory = contact.leadHistory || [];
+        contact.leadHistory.push({ tag: `finalizada:${outcome}`, at: contact.leadClosed.at, note: contact.leadClosed.note, reason: contact.leadClosed.reason });
+        toast(`El agente cerró el lead como ${closeLabel(outcome).toLowerCase()}`, 'success');
+      }
+
+      /** Aplica la acción canónica del agente a una conversación (auto-respuesta). */
+      async function applyAgentActionToConv(agent, contact, conv, action) {
+        // Clasificación de lead
+        if (action.leadTag && contact && (leadTags.value || []).includes(action.leadTag)) {
+          if (contact.leadTag !== action.leadTag) {
+            ZernioCrm.applyLeadTag(contact, action.leadTag);
+            toast(`${agent.name} asignó la etapa ${action.leadTag}`, 'info');
+          }
+        }
+        // Cierre de venta autónomo (requiere autoCloseSale del agente)
+        if (action.action === 'close_sale' && contact && agent.autoCloseSale) {
+          closeAgentSale(contact, action);
+        }
+        // Recordatorio de seguimiento
+        if (action.action === 'reminder') {
+          ZernioCrm.addReminder(contact.id, action.text || 'Seguimiento del agente', action.reminderAt || null);
+          toast(`${agent.name} creó un recordatorio`, 'info');
+        }
+        // Ficha de producto (solo si la conversación está a la vista)
+        if (action.productId) {
+          const p = (workspace.value.products || []).find((x) => x.id === action.productId);
+          if (p && selectedId.value === conv.id) attachCard(p);
+        }
+        // Respuesta: misma política de ventana de 24h que el composer
+        // (solo si el agente tiene autoReply activo)
+        if (action.action === 'reply' && action.text && agent.autoReply) {
+          const last = (conv.messages || []).slice(-1)[0];
+          const outside = Date.now() - ((last && last.ts) || 0) > 24 * 3600 * 1000;
+          if (isLive.value && outside && (conv.platform || 'whatsapp') === 'whatsapp') {
+            toast(`${agent.name} sugirió una respuesta, pero la ventana de 24h está cerrada (se requiere plantilla)`, 'error', 6000);
+            return;
+          }
+          const msgOut = { id: uid('msg'), from: 'out', text: action.text, ts: Date.now(), status: 'sent' };
+          conv.messages.push(msgOut);
+          conv.lastTs = Date.now();
+          try {
+            if (isLive.value) {
+              await ZernioCrm.api.sendMessage(conv.id, { accountId: conv.accountId || (workspace.value.zernio && workspace.value.zernio.accountId) || '', message: action.text });
+            } else {
+              simulateDelivery(msgOut); // demo: sin nueva simulación entrante (evita bucles)
+            }
+          } catch (err) {
+            msgOut.status = 'failed';
+            toast(`${agent.name}: ${err.message || 'no se pudo enviar'}`, 'error');
+          }
+        }
+      }
+
+      /** Auto-respuesta: recorre agentes con autonomía activa y aplica su acción. */
+      async function maybeAgentAutoReply(contact, conv, msg) {
+        if (!conv || !contact || sending.value) return;
+        for (const agent of activeAgents('inbox')) {
+          // Autonomía: autoReply (responder) o autoCloseSale (clasificar/cerrar/recordar)
+          if (!agent.autoReply && !agent.autoCloseSale) continue;
+          let res;
+          try {
+            res = await askAgent(agent, 'message.received', { contact, conversation: conv });
+          } catch (err) {
+            toast(`${agent.name}: ${err.message || 'error del agente'}`, 'error');
+            continue;
+          }
+          if (!res.ok || !res.action || res.action.action === 'none') continue;
+          await applyAgentActionToConv(agent, contact, conv, res.action);
+        }
+      }
+
+      /** Aplica la acción del agente desde el panel IA (conversación seleccionada). */
+      function applyAgentAction(action) {
+        if (!action) return;
+        if (action.text) {
+          draft.value = action.text;
+          toast('Respuesta del agente lista en el composer: revísala y envía', 'success');
+        }
+        if (action.productId) {
+          const p = (workspace.value.products || []).find((x) => x.id === action.productId);
+          if (p) { attachCard(p); toast('Ficha adjuntada por el agente: ' + p.name, 'info'); }
+        }
+        if (action.leadTag && selectedContact.value) {
+          ZernioCrm.applyLeadTag(selectedContact.value, action.leadTag);
+          toast('Etapa asignada por el agente: ' + action.leadTag, 'info');
+        }
+        if (action.action === 'close_sale' && selectedContact.value) {
+          closeAgentSale(selectedContact.value, action);
+        }
       }
 
       /** Envía la plantilla seleccionada (re-enganche >24h o primer mensaje). */
@@ -1067,6 +1190,15 @@
         { immediate: true }
       );
 
+      // Auto-respuesta del agente IA: la instancia montada queda como handler;
+      // el hook de mensajes entrantes se registra UNA vez (live: reflectIncomingMessage;
+      // demo: simulateIncoming invoca agentAutoReply directamente).
+      agentAutoReply = (contact, conv, msg) => maybeAgentAutoReply(contact, conv, msg);
+      if (!agentHookRegistered) {
+        agentHookRegistered = true;
+        ZernioCrm.onIncomingMessage(agentAutoReply);
+      }
+
       return {
         search, filter, platformFilter, selectedId, draft, sending, loading, syncing, newConvOpen, newContactId,
         workspace, niche, conversations, contacts, filtered, selected, selectedContact, unreadTotal, isLive,
@@ -1083,6 +1215,7 @@
         closeLabel, stageLabel, historyOf, productNameOf, toggleCloseProduct,
         openCloseModal, confirmClose, reopenLead, CLOSE_REASONS,
         aiOpen, aiAnalysis, applyAiReply, aiReminder,
+        inboxAgents, aiAgentBusy, aiAgentResult, askAgentForSuggestion, applyAgentAction,
         productMentions, mentionsOfMessage, contactProductMentions, productOf,
         productPickOpen, productPickTarget, productPickQuery, productPickResults,
         openProductPick, pickProduct, INTENT_LABELS,
@@ -1834,6 +1967,45 @@
                   <span class="shrink-0 font-semibold text-[var(--accent)] underline">Usar</span>
                 </button>
               </div>
+            </div>
+
+            <!-- Agentes IA conectados (módulo Agente) -->
+            <div class="border-t-2 border-neutral-900 pt-4">
+              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Agentes conectados</p>
+              <div v-if="inboxAgents.length" class="space-y-2">
+                <div v-for="a in inboxAgents" :key="a.id" class="border border-neutral-200 p-2.5">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-xs font-semibold">{{ a.name }}
+                      <span class="font-mono text-[9px] uppercase text-neutral-400">· {{ a.provider }}</span>
+                    </span>
+                    <button @click="askAgentForSuggestion(a)" :disabled="aiAgentBusy"
+                      class="border-2 border-neutral-900 bg-white px-2.5 py-1 text-[11px] font-semibold transition hover:shadow-brutal-sm disabled:opacity-40">
+                      <ui-spinner v-if="aiAgentBusy" size="h-3 w-3"></ui-spinner>
+                      <span v-else>Preguntar</span>
+                    </button>
+                  </div>
+                  <template v-if="aiAgentResult && aiAgentResult.agent && aiAgentResult.agent.id === a.id">
+                    <p v-if="aiAgentResult.error" class="mt-1.5 border border-red-700 bg-red-50 px-2 py-1.5 text-[11px] text-red-800">
+                      {{ aiAgentResult.error }}
+                    </p>
+                    <template v-else>
+                      <p class="mt-1.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400">Acción: {{ aiAgentResult.action.action }}</p>
+                      <p v-if="aiAgentResult.action.text" class="mt-1 text-xs">{{ aiAgentResult.action.text }}</p>
+                      <div class="mt-2 flex flex-wrap gap-1.5">
+                        <button v-if="aiAgentResult.action.text" @click="applyAgentAction(aiAgentResult.action); aiOpen = false"
+                          class="border-2 border-[var(--accent)] px-2 py-1 text-[11px] font-semibold text-[var(--accent)]">Usar respuesta</button>
+                        <button v-if="aiAgentResult.action.leadTag" @click="applyAgentAction(aiAgentResult.action)"
+                          class="border-2 border-neutral-900 px-2 py-1 text-[11px] font-semibold">Asignar etapa</button>
+                        <button v-if="aiAgentResult.action.action === 'close_sale'" @click="applyAgentAction(aiAgentResult.action)"
+                          class="border-2 border-red-800 px-2 py-1 text-[11px] font-semibold text-red-800">Cerrar venta</button>
+                      </div>
+                    </template>
+                  </template>
+                </div>
+              </div>
+              <p v-else class="text-xs text-neutral-400">
+                Conecta un agente de IA en el módulo Agente para atender esta conversación.
+              </p>
             </div>
           </div>
         </ui-drawer>

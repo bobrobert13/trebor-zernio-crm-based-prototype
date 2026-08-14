@@ -31,6 +31,15 @@
     { key: 'reminderAt', label: 'Fecha de recordatorio', placeholder: 'data.reminderAt' },
   ];
 
+  /** Tipos de acción válidos (whitelist): cualquier otra acción del servicio se ignora. */
+  const VALID_ACTIONS = ['reply', 'classify', 'close_sale', 'attach_product', 'reminder', 'none'];
+
+  /** Tope de tiempo de espera del servicio externo (ms): nunca bloquear el flujo del CRM. */
+  const AGENT_TIMEOUT_MS = 8000;
+
+  /** Tope de caracteres del texto que un agente puede insertar (guarda contra respuestas gigantes). */
+  const MAX_ACTION_TEXT = 2000;
+
   /** Preset de adaptación del proveedor Mary (personalizable campo a campo). */
   const MARY_MAPPING = {
     action: 'action',
@@ -84,6 +93,8 @@
     const lastTs = conv && conv.messages && conv.messages.length ? conv.messages[conv.messages.length - 1].ts : 0;
     return {
       event,
+      // Clave de idempotencia: el servicio puede deduplicar entregas repetidas
+      interactionId: ZernioCrm.uid('agi'),
       workspace: { id: ws.id, name: ws.name, nicheId: ws.nicheId },
       contact: contact ? {
         id: contact.id, name: contact.name, phone: contact.phone,
@@ -105,7 +116,7 @@
     };
   }
 
-  /** Aplica el mapeo del agente al JSON crudo y devuelve la acción canónica. */
+  /** Aplica el mapeo del agente al JSON crudo y devuelve la acción canónica saneada. */
   function adapt(agent, raw) {
     const mapping = Object.assign({}, MARY_MAPPING, agent.mapping || {});
     const action = {};
@@ -114,6 +125,13 @@
       if (v !== undefined) action[k] = v;
     });
     action.action = action.action || 'none';
+    // Guardrails: el servicio externo tiene libertad, pero la acción se valida
+    // antes de tocar el CRM (whitelist + límites de texto)
+    if (!VALID_ACTIONS.includes(action.action)) action.action = 'none';
+    if (action.text != null) {
+      action.text = String(action.text).slice(0, MAX_ACTION_TEXT);
+    }
+    if (action.leadTag != null) action.leadTag = String(action.leadTag).slice(0, 60);
     return action;
   }
 
@@ -160,18 +178,25 @@
     const context = buildContext(event, payload);
     let raw;
     if (ZernioCrm.store.mode === 'live' && agent.url) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
       try {
         const res = await window.fetch(agent.url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${agent.apiKey || ''}` },
           body: JSON.stringify(context),
+          signal: controller.signal,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         raw = await res.json();
       } catch (err) {
-        const message = err && err.message ? err.message : String(err);
+        const message = err && err.name === 'AbortError'
+          ? `Tiempo de espera agotado (${AGENT_TIMEOUT_MS / 1000}s)`
+          : err && err.message ? err.message : String(err);
         logAgent(agent, { event, ok: false, error: message });
         return { ok: false, error: message, action: { action: 'none' }, context };
+      } finally {
+        clearTimeout(timer);
       }
     } else {
       raw = demoRespond(context);
@@ -187,13 +212,20 @@
       await new Promise((resolve) => setTimeout(resolve, 350));
       return { ok: true, simulated: true };
     }
-    const res = await window.fetch(agent.url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${agent.apiKey || ''}` },
-      body: JSON.stringify({ event: 'connection_test', workspace: { name: (ZernioCrm.store.workspace || {}).name } }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return { ok: true };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
+    try {
+      const res = await window.fetch(agent.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${agent.apiKey || ''}` },
+        body: JSON.stringify({ event: 'connection_test', workspace: { name: (ZernioCrm.store.workspace || {}).name } }),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return { ok: true };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   window.ZernioCrm = window.ZernioCrm || {};

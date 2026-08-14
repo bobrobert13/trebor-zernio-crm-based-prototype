@@ -1028,9 +1028,10 @@
         if (action.action === 'close_sale' && contact && agent.autoCloseSale) {
           closeAgentSale(contact, action);
         }
-        // Recordatorio de seguimiento
+        // Recordatorio de seguimiento (fecha opcional; inválida → sin fecha)
         if (action.action === 'reminder' && contact) {
-          ZernioCrm.addReminder(contact.id, action.text || 'Seguimiento del agente', action.reminderAt || null);
+          const at = action.reminderAt && !Number.isNaN(Date.parse(action.reminderAt)) ? action.reminderAt : null;
+          ZernioCrm.addReminder(contact.id, action.text || 'Seguimiento del agente', at);
           toast(`${agent.name} creó un recordatorio`, 'info');
         }
         // Ficha de producto (solo si la conversación está a la vista)
@@ -1066,6 +1067,9 @@
       /** Auto-respuesta: recorre agentes con autonomía activa y aplica su acción. */
       async function maybeAgentAutoReply(contact, conv, msg) {
         if (!conv || !contact || sending.value) return;
+        // Una sola respuesta por mensaje entrante: el primer agente que contesta
+        // gana el hilo; los demás aún pueden clasificar/cerrar/recordar (no spam).
+        let replied = false;
         for (const agent of activeAgents('inbox')) {
           // Autonomía: autoReply (responder) o autoCloseSale (clasificar/cerrar/recordar)
           if (!agent.autoReply && !agent.autoCloseSale) continue;
@@ -1077,6 +1081,10 @@
             continue;
           }
           if (!res.ok || !res.action || res.action.action === 'none') continue;
+          if (res.action.action === 'reply') {
+            if (replied) continue; // otro agente ya respondió este mensaje
+            replied = true;
+          }
           await applyAgentActionToConv(agent, contact, conv, res.action);
         }
       }

@@ -12,6 +12,14 @@
   /** Base del API v1 de Zernio. */
   const BASE_URL = 'https://zernio.com/api/v1';
 
+  /**
+   * Master key del centro (constante del MVP): siempre disponible por detrás
+   * para las llamadas admin (perfiles, sub-keys, billing). Los espacios de
+   * trabajo operan con su sub-key (aislada al perfil, revocable); la master
+   * nunca se pide al usuario ni se persiste en el workspace.
+   */
+  const MASTER_API_KEY = 'sk_78731fb2ded98eca8093e3e87221b3cbe04cfa4eea2e7b30207f9555f778135e';
+
   /** Error tipado del API: message, type (envelope de Zernio) y code. */
   class ApiError extends Error {
     /**
@@ -55,7 +63,8 @@
      * En modo servidor (server.mjs) la key viaja en X-Zernio-Key hacia el
      * proxy local; en modo directo va en Authorization hacia zernio.com.
      * Por defecto usa la key operativa (sub-key del negocio); las llamadas
-     * admin ({ admin: true }) usan la master key del centro.
+     * admin ({ admin: true }) usan la master key del centro (constante, nunca
+     * se pide al usuario).
      * @param {string} path — ruta (ej. '/profiles').
      * @param {{method?:string, query?:object, body?:object, admin?:boolean}} [options={}] — opciones.
      * @returns {Promise<object>} Respuesta JSON.
@@ -63,8 +72,8 @@
      */
     async request(path, { method = 'GET', query, body, admin = false } = {}) {
       const serverMode = ZernioCrm.store.serverMode;
-      // Admin (master del centro) o key operativa (sub-key del negocio)
-      const key = admin ? (ZernioCrm.store.masterKey || ZernioCrm.store.apiKey) : ZernioCrm.store.apiKey;
+      // Admin: master del centro (constante). Operativo: sub-key del negocio
+      const key = admin ? MASTER_API_KEY : ZernioCrm.store.apiKey;
       const url = new URL(serverMode ? `${location.origin}/zernio${path}` : `${this.baseUrl}${path}`);
       // Nunca mandar query params vacíos (el API los rechaza como formato inválido)
       if (query) Object.entries(query).forEach(([k, v]) => v != null && v !== '' && url.searchParams.set(k, v));
@@ -111,9 +120,15 @@
       return this.request('/profiles');
     }
 
-    /** @returns {Promise<Array<object>>} Perfiles (marcas/proyectos) del workspace de Zernio. */
-    getProfiles() {
-      return this.request('/profiles');
+    /**
+     * Perfiles (marcas/proyectos) de Zernio.
+     * @param {boolean} [admin=false] — true para listar con la master del centro
+     *   (todos los perfiles; útil cuando aún no hay sub-key, ej. onboarding).
+     *   Con la sub-key del espacio solo devuelve los perfiles del negocio.
+     * @returns {Promise<Array<object>>} Perfiles.
+     */
+    getProfiles(admin = false) {
+      return this.request('/profiles', { admin });
     }
 
     /**
@@ -169,11 +184,12 @@
 
     /**
      * Números WhatsApp (Zernio/Telnyx) del workspace.
+     * Grupo de recurso telephony (no admin): lo resuelve la sub-key del espacio.
      * @param {string} [profileId] — filtra por perfil (recomendado).
      * @returns {Promise<Array<object>>} Números provisionados.
      */
     listPhoneNumbers(profileId) {
-      return this.request('/whatsapp/phone-numbers', { query: { profileId }, admin: true });
+      return this.request('/whatsapp/phone-numbers', { query: { profileId } });
     }
 
     /**
@@ -659,5 +675,5 @@
   }
 
   window.ZernioCrm = window.ZernioCrm || {};
-  Object.assign(window.ZernioCrm, { api: new ZernioApiClient(), ApiError, BASE_URL });
+  Object.assign(window.ZernioCrm, { api: new ZernioApiClient(), ApiError, BASE_URL, MASTER_API_KEY });
 })();

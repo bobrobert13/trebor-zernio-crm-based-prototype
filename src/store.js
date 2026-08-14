@@ -15,6 +15,8 @@
    * @property {object|null} currentUser — usuario de sesión (controla RBAC).
    * @property {'demo'|'live'} mode — capa de datos activa.
    * @property {string} apiKey — API key de Zernio (modo live, prototipo).
+   *   Es la sub-key operativa del espacio; la master del centro es una
+   *   constante del cliente API (nunca vive en el store ni se persiste).
    * @property {boolean} corsBlocked — true si Zernio rechazó peticiones por CORS.
    * @property {string} route — ruta actual del hash (sin '#/').
    * @property {Array<{id:number,message:string,type:string}>} toasts — notificaciones.
@@ -24,7 +26,6 @@
     currentUser: null,
     mode: 'demo',
     apiKey: '',
-    masterKey: '', // key del centro (solo llamadas admin: perfiles, sub-keys, billing)
     corsBlocked: false,
     serverMode: false,
     route: 'dashboard',

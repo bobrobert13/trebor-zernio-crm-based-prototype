@@ -10,10 +10,14 @@
  * - GET /api/health — detección del servidor por el frontend.
  *
  * Uso: node server.mjs  (PORT=8787 por defecto, configurable con env PORT).
- * Para entrega real de webhooks usa un túnel (ngrok http 8787) y registra
- * la URL pública con ?secret=... en Configuración → Webhooks.
+ * El túnel HTTPS (tunnel.mjs) se levanta automáticamente junto al servidor
+ * para recibir webhooks reales; se puede desactivar con TUNNEL_AUTO=0 o
+ * --no-tunnel (no duplica si ya hay una URL vigente en .tunnel-url).
+ * Para entrega real de webhooks registra la URL pública impresa en consola
+ * con ?secret=... en Configuración → Webhooks.
  */
 import { createServer } from 'node:http';
+import { spawn } from 'node:child_process';
 import { request as httpsRequest } from 'node:https';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
@@ -27,6 +31,10 @@ const MAX_BODY = 10 * 1024 * 1024; // 10 MB
 const WEBHOOK_MAX = 200; // eventos en memoria (cola acotada)
 const TUNNEL_FILE = join(ROOT, '.tunnel-url');
 const USAGE_FILE = join(ROOT, 'data', 'usage.json');
+
+/** Túnel automático: activo por defecto; desactivable con TUNNEL_AUTO=0 o --no-tunnel. */
+const AUTO_TUNNEL = process.env.TUNNEL_AUTO !== '0' && !process.argv.includes('--no-tunnel');
+let tunnelChild = null;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -388,16 +396,51 @@ function isLoopback(req) {
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
 }
 
+/**
+ * Levanta tunnel.mjs junto al servidor (para no olvidarlo): quick tunnel de
+ * cloudflared o ngrok. No duplica si ya hay una URL vigente (TUNNEL_URL o
+ * .tunnel-url fresco) y se desactiva con TUNNEL_AUTO=0 / --no-tunnel.
+ */
+async function startTunnel() {
+  if (!AUTO_TUNNEL) {
+    console.log('[zernio-mvp] túnel automático desactivado (TUNNEL_AUTO=0 o --no-tunnel)');
+    return;
+  }
+  const existing = await tunnelUrl();
+  if (existing) {
+    console.log(`[zernio-mvp] túnel ya activo: ${existing} (no se levanta otro)`);
+    return;
+  }
+  console.log(`[zernio-mvp] levantando túnel HTTPS → node tunnel.mjs ${PORT}`);
+  tunnelChild = spawn(process.execPath, [join(ROOT, 'tunnel.mjs'), String(PORT)], { stdio: 'inherit' });
+  tunnelChild.on('error', (err) => {
+    console.error(`[zernio-mvp] no se pudo iniciar el túnel: ${err.message}`);
+  });
+  tunnelChild.on('exit', (code) => {
+    console.error(`[zernio-mvp] el túnel terminó (código ${code}) — webhooks externos no disponibles`);
+    tunnelChild = null;
+  });
+}
+
+/** Termina el túnel al apagar el servidor (el child limpia .tunnel-url). */
+function stopTunnel() {
+  if (tunnelChild && tunnelChild.exitCode === null && !tunnelChild.killed) {
+    tunnelChild.kill('SIGTERM');
+  }
+}
+
 server.listen(PORT, () => {
   console.log(`[zernio-mvp] http://localhost:${PORT}`);
   console.log(`[zernio-mvp] proxy /zernio/* → https://${ZERNIO.host}${ZERNIO.base}/*`);
   console.log(`[zernio-mvp] webhooks  POST /webhooks/zernio?secret=...  (GET /webhooks/events)`);
+  startTunnel();
 });
 
-// Flush del medidor al apagar (no perder los últimos 2s de conteos)
+// Flush del medidor y cierre del túnel al apagar (no perder los últimos 2s)
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(signal, async () => {
     await flushUsage();
+    stopTunnel();
     process.exit(0);
   });
 }

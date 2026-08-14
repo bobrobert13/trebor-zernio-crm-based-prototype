@@ -1,9 +1,10 @@
 /**
  * @file live-connect.js — Conexión real de canales (reutilizable).
- * Flujo: API key → validar perfiles → elegir/crear perfil → detectar cuenta
+ * Flujo: perfiles del centro (la master key se provee por detrás) →
+ * elegir/crear perfil del negocio → sub-key scoped → detectar cuenta
  * WhatsApp existente o números provisionados → vincular. Fallback por
  * credenciales de Meta (wabaId + phoneNumberId + token).
- * Emite 'connected' con { profileId, accountId, phone } para el padre.
+ * Emite 'connected' con { profileId, accountId, phone, subKey } para el padre.
  */
 (function () {
   'use strict';
@@ -21,13 +22,14 @@
     },
     emits: ['connected'],
     setup(props, { emit }) {
-      /** Paso actual del sub-flujo. */
-      const step = Vue.ref('key');
+      /** Paso actual del sub-flujo (arranca cargando; nunca pide la key). */
+      const step = Vue.ref('boot');
       const busy = Vue.ref(false);
 
-      const apiKey = Vue.ref(store.apiKey || '');
       const profiles = Vue.ref([]);
       const selectedProfileId = Vue.ref(null);
+      /** boot() falló con la sub-key restaurada: ofrecer reintento con la master. */
+      const retryWithMaster = Vue.ref(false);
       const accounts = Vue.ref([]);
       const phones = Vue.ref([]);
       const selectedAccountId = Vue.ref(null);
@@ -76,41 +78,48 @@
       const platformAccounts = Vue.computed(() => accounts.value.filter((a) => a.platform === props.platform));
 
       /**
-       * Valida la key listando perfiles. Solo promueve a master (centro) si la
-       * key supera el probe admin (listApiKeys); de lo contrario se usa como
-       * key operativa (sub-key del negocio).
+       * Arranca el flujo sin pedir la API key: lista los perfiles y deja
+       * elegir/crear el perfil del negocio. Lista con la sub-key del espacio
+       * si ya existe (solo sus perfiles); si no (onboarding) con la master
+       * del centro, que es una constante del MVP y nunca se pide al usuario.
        */
-      async function validateKey() {
-        const key = apiKey.value.trim();
-        if (!key || busy.value) return;
+      async function boot() {
+        if (busy.value) return;
         busy.value = true;
+        retryWithMaster.value = false;
         try {
-          store.apiKey = key;
-          // Probe admin: si la key puede listar/crear sub-keys es la master del centro
-          let isMaster = false;
-          try {
-            await api.listApiKeys();
-            isMaster = true;
-          } catch {
-            isMaster = false;
-          }
-          if (isMaster) {
-            store.masterKey = key;
-            sessionStorage.setItem('tzcrm.masterKey', key); // solo sesión, nunca en workspace/export
-          }
-          const data = await api.getProfiles();
+          const data = await api.getProfiles(!store.apiKey);
           profiles.value = asArray(data);
           if (profiles.value.length === 0) {
             await createProfile();
+          } else if (store.workspace && profiles.value.length === 1) {
+            // Reconexión: el perfil del espacio ya está vinculado — ir directo al canal
+            await loadChannelOptions(profiles.value[0].id || profiles.value[0]._id);
           } else {
             step.value = 'profile';
             toast(`${profiles.value.length} perfil(es) encontrado(s)`, 'success');
           }
         } catch (err) {
-          toast(err.message || 'API key inválida', 'error');
+          // Si falló con la sub-key restaurada (vencida/revocada), ofrecer
+          // reintento con la master del centro; si no, la opción
+          // "Crear perfil nuevo" funciona como reintento
+          retryWithMaster.value = Boolean(store.apiKey);
+          step.value = 'profile';
+          toast(err.message || 'No se pudieron cargar los perfiles', 'error');
         } finally {
           busy.value = false;
         }
+      }
+
+      /**
+       * Vuelve a arrancar con la master del centro (olvida la sub-key
+       * restaurada que quedó vencida/revocada; la próxima elección de perfil
+       * crea una sub-key nueva).
+       */
+      function retryAdmin() {
+        store.apiKey = '';
+        retryWithMaster.value = false;
+        boot();
       }
 
       /**
@@ -164,7 +173,7 @@
           toast('Sub-key del negocio creada (aislamiento por perfil)', 'success');
           return subKey;
         } catch (err) {
-          toast(`No se pudo crear la sub-key (${err.message}). Se continúa con la key actual.`, 'error', 6000);
+          toast(`No se pudo crear la sub-key con la clave del centro (${err.message}). Se continúa con la key actual.`, 'error', 6000);
           return null;
         }
       }
@@ -221,6 +230,8 @@
           }
         } catch (err) {
           toast(err.message || 'No se pudieron cargar las cuentas', 'error');
+          // Reconexión automática: salir del spinner sin salida hacia el picker
+          if (step.value === 'boot') step.value = 'profile';
         } finally {
           busy.value = false;
         }
@@ -457,11 +468,14 @@
         }
       }
 
-      Vue.onMounted(consumeCallback);
+      Vue.onMounted(() => {
+        // boot primero (carga perfiles); el callback del túnel ajusta el paso después
+        boot().then(consumeCallback);
+      });
 
-      /** Reinicia el flujo para probar con otra key. */
+      /** Reinicia el flujo para probar con otro perfil. */
       function reset() {
-        step.value = 'key';
+        step.value = 'boot';
         result.value = null;
         profiles.value = [];
         accounts.value = [];
@@ -469,14 +483,15 @@
         selectedProfileId.value = null;
         selectedAccountId.value = null;
         selectedPhoneId.value = null;
+        boot();
       }
 
       return {
-        step, busy, apiKey, profiles, selectedProfileId, accounts, phones,
+        step, busy, retryWithMaster, profiles, selectedProfileId, accounts, phones,
         selectedAccountId, selectedPhoneId, creds, showCreds, result, waAccounts: platformAccounts,
         isWhatsApp, oauthUrl,
         waOAuthStarted, waPhoneNumbers, waSelectBusy,
-        validateKey, createProfile, ensureSubKey, loadChannelOptions, connectWithAccount,
+        boot, retryAdmin, createProfile, ensureSubKey, loadChannelOptions, connectWithAccount,
         connectWithPhone, connectCredentials, startOAuth, verifyOAuth, reset,
         startWhatsAppOAuth, loadWaPhoneNumbers, selectWaPhone,
       };
@@ -494,20 +509,15 @@
           <button @click="reset" class="ml-auto shrink-0 border-2 border-emerald-900 bg-white px-2.5 py-1 text-xs font-medium transition hover:shadow-brutal-sm">Cambiar</button>
         </div>
 
-        <template v-else>
-          <!-- Paso 1 · API key -->
-          <ui-field label="Clave de acceso de la plataforma" hint="sk_… — la proporciona tu proveedor.">
-            <div class="flex items-end gap-2">
-              <input v-model.trim="apiKey" type="password" placeholder="sk_…" autocomplete="off"
-                class="w-full border-2 border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none focus:border-neutral-900" />
-              <button @click="validateKey" :disabled="!apiKey.trim() || busy"
-                class="flex shrink-0 items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
-                <ui-spinner v-if="busy" size="h-4 w-4"></ui-spinner>
-                {{ busy ? 'Validando…' : 'Validar' }}
-              </button>
-            </div>
-          </ui-field>
+        <template v-else-if="step === 'boot'">
+          <!-- Paso 1 · Cargando: la master del centro se provee por detrás (nunca se pide) -->
+          <div class="flex items-center gap-3 border-2 border-neutral-900 bg-white p-4">
+            <ui-spinner size="h-5 w-5"></ui-spinner>
+            <span class="text-sm font-medium">Preparando la conexión del espacio…</span>
+          </div>
+        </template>
 
+        <template v-else>
           <!-- Paso 2 · Perfil -->
           <div v-if="step === 'profile'" class="border-2 border-neutral-900 bg-white">
             <div class="border-b-2 border-neutral-900 px-4 py-2.5 font-mono text-[11px] uppercase tracking-widest text-neutral-500">
@@ -524,6 +534,9 @@
               </button>
               <button v-if="!busy" @click="createProfile" class="w-full px-4 py-3 text-left text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)]">
                 + Crear perfil nuevo con el nombre del negocio
+              </button>
+              <button v-if="retryWithMaster && !busy" @click="retryAdmin" class="w-full border-t-2 border-neutral-100 px-4 py-3 text-left text-sm font-medium text-neutral-700 transition hover:bg-stone-50">
+                La sub-key del espacio no responde — reintentar con la clave del centro
               </button>
             </div>
             <p class="border-t-2 border-neutral-900 px-4 py-2.5 text-xs text-neutral-500">

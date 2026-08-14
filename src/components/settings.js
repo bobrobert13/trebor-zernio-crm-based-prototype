@@ -40,38 +40,14 @@
 
       // ── Opciones avanzadas (superadministrador) ────────────────────────────
       const advancedOpen = Vue.ref(false);
-      const adminKeyInput = Vue.ref('');
-      const adminKeyBusy = Vue.ref(false);
 
-      /** ¿Hay clave de administración en sesión? (el centro la deja al configurar). */
-      const isAdvanced = Vue.computed(() => {
-        try {
-          return Boolean(sessionStorage.getItem('tzcrm.masterKey')) || Boolean(store.masterKey);
-        } catch {
-          return false;
-        }
-      });
-
-      /** Valida la clave de administración (probe admin) y la guarda en sesión. */
-      async function validateAdminKey() {
-        const key = adminKeyInput.value.trim();
-        if (!key || adminKeyBusy.value) return;
-        adminKeyBusy.value = true;
-        // Nunca tocar store.apiKey (key operativa del negocio): solo masterKey
-        const prev = store.masterKey;
-        store.masterKey = key;
-        try {
-          await api.listApiKeys(); // solo la master puede listar/crear sub-keys
-          sessionStorage.setItem('tzcrm.masterKey', key);
-          adminKeyInput.value = '';
-          toast('Clave de administración válida: opciones avanzadas habilitadas', 'success');
-        } catch (err) {
-          store.masterKey = prev; // revertir: la key operativa nunca se contamina
-          toast(err.message || 'La clave no es válida para administración', 'error');
-        } finally {
-          adminKeyBusy.value = false;
-        }
-      }
+      /**
+       * Opciones avanzadas: siempre habilitadas (MVP de centro único). La
+       * master del centro es una constante interna del cliente API (nunca se
+       * pide al usuario); el espacio opera con su sub-key, que sí se puede
+       * rotar/revocar desde esta sección.
+       */
+      const isAdvanced = Vue.computed(() => true);
 
       /** Guarda branding y refresca el acento del tema. */
       function saveBranding() {
@@ -666,7 +642,7 @@
         EVENTS, whForm, whExists, whSaving, whLogs, whLogsOpen,
         health, healthBusy, reconnectOpen, tunnelUrl, tunnelBusy,
         subKey, subKeyBusy, maskKey, rotateSubKey, revokeSubKey,
-        advancedOpen, isAdvanced, adminKeyInput, adminKeyBusy, validateAdminKey,
+        advancedOpen, isAdvanced,
         leadTags, contactTags, leadInput, contactInput,
         addTag, addLeadTag, addContactTag, removeTag, moveTag, renameTag,
         customFields, fieldInput, fieldTypeOptions,
@@ -891,25 +867,10 @@
             </div>
           </button>
           <div v-if="advancedOpen" class="border-t-2 border-neutral-900 p-5">
-            <!-- Sin clave de administración: aviso + campo discreto -->
-            <template v-if="!isAdvanced">
-              <p class="text-sm text-neutral-600">
-                Estas opciones las gestiona tu proveedor. Ingresa la clave de administración si la tienes.
-              </p>
-              <div class="mt-3 flex max-w-xl items-end gap-2">
-                <input v-model.trim="adminKeyInput" type="password" placeholder="sk_…" autocomplete="off"
-                  class="w-full border-2 border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none focus:border-neutral-900" />
-                <button @click="validateAdminKey" :disabled="adminKeyBusy || !adminKeyInput.trim()"
-                  class="flex shrink-0 items-center gap-2 border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
-                  <ui-spinner v-if="adminKeyBusy" size="h-4 w-4"></ui-spinner>
-                  Validar
-                </button>
-              </div>
-            </template>
-            <!-- Con clave: las secciones técnicas quedan dentro del grid original -->
-            <template v-else>
-              <p class="mb-4 text-xs text-neutral-500">Modo administración: puedes gestionar la integración técnica del negocio.</p>
-            </template>
+            <p class="mb-4 text-xs text-neutral-500">
+              Modo administración: puedes gestionar la integración técnica del negocio.
+              La clave del centro se provee automáticamente; este espacio opera con su sub-key.
+            </p>
           </div>
         </section>
 
@@ -921,7 +882,7 @@
             <p>El navegador no puede alcanzar el API de la plataforma (CORS). El prototipo opera en modo demo; para producción usa el servidor local (node server.mjs).</p>
           </div>
           <div class="grid gap-4 sm:grid-cols-2">
-            <ui-field label="API key" hint="Se guarda en localStorage — solo para prototipo.">
+            <ui-field label="Sub-key del negocio" hint="Operativa del espacio (aislada a su perfil). Se guarda en localStorage — solo para prototipo.">
               <input v-model.trim="apiKeyInput" type="password" placeholder="sk_…" autocomplete="off"
                 class="w-full border-2 border-neutral-300 px-3 py-2 font-mono text-sm outline-none focus:border-neutral-900" />
             </ui-field>

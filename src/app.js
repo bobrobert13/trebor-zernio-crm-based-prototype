@@ -64,10 +64,8 @@
         // catálogo, preferencias del panel…). También se ejecuta al crear un
         // workspace nuevo (onboarding) para que el dashboard cargue a la primera.
         ZernioCrm.migrateWorkspace(workspace);
-        // La master key del centro vive solo en sessionStorage (nunca en el workspace/export)
-        const master = sessionStorage.getItem('tzcrm.masterKey');
-        if (master) store.masterKey = master;
-        // La sub-key operativa se restaura desde el workspace
+        // La sub-key operativa se restaura desde el workspace (la master del
+        // centro es una constante del cliente API, nunca se persiste)
         if (workspace.zernio && workspace.zernio.subKey && store.mode === 'live') store.apiKey = workspace.zernio.subKey;
       }
     }

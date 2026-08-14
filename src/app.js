@@ -19,6 +19,7 @@
     products: 'products-view',
     team: 'team-view',
     broadcasts: 'broadcasts-view',
+    agents: 'agents-view',
     billing: 'billing-view',
     system: 'system-view',
     settings: 'settings-view',

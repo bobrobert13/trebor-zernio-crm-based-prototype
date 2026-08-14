@@ -403,6 +403,7 @@
     { id: 'contacts', label: 'Contactos', icon: 'users' },
     { id: 'channels', label: 'Canales', icon: 'layers' },
     { id: 'broadcasts', label: 'Campañas', icon: 'megaphone' },
+    { id: 'agents', label: 'Agente', icon: 'sparkles' },
     { id: 'billing', label: 'Billing', icon: 'credit-card', hidden: true },
     { id: 'system', label: 'Estados', icon: 'activity', hidden: true },
     { id: 'team', label: 'Equipo', icon: 'user' },
@@ -410,10 +411,10 @@
   ];
 
   const PERMISSIONS = {
-    owner: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', channels: 'edit', leads: 'edit', products: 'edit', broadcasts: 'edit', billing: 'edit', system: 'edit', team: 'edit', settings: 'edit' },
-    admin: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', channels: 'edit', leads: 'edit', products: 'edit', broadcasts: 'edit', billing: 'view', system: 'view', team: 'edit', settings: 'view' },
-    agente: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', channels: null, leads: 'view', products: 'view', broadcasts: null, billing: null, system: null, team: null, settings: null },
-    vendedor: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', channels: null, leads: 'view', products: 'view', broadcasts: 'edit', billing: null, system: null, team: null, settings: null },
+    owner: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', channels: 'edit', leads: 'edit', products: 'edit', broadcasts: 'edit', agents: 'edit', billing: 'edit', system: 'edit', team: 'edit', settings: 'edit' },
+    admin: { dashboard: 'edit', analytics: 'edit', inbox: 'edit', contacts: 'edit', channels: 'edit', leads: 'edit', products: 'edit', broadcasts: 'edit', agents: 'edit', billing: 'view', system: 'view', team: 'edit', settings: 'view' },
+    agente: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', channels: null, leads: 'view', products: 'view', broadcasts: null, agents: null, billing: null, system: null, team: null, settings: null },
+    vendedor: { dashboard: 'view', analytics: 'view', inbox: 'edit', contacts: 'edit', channels: null, leads: 'view', products: 'view', broadcasts: 'edit', agents: null, billing: null, system: null, team: null, settings: null },
   };
 
   /**

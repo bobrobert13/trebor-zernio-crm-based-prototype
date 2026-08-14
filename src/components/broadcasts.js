@@ -39,11 +39,89 @@
     ];
   }
 
-  /** Flows demo de captura de leads. */
+  /** Arma una pantalla de flow (formato Meta 6.0, screens a nivel raíz) de forma compacta. */
+  function flowScreen(id, title, body, fields, opts = {}) {
+    return {
+      id,
+      title,
+      terminal: opts.terminal !== false,
+      layout: { type: 'SingleColumnLayout', children: [{ type: 'FormScreen', name: 'form' }] },
+      data: {
+        form: {
+          title,
+          body,
+          fields,
+          footer: opts.footer || 'Respuestas de la encuesta: trebor',
+        },
+      },
+    };
+  }
+
+  /** Flows demo con pantallas completas (header + CTA + screens) para el preview presentacional. */
   function demoFlows() {
     return [
-      { id: uid('flow'), name: 'captura_leads', category: 'LEAD_GENERATION', status: 'PUBLISHED' },
-      { id: uid('flow'), name: 'contacto_soporte', category: 'CUSTOMER_SUPPORT', status: 'DRAFT' },
+      {
+        id: uid('flow'),
+        name: 'captura_leads',
+        category: 'LEAD_GENERATION',
+        status: 'PUBLISHED',
+        header: '¡Hola! 👋 Déjanos tus datos y un asesor te contacta enseguida.',
+        cta: 'Comenzar',
+        screens: [
+          flowScreen('LEAD_FORM', 'Cuéntanos qué necesitas', 'Completa tus datos y te respondemos al instante.', [
+            { type: 'text_input', name: 'nombre', label: 'Nombre', required: true, placeholder: 'Tu nombre' },
+            { type: 'phone_input', name: 'telefono', label: 'Teléfono', placeholder: '+58 412 000 0000' },
+            { type: 'text_input', name: 'mensaje', label: 'Mensaje', placeholder: '¿En qué te ayudamos?' },
+          ]),
+        ],
+      },
+      {
+        id: uid('flow'),
+        name: 'reporte_falla',
+        category: 'CUSTOMER_SUPPORT',
+        status: 'PUBLISHED',
+        header: 'Hola 👋, cuéntanos qué falla presenta tu equipo y lo resolvemos rápido.',
+        cta: 'Reportar falla',
+        screens: [
+          flowScreen('FALLA_FORM', 'Reporte de falla', 'Los detalles nos ayudan a darte soporte más rápido.', [
+            { type: 'dropdown', name: 'tipo', label: 'Tipo de falla', options: ['Eléctrica', 'Mecánica', 'No enciende', 'Otra'] },
+            { type: 'text_input', name: 'descripcion', label: 'Describe la falla', required: true, placeholder: 'Qué ocurre y desde cuándo…' },
+            { type: 'number_input', name: 'serie', label: 'Nº de serie del equipo', placeholder: 'Opcional' },
+          ], { footer: 'Soporte técnico · respuesta en < 24 h' }),
+          flowScreen('FALLA_OK', '¡Reporte recibido!', 'Te contactamos con el diagnóstico.', [], { footer: 'Gracias por tu reporte' }),
+        ],
+      },
+      {
+        id: uid('flow'),
+        name: 'reclamo_garantia',
+        category: 'CUSTOMER_SUPPORT',
+        status: 'PUBLISHED',
+        header: 'Lamentamos el inconveniente 🙏, cuéntanos el detalle de tu reclamo.',
+        cta: 'Iniciar reclamo',
+        screens: [
+          flowScreen('RECLAMO_FORM', 'Reclamo de garantía', 'Verifica los datos y describe lo sucedido.', [
+            { type: 'text_input', name: 'nombre', label: 'Nombre del cliente', required: true, placeholder: 'Tu nombre' },
+            { type: 'number_input', name: 'orden', label: 'Nº de orden o recibo', placeholder: 'Ej: 1042' },
+            { type: 'text_input', name: 'detalle', label: '¿Qué sucedió?', required: true, placeholder: 'Describe el problema…' },
+            { type: 'check_box', name: 'acepto', label: 'Autorizo revisión del equipo', required: true },
+          ]),
+          flowScreen('RECLAMO_OK', 'Reclamo registrado', 'Te damos respuesta con el estado de tu caso.', [], { footer: 'Caso asignado al área de garantía' }),
+        ],
+      },
+      {
+        id: uid('flow'),
+        name: 'contacto_soporte',
+        category: 'CUSTOMER_SUPPORT',
+        status: 'DRAFT',
+        header: '¿Necesitas ayuda? Cuéntanos y te asesoramos.',
+        cta: 'Hablar con soporte',
+        screens: [
+          flowScreen('SOPORTE_FORM', 'Contacto de soporte', 'Elige el tema y describe tu consulta.', [
+            { type: 'radio_button', name: 'tema', label: 'Tema', options: ['Consulta', 'Instalación', 'Facturación', 'Otro'] },
+            { type: 'text_input', name: 'consulta', label: 'Tu consulta', required: true, placeholder: 'Escribe aquí…' },
+          ]),
+        ],
+      },
     ];
   }
 
@@ -105,6 +183,8 @@
       const flowSendOpen = Vue.ref(false);
       const flowSendTarget = Vue.ref(null);
       const flowPhone = Vue.ref('');
+      const flowPreviewOpen = Vue.ref(false);
+      const flowPreviewTarget = Vue.ref(null);
 
       /** Temporizadores activos (cleanup en onUnmounted). */
       const timers = [];
@@ -550,11 +630,37 @@
         return status === 'active' ? 'success' : status === 'paused' ? 'warn' : 'neutral';
       }
 
+      // ── Vista previa presentacional de flows ───────────────────────────────
+
+      /** Pantallas de un flow (JSON Meta 6.0 a nivel raíz o dentro de data). */
+      function flowScreens(flow) {
+        return (flow && (flow.screens || (flow.data && flow.data.screens) || [])) || [];
+      }
+
+      /** Campos del formulario de una pantalla. */
+      function flowFields(screen) {
+        const form = screen && screen.data && screen.data.form;
+        return (form && form.fields) || [];
+      }
+
+      /** Footer del formulario de una pantalla (o vacío). */
+      function flowFooter(screen) {
+        const form = screen && screen.data && screen.data.form;
+        return (form && form.footer) || '';
+      }
+
+      /** Abre la vista previa del flow (cómo lo verá el cliente). */
+      function openFlowPreview(flow) {
+        flowPreviewTarget.value = flow || null;
+        flowPreviewOpen.value = true;
+      }
+
       return {
         tab, loading, createOpen, sending, form, tplOpen, tplSaving, tplForm,
         recipientsOpen, recipientsList, recipientsBroadcast,
         seqOpen, seqSaving, seqForm, seqEnrollOpen, seqEnrollTarget, enrolling,
         flowOpen, flowSaving, flowForm, flowSendOpen, flowSendTarget, flowPhone,
+        flowPreviewOpen, flowPreviewTarget, flowScreens, flowFields, flowFooter, openFlowPreview,
         workspace, niche, isLive, broadcasts, templates, sequences, flows, TEMPLATE_TONES,
         approvedTemplates, draftTemplates, allTemplates,
         saveDraftTemplate, submitTemplateForApproval, discardDraft,
@@ -798,10 +904,16 @@
                   <ui-badge variant="neutral">{{ f.category }}</ui-badge>
                   <span v-if="f.previewUrl" class="truncate font-mono text-[10px] text-neutral-400">{{ f.previewUrl }}</span>
                 </div>
-                <button v-if="f.status === 'PUBLISHED'" @click="flowSendTarget = f; flowSendOpen = true"
-                  class="mt-4 w-full border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
-                  Enviar flow
-                </button>
+                <div class="mt-4 flex gap-2">
+                  <button @click="openFlowPreview(f)"
+                    class="flex-1 border-2 border-neutral-900 bg-white px-3 py-2 text-xs font-semibold transition hover:shadow-brutal-sm">
+                    Vista previa
+                  </button>
+                  <button v-if="f.status === 'PUBLISHED'" @click="flowSendTarget = f; flowSendOpen = true"
+                    class="flex-1 border-2 border-neutral-900 bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                    Enviar flow
+                  </button>
+                </div>
               </article>
             </div>
           </section>
@@ -1005,6 +1117,134 @@
             class="mt-4 w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
             Enviar formulario
           </button>
+        </ui-modal>
+
+        <!-- Modal: vista previa presentacional del flow (cómo lo verá el cliente) -->
+        <ui-modal :open="flowPreviewOpen" :title="'Vista previa · ' + (flowPreviewTarget ? flowPreviewTarget.name : '')" width="max-w-4xl" @close="flowPreviewOpen = false">
+          <div v-if="flowPreviewTarget" class="grid gap-5 lg:grid-cols-[340px_1fr]">
+            <!-- Teléfono simulado: la experiencia del cliente -->
+            <div class="mx-auto w-full max-w-[340px]">
+              <div class="overflow-hidden rounded-2xl border-2 border-neutral-900 bg-[#efeae2] shadow-brutal-sm">
+                <div class="flex items-center gap-2 border-b border-neutral-200 bg-white px-3 py-2.5">
+                  <span class="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                    <ui-icon name="whatsapp" class="h-4 w-4"></ui-icon>
+                  </span>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-xs font-semibold">{{ workspace.name }}</p>
+                    <p class="text-[10px] text-neutral-400">en línea · flow interactivo</p>
+                  </div>
+                </div>
+                <div class="space-y-2.5 p-3">
+                  <!-- Mensaje introductorio del flow -->
+                  <div v-if="flowPreviewTarget.header" class="flex justify-end">
+                    <div class="max-w-[85%] rounded-lg rounded-tr-none bg-[#d9fdd3] px-3 py-2 text-xs">
+                      {{ flowPreviewTarget.header }}
+                    </div>
+                  </div>
+                  <!-- Tarjeta del flow (CTA) -->
+                  <div class="flex justify-start">
+                    <div class="w-full max-w-[85%] overflow-hidden rounded-lg rounded-tl-none border border-neutral-200 bg-white">
+                      <div class="flex items-center gap-1.5 border-b border-neutral-100 px-2.5 py-1.5">
+                        <ui-icon name="edit" class="h-3 w-3 text-neutral-400"></ui-icon>
+                        <span class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Flow · {{ flowPreviewTarget.category }}</span>
+                      </div>
+                      <div class="p-2.5">
+                        <p class="text-xs font-semibold">{{ flowScreens(flowPreviewTarget)[0] ? flowScreens(flowPreviewTarget)[0].title : flowPreviewTarget.name }}</p>
+                        <p class="mt-0.5 text-[11px] text-neutral-500">{{ flowScreens(flowPreviewTarget)[0] ? (flowScreens(flowPreviewTarget)[0].data.form.body || '') : '' }}</p>
+                        <div class="mt-2 border-2 border-[var(--accent)] bg-[var(--accent)] py-1.5 text-center text-[11px] font-semibold text-white">
+                          {{ flowPreviewTarget.cta || 'Comenzar' }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- Pantallas del formulario -->
+                  <div v-for="(screen, si) in flowScreens(flowPreviewTarget)" :key="screen.id || si" class="flex justify-start">
+                    <div class="w-full max-w-[85%] overflow-hidden rounded-lg rounded-tl-none border border-neutral-200 bg-white">
+                      <div class="flex items-center justify-between border-b border-neutral-100 px-2.5 py-1.5">
+                        <span class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Pantalla {{ si + 1 }} de {{ flowScreens(flowPreviewTarget).length }}</span>
+                        <span v-if="screen.terminal" class="font-mono text-[9px] uppercase text-emerald-700">final</span>
+                      </div>
+                      <div class="p-2.5">
+                        <p class="text-xs font-semibold">{{ screen.title }}</p>
+                        <p class="mt-0.5 text-[11px] text-neutral-500">{{ screen.data.form ? screen.data.form.body : '' }}</p>
+                        <!-- Campos según tipo -->
+                        <div v-if="flowFields(screen).length" class="mt-2 space-y-2">
+                          <div v-for="fd in flowFields(screen)" :key="fd.name">
+                            <p class="mb-0.5 text-[11px] text-neutral-600">{{ fd.label }}<span v-if="fd.required" class="text-red-600"> *</span></p>
+                            <div v-if="fd.type === 'radio_button'" class="space-y-0.5">
+                              <p v-for="o in (fd.options || [])" :key="o" class="flex items-center gap-1.5 text-[11px]">
+                                <span class="h-3 w-3 shrink-0 rounded-full border border-neutral-400"></span> {{ o }}
+                              </p>
+                            </div>
+                            <div v-else-if="fd.type === 'check_box'" class="flex items-center gap-1.5 text-[11px]">
+                              <span class="h-3 w-3 shrink-0 border border-neutral-400"></span> {{ fd.label }}
+                            </div>
+                            <div v-else-if="fd.type === 'dropdown'" class="border-b border-neutral-300 px-1 py-1 text-[11px] text-neutral-500">
+                              {{ (fd.options || [])[0] || 'Selecciona…' }} ▾
+                            </div>
+                            <div v-else class="border-b border-neutral-300 px-1 py-1 text-[11px] text-neutral-400">
+                              {{ fd.placeholder || 'Tu respuesta…' }}
+                            </div>
+                          </div>
+                          <div class="border-2 border-neutral-900 bg-[var(--accent)] py-1.5 text-center text-[11px] font-semibold text-white">Enviar</div>
+                        </div>
+                        <!-- Confirmación (pantalla sin campos) -->
+                        <div v-else class="mt-2 flex items-start gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-2 text-[11px] text-emerald-900">
+                          <ui-icon name="check-circle" class="mt-0.5 h-3.5 w-3.5 shrink-0"></ui-icon>
+                          <span>{{ screen.data.form ? screen.data.form.body : 'Información enviada.' }}</span>
+                        </div>
+                        <p v-if="flowFooter(screen)" class="mt-1.5 text-[10px] text-neutral-400">{{ flowFooter(screen) }}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="pt-0.5 text-center font-mono text-[9px] text-neutral-400">WhatsApp · ahora</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Información y detalles del flow -->
+            <div class="space-y-4">
+              <div class="grid grid-cols-2 gap-2">
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Nombre</p>
+                  <p class="mt-0.5 break-all font-mono text-xs font-semibold">{{ flowPreviewTarget.name }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Categoría</p>
+                  <p class="mt-0.5 text-xs font-semibold">{{ flowPreviewTarget.category }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Estado</p>
+                  <p class="mt-0.5 text-xs font-semibold" :class="flowPreviewTarget.status === 'PUBLISHED' ? 'text-emerald-700' : 'text-amber-700'">{{ flowPreviewTarget.status }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Pantallas</p>
+                  <p class="mt-0.5 text-xs font-semibold">{{ flowScreens(flowPreviewTarget).length }}</p>
+                </div>
+              </div>
+
+              <div class="border border-neutral-200 bg-stone-50 p-3">
+                <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Campos que se solicitan</p>
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                  <span v-for="fd in flowScreens(flowPreviewTarget).flatMap((s) => flowFields(s))" :key="fd.name"
+                    class="border border-neutral-300 bg-white px-2 py-0.5 font-mono text-[10px]">
+                    {{ fd.label }}{{ fd.required ? ' *' : '' }}
+                  </span>
+                  <span v-if="!flowScreens(flowPreviewTarget).some((s) => flowFields(s).length)" class="text-[11px] text-neutral-400">Sin campos — solo confirmación.</span>
+                </div>
+              </div>
+
+              <div class="border border-neutral-200 p-3 text-xs text-neutral-600">
+                <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Cómo se envía</p>
+                <p class="mt-1.5">
+                  Se envía como un <strong>mensaje interactivo</strong> de WhatsApp con un botón
+                  ({{ flowPreviewTarget.cta || 'Comenzar' }}). Al tocarlo, el cliente ve el formulario
+                  en pantallas y su información llega directo a tu bandeja — ideal para reportes,
+                  reclamos específicos y captura de datos sin fricción.
+                </p>
+              </div>
+            </div>
+          </div>
         </ui-modal>
 
         <!-- Modal: destinatarios -->

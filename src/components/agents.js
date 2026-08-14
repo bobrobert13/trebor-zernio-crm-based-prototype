@@ -190,14 +190,14 @@
         <div class="flex items-start gap-3 border-2 border-neutral-900 bg-white p-4 text-sm">
           <ui-icon name="sparkles" class="mt-0.5 h-5 w-5 shrink-0 text-[var(--accent)]"></ui-icon>
           <p class="text-neutral-600">
-            Conecta un agente con la <strong>key que te da el servicio</strong> (como los webhooks). Define el <strong>JSON de respuesta</strong> del servicio y mapea sus campos a las acciones del CRM.
+            Conecta un agente con la <strong>key que te da el servicio</strong>. Define el <strong>JSON de respuesta</strong> del servicio y mapea sus campos a las acciones del CRM.
             Si activas <strong>auto-respuesta</strong> y <strong>cierre de ventas</strong>, el agente opera con total libertad usando inventario, leads, cliente e históricos.
           </p>
         </div>
 
         <!-- Lista de agentes -->
         <ui-empty v-if="agents.length === 0" icon="sparkles" title="Sin agentes conectados"
-          desc="Conecta tu primer agente (ej. Mary) para atender los flujos de venta con IA.">
+          desc="Conecta tu primer agente para atender los flujos de venta con IA.">
           <button v-if="canEdit('agents')" @click="openEditor(null)"
             class="border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
             Conectar agente
@@ -274,7 +274,7 @@
                   <input v-model.trim="form.url" type="text" placeholder="https://agente.mary.io/v1/mensajes"
                     class="w-full border-2 border-neutral-300 px-3 py-2 font-mono text-xs outline-none focus:border-neutral-900" />
                 </ui-field>
-                <ui-field label="API key del servicio" hint="La key que te da el servicio externo (como los webhooks).">
+                <ui-field label="API key del servicio" hint="La key que te da el servicio externo.">
                   <div class="relative">
                     <input v-model.trim="form.apiKey" :type="showKey ? 'text' : 'password'" placeholder="key_…" autocomplete="off"
                       class="w-full border-2 border-neutral-300 px-3 py-2 pr-16 font-mono text-xs outline-none focus:border-neutral-900" />

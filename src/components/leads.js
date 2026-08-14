@@ -412,13 +412,6 @@
                   </span>
                 </div>
 
-                <!-- Interés comercial (nivel + valor estimado) -->
-                <div v-if="interestScore(c).nivel" class="mt-3 flex items-center gap-2 border border-neutral-200 bg-stone-50 px-3 py-2">
-                  <ui-icon name="flame" class="h-4 w-4" :class="interestScore(c).nivel === 'alto' ? 'text-red-700' : interestScore(c).nivel === 'medio' ? 'text-amber-600' : 'text-neutral-500'"></ui-icon>
-                  <span class="text-xs font-semibold">{{ interestScore(c).label }}</span>
-                  <span class="ml-auto font-mono text-[10px] tabular-nums text-neutral-500">{{ formatPrice(interestScore(c).value) }} estimado</span>
-                </div>
-
                 <!-- Chips de relación -->
                 <div class="mt-3 flex flex-wrap items-center gap-1.5">
                   <ui-badge v-if="metricsOf(c).vip" variant="warn" dot>VIP</ui-badge>

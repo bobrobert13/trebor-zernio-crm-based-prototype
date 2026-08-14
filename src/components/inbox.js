@@ -74,9 +74,11 @@
           .slice()
           .sort((a, b) => b.lastTs - a.lastTs)
           .filter((c) => {
+            const contact = contacts.value.find((ct) => ct.id === c.contactId);
+            // Leads finalizados no aparecen en la bandeja (su conversación queda archivada)
+            if (contact && contact.leadClosed) return false;
             const convPlatform = c.platform || 'whatsapp';
             if (platformFilter.value !== 'all' && convPlatform !== platformFilter.value) return false;
-            const contact = contacts.value.find((ct) => ct.id === c.contactId);
             const haystack = `${contact ? contact.name : ''} ${(c.messages && c.messages.length) ? c.messages[c.messages.length - 1].text : ''}`.toLowerCase();
             if (q && !haystack.includes(q)) return false;
             if (filter.value === 'unread') return c.unread > 0;
@@ -110,7 +112,21 @@
         const c = selected.value;
         return c ? contacts.value.find((ct) => ct.id === c.contactId) || null : null;
       });
-      const unreadTotal = Vue.computed(() => conversations.value.reduce((acc, c) => acc + (c.unread || 0), 0));
+      const unreadTotal = Vue.computed(() =>
+        conversations.value.reduce((acc, c) => {
+          const ct = contacts.value.find((x) => x.id === c.contactId);
+          if (ct && ct.leadClosed) return acc; // leads finalizados no cuentan
+          return acc + (c.unread || 0);
+        }, 0)
+      );
+
+      /** Conversaciones visibles (excluye leads finalizados) — para los contadores. */
+      const activeConversations = Vue.computed(() =>
+        conversations.value.filter((c) => {
+          const ct = contacts.value.find((x) => x.id === c.contactId);
+          return !(ct && ct.leadClosed);
+        })
+      );
       const isLive = Vue.computed(() => store.mode === 'live');
 
       /** ¿La conversación seleccionada está fuera de la ventana de 24h? */
@@ -177,6 +193,12 @@
 
       /** Abre una conversación; en live carga sus mensajes si aún no están. */
       async function selectConversation(conv) {
+        const ct = contacts.value.find((x) => x.id === conv.contactId);
+        if (ct && ct.leadClosed) {
+          // Lead finalizado: su conversación no se abre desde la bandeja
+          toast('Lead finalizado: la conversación ya no está activa en la bandeja', 'info');
+          return;
+        }
         selectedId.value = conv.id;
         humanAgent.value = false;
         detachCard(); // la ficha adjunta pertenece a la conversación anterior
@@ -1220,6 +1242,7 @@
       return {
         search, filter, platformFilter, selectedId, draft, sending, loading, syncing, newConvOpen, newContactId,
         workspace, niche, conversations, contacts, filtered, selected, selectedContact, unreadTotal, isLive,
+        activeConversations,
         QUICK_REPLIES, canEdit, humanAgent, outsideWindow, canHumanAgent, blockedByWindow,
         attentionTips, tipsOpen,
         presentPlatforms, tiktokChannel, tiktokEmpty, getPlatform, leadTags,
@@ -1318,7 +1341,7 @@
               <div class="mt-2 flex gap-1.5 overflow-x-auto scrollbar-none">
                 <button @click="filter = 'all'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
                   :class="filter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
-                  Todas ({{ conversations.length }})
+                  Todas ({{ activeConversations.length }})
                 </button>
                 <button @click="filter = 'unread'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
                   :class="filter === 'unread' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">

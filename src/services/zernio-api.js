@@ -675,5 +675,7 @@
   }
 
   window.ZernioCrm = window.ZernioCrm || {};
-  Object.assign(window.ZernioCrm, { api: new ZernioApiClient(), ApiError, BASE_URL, MASTER_API_KEY });
+  // La master NO se expone en window: es una constante interna del cliente
+  // (el bundle igual la contiene, pero no hay acceso trivial desde consola).
+  Object.assign(window.ZernioCrm, { api: new ZernioApiClient(), ApiError, BASE_URL });
 })();

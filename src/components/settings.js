@@ -42,11 +42,12 @@
       const advancedOpen = Vue.ref(false);
 
       /**
-       * Opciones avanzadas: siempre habilitadas. La master key del centro es
-       * una constante del MVP (nunca se pide al usuario); el espacio opera con
-       * su sub-key, que sí se puede rotar/revocar desde esta sección.
+       * Opciones avanzadas: siempre habilitadas (MVP de centro único). La
+       * master del centro es una constante interna del cliente API (nunca se
+       * pide al usuario); el espacio opera con su sub-key, que sí se puede
+       * rotar/revocar desde esta sección.
        */
-      const isAdvanced = Vue.computed(() => Boolean(ZernioCrm.MASTER_API_KEY));
+      const isAdvanced = Vue.computed(() => true);
 
       /** Guarda branding y refresca el acento del tema. */
       function saveBranding() {

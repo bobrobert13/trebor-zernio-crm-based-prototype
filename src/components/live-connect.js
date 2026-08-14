@@ -28,6 +28,8 @@
 
       const profiles = Vue.ref([]);
       const selectedProfileId = Vue.ref(null);
+      /** boot() falló con la sub-key restaurada: ofrecer reintento con la master. */
+      const retryWithMaster = Vue.ref(false);
       const accounts = Vue.ref([]);
       const phones = Vue.ref([]);
       const selectedAccountId = Vue.ref(null);
@@ -84,6 +86,7 @@
       async function boot() {
         if (busy.value) return;
         busy.value = true;
+        retryWithMaster.value = false;
         try {
           const data = await api.getProfiles(!store.apiKey);
           profiles.value = asArray(data);
@@ -97,12 +100,26 @@
             toast(`${profiles.value.length} perfil(es) encontrado(s)`, 'success');
           }
         } catch (err) {
-          // Listado vacío: la opción "Crear perfil nuevo" funciona como reintento
+          // Si falló con la sub-key restaurada (vencida/revocada), ofrecer
+          // reintento con la master del centro; si no, la opción
+          // "Crear perfil nuevo" funciona como reintento
+          retryWithMaster.value = Boolean(store.apiKey);
           step.value = 'profile';
           toast(err.message || 'No se pudieron cargar los perfiles', 'error');
         } finally {
           busy.value = false;
         }
+      }
+
+      /**
+       * Vuelve a arrancar con la master del centro (olvida la sub-key
+       * restaurada que quedó vencida/revocada; la próxima elección de perfil
+       * crea una sub-key nueva).
+       */
+      function retryAdmin() {
+        store.apiKey = '';
+        retryWithMaster.value = false;
+        boot();
       }
 
       /**
@@ -213,6 +230,8 @@
           }
         } catch (err) {
           toast(err.message || 'No se pudieron cargar las cuentas', 'error');
+          // Reconexión automática: salir del spinner sin salida hacia el picker
+          if (step.value === 'boot') step.value = 'profile';
         } finally {
           busy.value = false;
         }
@@ -468,11 +487,11 @@
       }
 
       return {
-        step, busy, profiles, selectedProfileId, accounts, phones,
+        step, busy, retryWithMaster, profiles, selectedProfileId, accounts, phones,
         selectedAccountId, selectedPhoneId, creds, showCreds, result, waAccounts: platformAccounts,
         isWhatsApp, oauthUrl,
         waOAuthStarted, waPhoneNumbers, waSelectBusy,
-        boot, createProfile, ensureSubKey, loadChannelOptions, connectWithAccount,
+        boot, retryAdmin, createProfile, ensureSubKey, loadChannelOptions, connectWithAccount,
         connectWithPhone, connectCredentials, startOAuth, verifyOAuth, reset,
         startWhatsAppOAuth, loadWaPhoneNumbers, selectWaPhone,
       };
@@ -515,6 +534,9 @@
               </button>
               <button v-if="!busy" @click="createProfile" class="w-full px-4 py-3 text-left text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)]">
                 + Crear perfil nuevo con el nombre del negocio
+              </button>
+              <button v-if="retryWithMaster && !busy" @click="retryAdmin" class="w-full border-t-2 border-neutral-100 px-4 py-3 text-left text-sm font-medium text-neutral-700 transition hover:bg-stone-50">
+                La sub-key del espacio no responde — reintentar con la clave del centro
               </button>
             </div>
             <p class="border-t-2 border-neutral-900 px-4 py-2.5 text-xs text-neutral-500">

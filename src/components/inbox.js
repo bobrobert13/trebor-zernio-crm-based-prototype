@@ -984,12 +984,14 @@
           const params = tplVariables.value.map((v) => (tplParams[v] || '').trim());
           const name = t.name;
           // Body con variables {{n}} resueltas: mismo texto para el hilo local
-          // (conversación nueva o re-enganche), para que el mensaje nunca quede vacío
+          // (conversación nueva o re-enganche), para que el mensaje nunca quede vacío.
+          // Se sustituye por token ({{1}}..{{n}} en cualquier orden) y no por índice
           const bodyText = t.body || ((t.components || []).find((c) => c.type === 'body') || {}).text || '';
           let resolved = bodyText;
-          params.forEach((val, i) => {
-            resolved = String(resolved).split(`{{${i + 1}}}`).join(val);
+          tplVariables.value.forEach((token) => {
+            resolved = String(resolved).split(token).join((tplParams[token] || '').trim());
           });
+          if (!String(resolved).trim()) throw new Error('La plantilla no tiene texto de cuerpo');
           if (!tplTarget.value) {
             // Conversación nueva: WhatsApp exige plantilla aprobada para abrir el hilo
             const contact = contacts.value.find((c) => c.id === newContactId.value);

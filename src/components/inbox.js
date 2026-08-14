@@ -432,9 +432,19 @@
       const tplParams = Vue.reactive({});
       const tplSending = Vue.ref(false);
       const tplTarget = Vue.ref(null); // conversación objetivo (null = abrir nueva)
+      const tplError = Vue.ref(''); // error persistente al cargar plantillas (no toast efímero)
 
       /** ¿Algún selector de plantilla abierto? */
       const tplPickerOpen = Vue.computed(() => tplModalOpen.value || tplFirstOpen.value);
+
+      /** Contacto elegido en "Nueva conversación" sin actividad en las últimas 24h →
+       *  WhatsApp exige una plantilla aprobada para abrir el hilo (aviso persistente). */
+      const newConvNeedsTemplate = Vue.computed(() => {
+        if (!newContactId.value) return false;
+        return !conversations.value.some(
+          (c) => c.contactId === newContactId.value && Date.now() - (c.lastTs || 0) < 24 * 3600 * 1000
+        );
+      });
 
       function zernioAccountId() {
         return (workspace.value.zernio && workspace.value.zernio.accountId) || '';
@@ -451,16 +461,23 @@
         return [...new Set(m)];
       });
 
-      /** Carga las plantillas APROBADAS del accountId (o demo). */
+      /** Carga las plantillas APROBADAS del accountId (o demo). Los errores se
+       *  muestran DENTRO del modal (tplError, persistente) — un toast se oculta
+       *  solo y el usuario no sabría por qué la lista quedó vacía. */
       async function loadApprovedTemplates() {
+        tplError.value = '';
         if (isLive.value) {
           const accountId = zernioAccountId();
           if (!accountId) {
-            toast('Sin cuenta WhatsApp vinculada: reconecta en Configuración', 'error');
+            tplError.value = 'Sin cuenta WhatsApp vinculada: reconecta el canal en Canales o Configuración';
             return;
           }
-          const data = await api.listTemplates(accountId);
-          tplList.value = asArray(data).filter((t) => (t.status || '').toUpperCase() === 'APPROVED');
+          try {
+            const data = await ZernioCrm.api.listTemplates(accountId);
+            tplList.value = ZernioCrm.asArray(data).filter((t) => (t.status || '').toUpperCase() === 'APPROVED');
+          } catch (err) {
+            tplError.value = err.message || 'No se pudieron cargar las plantillas';
+          }
         } else {
           const seeded = (workspace.value.templates || []).filter((t) => t.status === 'APPROVED');
           tplList.value = seeded.length
@@ -474,13 +491,15 @@
         tplTarget.value = target || null;
         tplSelected.value = null;
         Object.keys(tplParams).forEach((k) => delete tplParams[k]);
+        tplError.value = '';
         (target ? tplModalOpen : tplFirstOpen).value = true;
-        loadApprovedTemplates().catch((err) => toast(err.message || 'No se pudieron cargar las plantillas', 'error'));
+        loadApprovedTemplates();
       }
 
       function closeTemplatePicker() {
         tplModalOpen.value = false;
         tplFirstOpen.value = false;
+        tplError.value = '';
       }
 
       // ── Ficha del cliente (drawer, flujo CRM por conversación) ─────────────
@@ -964,13 +983,22 @@
           const accountId = zernioAccountId();
           const params = tplVariables.value.map((v) => (tplParams[v] || '').trim());
           const name = t.name;
+          // Body con variables {{n}} resueltas: mismo texto para el hilo local
+          // (conversación nueva o re-enganche), para que el mensaje nunca quede vacío.
+          // Se sustituye por token ({{1}}..{{n}} en cualquier orden) y no por índice
+          const bodyText = t.body || ((t.components || []).find((c) => c.type === 'body') || {}).text || '';
+          let resolved = bodyText;
+          tplVariables.value.forEach((token) => {
+            resolved = String(resolved).split(token).join((tplParams[token] || '').trim());
+          });
+          if (!String(resolved).trim()) throw new Error('La plantilla no tiene texto de cuerpo');
           if (!tplTarget.value) {
             // Conversación nueva: WhatsApp exige plantilla aprobada para abrir el hilo
             const contact = contacts.value.find((c) => c.id === newContactId.value);
             if (!contact) throw new Error('Elige un contacto primero');
             let conv;
             if (isLive.value) {
-              const created = await api.createConversationWithTemplate({
+              const created = await ZernioCrm.api.createConversationWithTemplate({
                 accountId,
                 participantId: contact.phone,
                 templateName: name,
@@ -992,7 +1020,7 @@
             } else {
               conv = { id: uid('conv'), contactId: contact.id, platform: 'whatsapp', status: 'active', unread: 0, tags: contact.tags.slice(0, 1), messages: [], lastTs: Date.now(), accountId: 'demo_wa' };
             }
-            conv.messages.push({ id: uid('msg'), from: 'out', text: `[Plantilla ${name}] ${t.body || ''}`, ts: Date.now(), status: 'delivered' });
+            conv.messages.push({ id: uid('msg'), from: 'out', text: `[Plantilla ${name}] ${resolved}`, ts: Date.now(), status: 'delivered' });
             workspace.value.conversations.unshift(conv);
             selectedId.value = conv.id;
             closeTemplatePicker();
@@ -1001,15 +1029,8 @@
           } else {
             // Re-enganche >24h: plantilla dentro del hilo existente
             const conv = tplTarget.value;
-            // Resuelve las variables {{n}} con los valores del usuario (y el body
-            // puede vivir en components[].text en plantillas reales de Meta)
-            const bodyText = t.body || ((t.components || []).find((c) => c.type === 'body') || {}).text || '';
-            let resolved = bodyText;
-            params.forEach((val, i) => {
-              resolved = String(resolved).split(`{{${i + 1}}}`).join(val);
-            });
             if (isLive.value) {
-              await api.sendTemplate(conv.id, {
+              await ZernioCrm.api.sendTemplate(conv.id, {
                 accountId,
                 template: { elements: [{ name, language: t.language || 'es', components: [{ type: 'body', text: resolved }] }] },
               });
@@ -1052,7 +1073,8 @@
         QUICK_REPLIES, canEdit, humanAgent, outsideWindow, canHumanAgent, blockedByWindow,
         attentionTips, tipsOpen,
         presentPlatforms, tiktokChannel, tiktokEmpty, getPlatform, leadTags,
-        tplPickerOpen, tplList, tplSelected, tplParams, tplVariables, tplSending,
+        tplPickerOpen, tplList, tplSelected, tplParams, tplVariables, tplSending, tplError,
+        tplTarget, tplModalOpen, tplFirstOpen, newConvNeedsTemplate,
         openTemplatePicker, closeTemplatePicker, sendApprovedTemplate,
         contactDrawerOpen, contactTab, contactTags, toggleContactTag, setLeadTag, registerContact,
         contactStats, bizFields, remInput, addReminderFor, contactReminders, ZernioCrm,
@@ -1385,19 +1407,33 @@
               <option v-for="c in contacts" :key="c.id" :value="c.id">{{ c.name }} · {{ c.phone }}</option>
             </select>
           </ui-field>
+          <!-- Aviso persistente (no es un toast que se oculta solo): el contacto
+               elegido no tiene actividad en las últimas 24h → se exige plantilla -->
+          <div v-if="newConvNeedsTemplate" class="mt-3 flex items-start gap-2 border border-amber-600 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <ui-icon name="clock" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700"></ui-icon>
+            <span>Este contacto no tiene conversación en las últimas 24 h: el hilo se abrirá con una <strong>plantilla aprobada</strong> (WhatsApp no permite mensajes libres para iniciar una conversación).</span>
+          </div>
           <button @click="startConversation" :disabled="!newContactId"
             class="mt-4 w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40">
-            Iniciar conversación
+            {{ newConvNeedsTemplate ? 'Iniciar con plantilla aprobada' : 'Iniciar conversación' }}
           </button>
         </ui-modal>
 
         <!-- Modal: selector de plantilla aprobada (primer mensaje o re-enganche >24h) -->
         <ui-modal :open="tplPickerOpen" :title="tplTarget ? 'Re-enganchar con plantilla aprobada' : 'Primer mensaje: elige una plantilla aprobada'" width="max-w-3xl" @close="closeTemplatePicker">
           <div class="space-y-4">
-            <p class="text-xs text-neutral-500">
-              WhatsApp exige plantillas aprobadas por Meta para abrir o re-enganchar conversaciones. Elige una y completa sus variables.
-            </p>
-            <div v-if="tplList.length === 0" class="border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-400">
+            <!-- Política de 24h visible y persistente (el aviso no se oculta solo) -->
+            <div class="flex items-start gap-2 border border-amber-600 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <ui-icon name="clock" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700"></ui-icon>
+              <span>{{ tplTarget ? 'La ventana de 24 h ya pasó:' : 'Primer mensaje al cliente:' }} WhatsApp exige <strong>plantillas aprobadas por Meta</strong> para abrir o re-enganchar un hilo. Elige una y completa sus variables; el cliente debe responder para abrir la ventana de 24 h.</span>
+            </div>
+            <!-- Error persistente al cargar plantillas (live: API/CORS) con reintento -->
+            <div v-if="tplError" class="flex items-start gap-2 border border-red-700 bg-red-50 px-3 py-2 text-xs text-red-800">
+              <ui-icon name="alert" class="mt-0.5 h-3.5 w-3.5 shrink-0"></ui-icon>
+              <span class="flex-1">No se pudieron cargar las plantillas: {{ tplError }}</span>
+              <button @click="openTemplatePicker(tplTarget)" class="shrink-0 font-semibold underline">Reintentar</button>
+            </div>
+            <div v-if="tplList.length === 0 && !tplError" class="border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-400">
               Sin plantillas aprobadas todavía. Crea y aprueba una en Campañas primero (Meta revisa hasta 24 h).
             </div>
             <div v-else class="grid gap-2 sm:grid-cols-2">

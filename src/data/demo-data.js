@@ -482,6 +482,10 @@
       category: i === 0 ? 'UTILITY' : 'MARKETING',
       language: 'es',
       status: i === 0 ? 'APPROVED' : 'PENDING',
+      // Body real con variable {{1}}: la preview y el envío (conversación
+      // nueva o re-enganche) dependen del texto; sin body el hilo demo se
+      // abriría con un mensaje vacío y la preview quedaría "sin contenido".
+      body: `Hola {{1}}, ${step.desc.charAt(0).toLowerCase()}${step.desc.slice(1)}`,
     }));
   }
 

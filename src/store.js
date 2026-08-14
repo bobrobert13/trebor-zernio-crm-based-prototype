@@ -349,6 +349,16 @@
         kpis: ((n && n.kpis) || []).map((k) => k.id),
       };
     }
+    // Migración: plantillas WhatsApp sin cuerpo (workspaces creados antes de
+    // que el seed incluyera body) — la preview y el envío del flujo de 24h
+    // (conversación nueva / re-enganche) dependen del texto; idempotente.
+    const tplSteps = ((n && n.roadmap) || []).filter((r) => r.type === 'templates');
+    (workspace.templates || []).forEach((t) => {
+      if (t.body || (t.components && t.components.length)) return;
+      const step = tplSteps.find((s) => t.name.startsWith(s.id + '_'));
+      const desc = (step && step.desc) || 'le escribimos para atender su solicitud';
+      t.body = `Hola {{1}}, ${desc.charAt(0).toLowerCase()}${desc.slice(1)}`;
+    });
   }
 
   window.ZernioCrm = window.ZernioCrm || {};

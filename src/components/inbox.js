@@ -1004,8 +1004,12 @@
       /** Cierra un lead con la acción close_sale del agente (misma mutación que confirmClose). */
       function closeAgentSale(contact, action) {
         if (!contact || !canEdit('inbox')) return;
-        const outcome = action.outcome === 'perdida' ? 'perdida' : 'ganada';
-        contact.leadClosed = { at: Date.now(), outcome, note: action.note || 'Cierre autónomo del agente', reason: action.reason || undefined };
+        const outcome = action.outcome === 'perdida' ? 'perdida' : action.outcome === 'ganada' ? 'ganada' : null;
+        if (!outcome) {
+          toast('El agente intentó cerrar la venta sin un resultado válido', 'error');
+          return;
+        }
+        contact.leadClosed = { at: Date.now(), outcome, note: action.note || 'Cierre autónomo del agente', reason: action.reason || undefined, products: [] };
         contact.leadHistory = contact.leadHistory || [];
         contact.leadHistory.push({ tag: `finalizada:${outcome}`, at: contact.leadClosed.at, note: contact.leadClosed.note, reason: contact.leadClosed.reason });
         toast(`El agente cerró el lead como ${closeLabel(outcome).toLowerCase()}`, 'success');
@@ -1025,7 +1029,7 @@
           closeAgentSale(contact, action);
         }
         // Recordatorio de seguimiento
-        if (action.action === 'reminder') {
+        if (action.action === 'reminder' && contact) {
           ZernioCrm.addReminder(contact.id, action.text || 'Seguimiento del agente', action.reminderAt || null);
           toast(`${agent.name} creó un recordatorio`, 'info');
         }
@@ -1038,7 +1042,7 @@
         // (solo si el agente tiene autoReply activo)
         if (action.action === 'reply' && action.text && agent.autoReply) {
           const last = (conv.messages || []).slice(-1)[0];
-          const outside = Date.now() - ((last && last.ts) || 0) > 24 * 3600 * 1000;
+          const outside = last ? Date.now() - last.ts > 24 * 3600 * 1000 : false;
           if (isLive.value && outside && (conv.platform || 'whatsapp') === 'whatsapp') {
             toast(`${agent.name} sugirió una respuesta, pero la ventana de 24h está cerrada (se requiere plantilla)`, 'error', 6000);
             return;
@@ -1191,12 +1195,12 @@
       );
 
       // Auto-respuesta del agente IA: la instancia montada queda como handler;
-      // el hook de mensajes entrantes se registra UNA vez (live: reflectIncomingMessage;
-      // demo: simulateIncoming invoca agentAutoReply directamente).
+      // el hook se registra UNA vez con un delegador que siempre llama a la
+      // instancia ACTUAL (live: reflectIncomingMessage; demo: simulateIncoming).
       agentAutoReply = (contact, conv, msg) => maybeAgentAutoReply(contact, conv, msg);
       if (!agentHookRegistered) {
         agentHookRegistered = true;
-        ZernioCrm.onIncomingMessage(agentAutoReply);
+        ZernioCrm.onIncomingMessage((contact, conv, msg) => agentAutoReply && agentAutoReply(contact, conv, msg));
       }
 
       return {

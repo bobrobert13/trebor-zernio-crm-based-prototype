@@ -38,16 +38,6 @@
       const enterLoading = Vue.ref(false);
       const creating = Vue.ref(false);
 
-      /** Sección colapsada de clave de administración (solo si el centro no la dejó en sesión). */
-      const adminKeyOpen = Vue.ref(false);
-      const hasMasterKey = Vue.computed(() => {
-        try {
-          return Boolean(sessionStorage.getItem('tzcrm.masterKey'));
-        } catch {
-          return false;
-        }
-      });
-
       /** Resultado de la conexión real (live-connect). */
       const liveResult = Vue.ref(null);
 
@@ -228,7 +218,7 @@
 
       return {
         STEPS, form, current, enterLoading, creating, niche, accent, selectedNiche,
-        adminKeyOpen, hasMasterKey, liveResult,
+        liveResult,
         selectNiche, jumpTo, next, back, onLiveConnected, finish,
         uploadLogo, removeLogo,
         canContinue,
@@ -566,19 +556,6 @@
                 <p class="text-sm text-neutral-500">Disponible próximamente en la configuración. Ya puedes gestionarlo desde Canales.</p>
               </div>
               <ui-badge variant="neutral" class="ml-auto shrink-0">Próximamente</ui-badge>
-            </div>
-
-            <!-- Clave de administración (solo si el centro no la dejó en sesión) -->
-            <div v-if="!liveResult && !hasMasterKey" class="mt-4">
-              <button @click="adminKeyOpen = !adminKeyOpen" class="text-sm font-medium text-neutral-500 underline">
-                {{ adminKeyOpen ? '− Ocultar acceso de administración' : '+ Acceso de administración' }}
-              </button>
-              <div v-if="adminKeyOpen" class="mt-3 border border-neutral-200 bg-stone-50 p-4">
-                <p class="text-xs text-neutral-500">
-                  Clave de acceso de la plataforma (la proporciona tu proveedor). Sin ella no se puede crear el perfil del negocio.
-                </p>
-                <live-connect :business-name="form.name" @connected="onLiveConnected"></live-connect>
-              </div>
             </div>
 
             <button @click="form.skipConnect = true; finish()" :disabled="creating"

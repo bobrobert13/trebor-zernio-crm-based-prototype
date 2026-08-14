@@ -65,10 +65,11 @@
     // Sin canal conectado: no reflejar (quedaría una conversación huérfana sin respuesta)
     if (!accountId) return;
 
+    let contact = null;
     let conv = conversationId ? ws.conversations.find((c) => c.id === conversationId) : null;
     if (!conv) {
       const digits = String(sender.identifier || '').replace(/\D/g, '');
-      let contact = ws.contacts.find((c) => String(c.phone || '').replace(/\D/g, '') === digits);
+      contact = ws.contacts.find((c) => String(c.phone || '').replace(/\D/g, '') === digits);
       if (!contact) {
         contact = {
           id: ZernioCrm.uid('ct'),
@@ -95,6 +96,9 @@
         accountId,
       };
       ws.conversations.unshift(conv);
+    } else if (!contact) {
+      // Conversación existente por id: resolver su contacto para menciones/hooks
+      contact = ws.contacts.find((c) => c.id === conv.contactId) || null;
     }
 
     // Dedupe por id de mensaje (entrega at-least-once + recargas de página)
@@ -112,6 +116,18 @@
     if (store.route !== 'inbox') conv.unread += 1;
     // Detección de productos del catálogo en el mensaje entrante (live)
     recordProductMentions(contact, conv, pushed, text);
+    // Hooks de mensajes entrantes (ej. auto-respuesta del agente IA)
+    incomingHooks.forEach((fn) => {
+      try { fn(contact, conv, pushed); } catch { /* el hook no debe romper el reflejo */ }
+    });
+  }
+
+  /** Hooks registrados para mensajes entrantes (auto-respuesta de agentes IA). */
+  const incomingHooks = [];
+
+  /** Registra un callback (contact, conv, msg) para cada mensaje entrante reflejado. */
+  function onIncomingMessage(fn) {
+    if (typeof fn === 'function') incomingHooks.push(fn);
   }
 
   /**
@@ -359,6 +375,8 @@
       const desc = (step && step.desc) || 'le escribimos para atender su solicitud';
       t.body = `Hola {{1}}, ${desc.charAt(0).toLowerCase()}${desc.slice(1)}`;
     });
+    // Migración: agentes de IA conectables (nuevo módulo Agente)
+    if (!workspace.agents) workspace.agents = [];
   }
 
   window.ZernioCrm = window.ZernioCrm || {};
@@ -367,6 +385,7 @@
     pushWebhookEvent, reflectIncomingMessage, applyLeadTag,
     remindersOf, addReminder, toggleReminder, removeReminder,
     recordProductMentions, confirmMention, discardMention,
+    onIncomingMessage,
     migrateWorkspace,
   });
 })();

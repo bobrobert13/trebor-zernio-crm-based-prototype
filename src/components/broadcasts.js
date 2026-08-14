@@ -16,14 +16,18 @@
   /** Estados de plantilla → variante de badge. */
   const TEMPLATE_TONES = { APPROVED: 'success', PENDING: 'warn', REJECTED: 'danger' };
 
-  /** Guiones demo de secuencias por nicho. */
+  /** Guiones demo de secuencias por nicho (con pasos y retrasos para el pipeline). */
   function demoSequences(niche) {
     return [
       {
         id: uid('seq'),
         name: `Seguimiento post-${niche.tags[0] || 'venta'}`,
         status: 'active',
-        steps: [{ order: 1, delayMinutes: 0, message: '¡Gracias por escribirnos! Un asesor te atiende enseguida.' }],
+        steps: [
+          { order: 1, delayMinutes: 0, message: { text: '¡Gracias por tu compra! 🙌 Te avisamos cuando tu pedido esté listo.' } },
+          { order: 2, delayMinutes: 1440, message: { text: 'Hola, tu pedido sigue en camino. ¿Necesitas algo más?' } },
+          { order: 3, delayMinutes: 4320, message: { text: '¿Cómo te fue con tu compra? Nos importa tu opinión.' } },
+        ],
         enrolled: 24,
       },
       {
@@ -31,8 +35,9 @@
         name: 'Bienvenida 3 pasos',
         status: 'draft',
         steps: [
-          { order: 1, delayMinutes: 0, message: '¡Hola! 👋 Bienvenido a nuestro canal.' },
-          { order: 2, delayMinutes: 1440, message: '¿Tienes alguna duda sobre nuestros productos?' },
+          { order: 1, delayMinutes: 0, message: { text: '¡Hola! 👋 Bienvenido a nuestro canal.' } },
+          { order: 2, delayMinutes: 30, message: { text: '¿Tienes alguna duda sobre nuestros productos?' } },
+          { order: 3, delayMinutes: 1440, message: { text: 'Te dejamos nuestro catálogo por si quieres revisarlo con calma.' } },
         ],
         enrolled: 0,
       },
@@ -175,6 +180,8 @@
       const seqForm = Vue.reactive({ name: '', templateId: null, steps: [{ delayMinutes: 0, message: '' }] });
       const seqEnrollOpen = Vue.ref(false);
       const seqEnrollTarget = Vue.ref(null);
+      const seqPreviewOpen = Vue.ref(false);
+      const seqPreviewTarget = Vue.ref(null);
       const enrolling = Vue.ref(false);
 
       const flowOpen = Vue.ref(false);
@@ -630,6 +637,52 @@
         return status === 'active' ? 'success' : status === 'paused' ? 'warn' : 'neutral';
       }
 
+      // ── Pipeline de envío de secuencias ────────────────────────────────────
+
+      /** Texto legible de un paso (mensaje directo o plantilla). */
+      function seqStepText(st) {
+        return (st && ((st.message && st.message.text) || (st.template && st.template.name))) || 'Mensaje';
+      }
+
+      /** Retraso de un paso en formato corto ('Inmediato', '30 min', '24 h', '3 d'). */
+      function formatSeqDelay(minutes) {
+        const m = Number(minutes) || 0;
+        if (m === 0) return 'Inmediato';
+        if (m < 60) return `${m} min`;
+        if (m < 1440) return `${Math.round(m / 60)} h`;
+        return `${Math.round(m / 1440)} d`;
+      }
+
+      /** Duración total de la secuencia en minutos. */
+      function seqTotalMinutes(seq) {
+        return (seq && seq.steps || []).reduce((acc, s) => acc + (Number(s.delayMinutes) || 0), 0);
+      }
+
+      /** Minutos acumulados hasta el inicio de un paso (desde el primer mensaje). */
+      function seqCumulative(seq, index) {
+        return (seq && seq.steps || []).slice(0, index).reduce((acc, s) => acc + (Number(s.delayMinutes) || 0), 0);
+      }
+
+      /** Duración total en formato largo ('3 d 4 h'). */
+      function formatSeqTotal(minutes) {
+        const m = Number(minutes) || 0;
+        if (m === 0) return '0 min';
+        const d = Math.floor(m / 1440);
+        const h = Math.floor((m % 1440) / 60);
+        const mm = m % 60;
+        const parts = [];
+        if (d) parts.push(`${d} d`);
+        if (h) parts.push(`${h} h`);
+        if (mm) parts.push(`${mm} min`);
+        return parts.join(' ');
+      }
+
+      /** Abre el pipeline de envío de una secuencia. */
+      function openSeqPreview(seq) {
+        seqPreviewTarget.value = seq || null;
+        seqPreviewOpen.value = true;
+      }
+
       // ── Vista previa presentacional de flows ───────────────────────────────
 
       /** Pantallas de un flow (JSON Meta 6.0 a nivel raíz o dentro de data). */
@@ -659,6 +712,7 @@
         tab, loading, createOpen, sending, form, tplOpen, tplSaving, tplForm,
         recipientsOpen, recipientsList, recipientsBroadcast,
         seqOpen, seqSaving, seqForm, seqEnrollOpen, seqEnrollTarget, enrolling,
+        seqPreviewOpen, seqPreviewTarget, seqStepText, formatSeqDelay, seqTotalMinutes, seqCumulative, formatSeqTotal, openSeqPreview,
         flowOpen, flowSaving, flowForm, flowSendOpen, flowSendTarget, flowPhone,
         flowPreviewOpen, flowPreviewTarget, flowScreens, flowFields, flowFooter, openFlowPreview,
         workspace, niche, isLive, broadcasts, templates, sequences, flows, TEMPLATE_TONES,
@@ -868,11 +922,15 @@
                     <span class="shrink-0 font-mono text-[9px] uppercase text-neutral-400">{{ st.delayMinutes === 0 ? 'ahora' : Math.round((st.delayMinutes || 0) / 1440) + ' d' }}</span>
                   </li>
                 </ul>
-                <div class="mt-4 flex gap-2">
-                  <button @click="toggleSequence(s)" class="flex-1 border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
+                <div class="mt-4 grid grid-cols-3 gap-2">
+                  <button @click="openSeqPreview(s)"
+                    class="border-2 border-neutral-900 bg-white px-2 py-1.5 text-xs font-medium transition hover:shadow-brutal-sm">
+                    Pipeline
+                  </button>
+                  <button @click="toggleSequence(s)" class="border-2 border-neutral-900 bg-white px-2 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
                     {{ s.status === 'active' ? 'Pausar' : 'Activar' }}
                   </button>
-                  <button @click="seqEnrollTarget = s; seqEnrollOpen = true" class="flex-1 border-2 border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
+                  <button @click="seqEnrollTarget = s; seqEnrollOpen = true" class="border-2 border-neutral-900 bg-neutral-900 px-2 py-1.5 text-xs font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
                     Enrolar
                   </button>
                 </div>
@@ -1061,6 +1119,70 @@
               <ui-spinner v-if="seqSaving" size="h-4 w-4"></ui-spinner>
               {{ seqSaving ? 'Creando…' : 'Crear secuencia' }}
             </button>
+          </div>
+        </ui-modal>
+
+        <!-- Modal: pipeline de envío de la secuencia (cómo se ve en el canal) -->
+        <ui-modal :open="seqPreviewOpen" :title="'Pipeline de envío · ' + (seqPreviewTarget ? seqPreviewTarget.name : '')" width="max-w-4xl" @close="seqPreviewOpen = false">
+          <div v-if="seqPreviewTarget" class="space-y-5">
+            <!-- Pipeline horizontal: mensajes a lo largo del tiempo -->
+            <div class="flex items-stretch overflow-x-auto border-2 border-neutral-900 bg-stone-50 p-4">
+              <template v-for="(st, i) in (seqPreviewTarget.steps || [])" :key="st.order || i">
+                <div class="flex w-60 shrink-0 flex-col">
+                  <div class="flex items-center gap-1.5">
+                    <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] font-mono text-[11px] font-bold text-white">
+                      {{ st.order || i + 1 }}
+                    </span>
+                    <span class="font-mono text-[9px] uppercase tracking-widest text-neutral-500">{{ formatSeqDelay(st.delayMinutes) }}</span>
+                  </div>
+                  <div class="mt-2 min-h-[92px] rounded-lg border border-neutral-200 bg-[#efeae2] p-2.5">
+                    <div class="rounded-lg rounded-tl-none border border-neutral-200 bg-white px-2.5 py-1.5 text-[11px]">{{ seqStepText(st) }}</div>
+                  </div>
+                  <p class="mt-1.5 truncate font-mono text-[9px] uppercase tracking-widest text-neutral-400">
+                    {{ st.template ? 'Plantilla · ' + st.template.name : 'Mensaje directo' }}
+                  </p>
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">
+                    se envía en T+{{ formatSeqTotal(seqCumulative(seqPreviewTarget, i)) }}
+                  </p>
+                </div>
+                <div v-if="i < (seqPreviewTarget.steps || []).length - 1" class="flex shrink-0 flex-col items-center justify-center px-3">
+                  <span class="text-neutral-400">→</span>
+                  <span class="mt-1 whitespace-nowrap font-mono text-[9px] uppercase text-neutral-400">+{{ formatSeqDelay(st.delayMinutes) }}</span>
+                </div>
+              </template>
+            </div>
+
+            <!-- Información de la secuencia -->
+            <div class="grid gap-4 lg:grid-cols-2">
+              <div class="grid grid-cols-2 gap-2">
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Nombre</p>
+                  <p class="mt-0.5 break-all text-xs font-semibold">{{ seqPreviewTarget.name }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Estado</p>
+                  <p class="mt-0.5 text-xs font-semibold" :class="seqPreviewTarget.status === 'active' ? 'text-emerald-700' : 'text-amber-700'">{{ seqPreviewTarget.status }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Pasos</p>
+                  <p class="mt-0.5 text-xs font-semibold">{{ (seqPreviewTarget.steps || []).length }}</p>
+                </div>
+                <div class="border border-neutral-200 p-2.5">
+                  <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Duración total</p>
+                  <p class="mt-0.5 text-xs font-semibold">{{ formatSeqTotal(seqTotalMinutes(seqPreviewTarget)) }}</p>
+                </div>
+              </div>
+              <div class="border border-neutral-200 bg-stone-50 p-3 text-xs text-neutral-600">
+                <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Cómo funciona</p>
+                <p class="mt-1.5">
+                  Cada paso se envía automáticamente por <strong>WhatsApp</strong> en el orden y con los
+                  retrasos configurados. Fuera de la ventana de 24h, WhatsApp exige una
+                  <strong>plantilla aprobada</strong> para re-enganchar al cliente; los mensajes directos
+                  solo aplican dentro de la ventana. Con el <strong>agente de ventas IA</strong> conectado,
+                  cada interacción puede además clasificar y dar seguimiento al lead.
+                </p>
+              </div>
+            </div>
           </div>
         </ui-modal>
 

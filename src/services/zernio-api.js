@@ -18,7 +18,7 @@
    * trabajo operan con su sub-key (aislada al perfil, revocable); la master
    * nunca se pide al usuario ni se persiste en el workspace.
    */
-  const MASTER_API_KEY = 'sk_78731fb2ded98eca8093e3e87221b3cbe04cfa4eea2e7b30207f9555f778135e';
+  const MASTER_API_KEY = 'sk_8e0a02f95e72dc385ac4855fc0394e0471dd5b7b724d3cd60c59d77af814f625';
 
   /** Error tipado del API: message, type (envelope de Zernio) y code. */
   class ApiError extends Error {

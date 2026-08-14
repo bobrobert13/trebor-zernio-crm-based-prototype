@@ -73,7 +73,9 @@
       if (!contact) {
         contact = {
           id: ZernioCrm.uid('ct'),
-          name: sender.name || sender.username || 'Cliente nuevo',
+          // Nombre anti-colisión: si el participante trae el nombre de OTRO
+          // contacto ya existente, se usa el fallback numérico
+          name: resolveContactName(sender.name || sender.username, sender.identifier, ws.contacts),
           phone: sender.identifier || '',
           platform,
           tags: ['cliente'],
@@ -81,6 +83,7 @@
           customFields: {},
           createdAt: Date.now(),
           leadHistory: [{ tag: null, at: Date.now() }],
+          nameSource: 'auto',
         };
         ws.contacts.unshift(contact);
       }
@@ -99,6 +102,13 @@
     } else if (!contact) {
       // Conversación existente por id: resolver su contacto para menciones/hooks
       contact = ws.contacts.find((c) => c.id === conv.contactId) || null;
+    }
+
+    // Auto-corrección de nombre: si el nombre vino del participante (auto, no
+    // editado a mano) y Zernio trae un nombre mejor sin colisión → actualizar
+    if (contact && contact.nameSource !== 'manual') {
+      const improved = resolveContactName(sender.name || sender.username, contact.phone, ws.contacts);
+      if (improved !== contact.name && !improved.startsWith('Cliente ')) contact.name = improved;
     }
 
     // Dedupe por id de mensaje (entrega at-least-once + recargas de página)
@@ -128,6 +138,22 @@
   /** Registra un callback (contact, conv, msg) para cada mensaje entrante reflejado. */
   function onIncomingMessage(fn) {
     if (typeof fn === 'function') incomingHooks.push(fn);
+  }
+
+  /**
+   * Nombre seguro para un contacto nuevo desde un participante externo:
+   * si el nombre ya pertenece a OTRO contacto (número distinto) no se reusa
+   * (evita "soy Robert y me apareció como Valeria Rios") y se cae al fallback
+   * numérico. Los contactos editados a mano llevan nameSource 'manual'.
+   */
+  function resolveContactName(name, phone, existing) {
+    const clean = String(name || '').trim();
+    const d = String(phone || '').replace(/\D/g, '');
+    const collides = Boolean(clean) && (existing || []).some(
+      (c) => String(c.name || '').trim() === clean && String(c.phone || '').replace(/\D/g, '') !== d
+    );
+    if (clean && !collides) return clean;
+    return d ? `Cliente ${d.slice(-6)}` : 'Cliente nuevo';
   }
 
   /**
@@ -385,7 +411,7 @@
     pushWebhookEvent, reflectIncomingMessage, applyLeadTag,
     remindersOf, addReminder, toggleReminder, removeReminder,
     recordProductMentions, confirmMention, discardMention,
-    onIncomingMessage,
+    onIncomingMessage, resolveContactName,
     migrateWorkspace,
   });
 })();

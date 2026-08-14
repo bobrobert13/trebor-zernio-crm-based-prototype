@@ -341,13 +341,18 @@
                 const name = conv.participantName || conv.participantUsername || 'Cliente Zernio';
                 const phone = conv.participantUsername || conv.participantId || '';
                 let contact = contacts.value.find((c) => digits(c.phone) === digits(phone));
-                if (contact && /^\d+$/.test(contact.name) && !/^\d+$/.test(name)) {
-                  contact.name = name; // mejora el nombre numérico con el del participante
+                if (contact && contact.nameSource !== 'manual') {
+                  // Auto-corrección: nombre auto (no editado) + participante con
+                  // un nombre mejor sin colisión → actualizar
+                  const improved = ZernioCrm.resolveContactName(name, contact.phone, contacts.value);
+                  if (improved !== contact.name && !improved.startsWith('Cliente ')) contact.name = improved;
                 }
                 if (!contact) {
                   contact = {
                     id: uid('ct'),
-                    name,
+                    // Anti-colisión: si el participante trae el nombre de OTRO
+                    // contacto, se usa el fallback numérico
+                    name: ZernioCrm.resolveContactName(name, phone, contacts.value),
                     phone,
                     platform: p.id,
                     tags: ['cliente'],
@@ -355,6 +360,7 @@
                     customFields: {},
                     createdAt: Date.now(),
                     leadHistory: [{ tag: null, at: Date.now() }],
+                    nameSource: 'auto',
                   };
                   workspace.value.contacts.unshift(contact);
                 }
@@ -1251,8 +1257,8 @@
             <div>
               <h2 class="text-lg font-bold leading-tight">Bandeja</h2>
               <p class="text-xs text-neutral-500">
-                {{ workspace.whatsapp.phone }}
-                <span v-if="!workspace.whatsapp.connected" class="font-semibold text-red-700">· desconectado</span>
+                {{ (workspace.whatsapp || {}).phone }}
+                <span v-if="!(workspace.whatsapp && workspace.whatsapp.connected)" class="font-semibold text-red-700">· desconectado</span>
               </p>
             </div>
           </div>
@@ -1625,7 +1631,7 @@
               <div class="flex items-center gap-3">
                 <ui-avatar :name="selectedContact.name" size="h-12 w-12 text-base"></ui-avatar>
                 <div class="min-w-0 flex-1">
-                  <input :value="selectedContact.name" @change="selectedContact.name = $event.target.value"
+                  <input :value="selectedContact.name" @change="selectedContact.name = $event.target.value; selectedContact.nameSource = 'manual'"
                     class="w-full border-b border-transparent bg-transparent font-semibold outline-none focus:border-neutral-900" />
                   <input :value="selectedContact.phone" @change="selectedContact.phone = $event.target.value"
                     class="w-full border-b border-transparent bg-transparent font-mono text-xs text-neutral-500 outline-none focus:border-neutral-900" />

@@ -611,11 +611,29 @@
    * (0.5-0.9: contención, solapamiento de tokens o typos ≤2 ediciones).
    * @returns {Array<{product:object, intent:string, score:number}>} top 3.
    */
+  /**
+   * Palabras triviales de conversación que NUNCA son señal de producto
+   * (saludos, monosílabos, muletillas, preguntas genéricas). Se descartan
+   * como tokens de búsqueda: "hola", "que", "gracias"… no generan menciones.
+   * (normalizadas: minúsculas y sin acentos)
+   */
+  const MENTION_STOPWORDS = new Set([
+    'hola', 'buenas', 'buenos', 'dias', 'tardes', 'noches', 'que', 'tal', 'ok', 'okey', 'vale', 'dale',
+    'si', 'no', 'gracias', 'porfa', 'porfavor', 'favor', 'bien', 'bueno', 'buenisimo', 'perfecto', 'claro', 'listo',
+    'esta', 'esto', 'ese', 'esa', 'eso', 'ahi', 'aqui', 'ya', 'ahora', 'despues', 'luego',
+    'mira', 'oye', 'dime', 'tienen', 'tienes', 'tiene', 'hay', 'quedo', 'duda', 'pregunta', 'consulta',
+    'como', 'cuando', 'donde', 'quien', 'cual', 'muchas', 'mucho', 'pero', 'solo', 'un', 'una',
+    'me', 'te', 'le', 'para', 'con', 'sin', 'por', 'mas', 'menos', 'muy', 'algo', 'nada', 'todo', 'igual', 'asi',
+  ]);
+
   function matchProducts(text, products, nicheId) {
     const hay = normalizeText(text);
-    // Guard: textos vacíos o demasiado cortos no generan candidatos
-    if (!hay || hay.length < 2) return [];
-    const tokens = hay.split(/\s+/).filter(Boolean);
+    // Guard: textos vacíos o triviales no generan candidatos
+    if (!hay || hay.length < 3) return [];
+    // Pauta: solo tokens significativos participan (≥3 chars, sin stopwords) —
+    // "hola", "que" o "gracias" no pueden producir una mención de producto
+    const tokens = hay.split(/\s+/).filter((t) => t && t.length >= 3 && !MENTION_STOPWORDS.has(t));
+    if (!tokens.length) return [];
     const intent = detectIntent(text, nicheId);
     const out = [];
     (products || []).forEach((p) => {
@@ -624,14 +642,20 @@
       let best = 0;
       names.forEach((n) => {
         if (!n) return;
+        // Pauta: comparación por PALABRAS completas (nunca subcadenas como
+        // "que" dentro de "queso") — evita falsos positivos con charla trivial
+        const nt = n.split(/\s+/).filter((t) => t && t.length >= 3 && !MENTION_STOPWORDS.has(t));
+        if (!nt.length) return;
         if (hay === n) best = Math.max(best, 1);
-        else if (hay.includes(n) || (n.length > 3 && n.includes(hay))) best = Math.max(best, 0.85);
+        else if (nt.every((t) => tokens.includes(t))) best = Math.max(best, 0.85);
         else {
-          const nt = n.split(/\s+/).filter(Boolean);
-          const overlap = nt.filter((t) => tokens.includes(t)).length / Math.max(1, nt.length);
+          const overlap = nt.filter((t) => tokens.includes(t)).length / nt.length;
           if (overlap >= 0.6) best = Math.max(best, 0.7);
-          else if (n.length > 3 && editDistance(hay, n, 2) <= 2) best = Math.max(best, 0.6);
-          else if (nt.some((t) => t.length > 3 && editDistance(hay, t, 1) <= 1)) best = Math.max(best, 0.55);
+          else {
+            const fuzzyTokens = tokens.filter((t) => t.length >= 4);
+            if (fuzzyTokens.length && n.length > 3 && editDistance(hay, n, 2) <= 2) best = Math.max(best, 0.6);
+            else if (nt.some((t) => t.length > 3 && fuzzyTokens.some((f) => editDistance(f, t, 1) <= 1))) best = Math.max(best, 0.55);
+          }
         }
       });
       if (best > 0) out.push({ product: p, intent, score: best });

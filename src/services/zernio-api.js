@@ -77,12 +77,12 @@
       const url = new URL(serverMode ? `${location.origin}/zernio${path}` : `${this.baseUrl}${path}`);
       // Nunca mandar query params vacíos (el API los rechaza como formato inválido)
       if (query) Object.entries(query).forEach(([k, v]) => v != null && v !== '' && url.searchParams.set(k, v));
-    
+
       const headers = serverMode
         ? { 'X-Zernio-Key': key }
         : { Authorization: `Bearer ${key}` };
       if (body) headers['Content-Type'] = 'application/json';
-      
+
       let response;
       try {
         response = await fetch(url, { method, headers, body: body ? JSON.stringify(sanitizeBody(body)) : undefined });
@@ -421,9 +421,15 @@
 
     // ── Webhooks ─────────────────────────────────────────────────────────────
 
+    /**
+     * La gestión de SUSCRIPCIONES de webhooks es admin-plane (como api-keys):
+     * una sub-key de perfil no puede administrarlas (403 'A profile-scoped API
+     * key cannot manage webhooks'). Estas llamadas usan la master del centro.
+     */
+
     /** @returns {Promise<object>} Configuración actual de webhooks. */
     getWebhookSettings() {
-      return this.request('/webhooks/settings');
+      return this.request('/webhooks/settings', { admin: true });
     }
 
     /**
@@ -432,7 +438,7 @@
      * @returns {Promise<object>} Config creada.
      */
     createWebhookSettings(payload) {
-      return this.request('/webhooks/settings', { method: 'POST', body: payload });
+      return this.request('/webhooks/settings', { method: 'POST', body: payload, admin: true });
     }
 
     /**
@@ -441,17 +447,17 @@
      * @returns {Promise<object>} Config actualizada.
      */
     updateWebhookSettings(payload) {
-      return this.request('/webhooks/settings', { method: 'PUT', body: payload });
+      return this.request('/webhooks/settings', { method: 'PUT', body: payload, admin: true });
     }
 
     /** Elimina la configuración de webhook. */
     deleteWebhookSettings() {
-      return this.request('/webhooks/settings', { method: 'DELETE' });
+      return this.request('/webhooks/settings', { method: 'DELETE', admin: true });
     }
 
     /** Envía un webhook de prueba. */
     testWebhook() {
-      return this.request('/webhooks/test', { method: 'POST' });
+      return this.request('/webhooks/test', { method: 'POST', admin: true });
     }
 
     /** @returns {Promise<Array<object>>} Logs de entrega de webhooks (master del centro). */

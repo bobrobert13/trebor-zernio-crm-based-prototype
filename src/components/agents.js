@@ -12,7 +12,7 @@
 
   const { Vue, ZernioCrm } = window;
   const { store, toast, uid, canEdit } = ZernioCrm;
-  const { AGENT_FLOWS, CANONICAL_FIELDS, MARY_MAPPING, MARY_EXAMPLE } = ZernioCrm;
+  const { AGENT_FLOWS, CANONICAL_FIELDS, MARY_MAPPING, MARY_EXAMPLE, CRM_TOOLS, TOOL_PIPELINES } = ZernioCrm;
 
   const components = {};
 
@@ -30,6 +30,7 @@
       const adaptError = Vue.ref('');
       const logsOpen = Vue.ref(false);
       const logsAgent = Vue.ref(null);
+      const toolsOpen = Vue.ref(false); // capacidades MCP del CRM expuestas al agente
 
       /** Formulario del editor (flujos y mapeo como objetos editables). */
       const form = Vue.reactive({
@@ -147,6 +148,12 @@
         return f ? f.label : id;
       }
 
+      /** Nombre legible de una herramienta MCP por id (pipelines). */
+      function toolName(id) {
+        const t = CRM_TOOLS.find((x) => x.id === id);
+        return t ? t.name : id;
+      }
+
       function openLogs(agent) {
         logsAgent.value = agent;
         logsOpen.value = true;
@@ -154,6 +161,7 @@
 
       return {
         isLive, agents, canEdit, AGENT_FLOWS, CANONICAL_FIELDS,
+        CRM_TOOLS, TOOL_PIPELINES, toolsOpen, toolName,
         editorOpen, editingId, form, showKey, testing, saving,
         adaptPreview, adaptError, logsOpen, logsAgent,
         openEditor, saveAgent, removeAgent, testConnection, testAdaptation,
@@ -300,6 +308,65 @@
                   <ui-toggle v-model="form.autoCloseSale"></ui-toggle>
                   <span><strong>Cierre de ventas:</strong> el agente puede cerrar leads con total libertad (inventario, cliente, historial…).</span>
                 </label>
+              </div>
+            </div>
+
+            <!-- Capacidades expuestas al agente (MCP del CRM) -->
+            <div>
+              <button @click="toolsOpen = !toolsOpen" type="button"
+                class="flex w-full items-center justify-between gap-2 border-2 border-neutral-900 bg-white px-4 py-3 text-left transition hover:bg-stone-50">
+                <span class="flex items-center gap-2">
+                  <ui-icon name="box" class="h-4 w-4 text-[var(--accent)]"></ui-icon>
+                  <span class="text-sm font-semibold">Capacidades que exponemos al agente</span>
+                  <ui-badge variant="neutral">{{ CRM_TOOLS.length }} herramientas</ui-badge>
+                </span>
+                <ui-icon :name="toolsOpen ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-neutral-400"></ui-icon>
+              </button>
+              <div v-if="toolsOpen" class="space-y-4 border-2 border-t-0 border-neutral-900 p-4">
+                <p class="text-xs text-neutral-500">
+                  Así nutrimos al agente: recibe el contexto del negocio (contacto, historial, inventario,
+                  conversación y ventana de 24h) y puede modificar los datos solo con estas herramientas.
+                  Cada una tiene sus barreras; si una acción no las cumple, el CRM la ignora.
+                </p>
+                <div class="grid gap-2">
+                  <div v-for="t in CRM_TOOLS" :key="t.id" class="border border-neutral-200 p-3">
+                    <span class="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                      <ui-icon :name="t.icon" class="h-4 w-4 text-[var(--accent)]"></ui-icon>
+                      {{ t.name }}
+                      <span class="font-mono text-[9px] uppercase tracking-wider text-neutral-400">{{ t.action }}</span>
+                    </span>
+                    <p class="mt-1 text-xs text-neutral-600">{{ t.desc }}</p>
+                    <div class="mt-2 grid gap-1 text-xs sm:grid-cols-3">
+                      <p class="text-neutral-600">
+                        <span class="mr-1 font-mono text-[9px] uppercase tracking-widest text-neutral-400">Modifica</span>{{ t.modifies }}
+                      </p>
+                      <p class="text-amber-900">
+                        <span class="mr-1 font-mono text-[9px] uppercase tracking-widest text-amber-700">Barrera</span>{{ t.barrier }}
+                      </p>
+                      <p class="text-neutral-600">
+                        <span class="mr-1 font-mono text-[9px] uppercase tracking-widest text-neutral-400">Cuándo</span>{{ t.trigger }}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Pipelines — varias acciones encadenadas para un objetivo</p>
+                  <div class="grid gap-2">
+                    <div v-for="p in TOOL_PIPELINES" :key="p.id" class="border border-neutral-200 bg-stone-50 p-3">
+                      <div class="flex flex-wrap items-center justify-between gap-2">
+                        <p class="text-xs font-semibold">{{ p.name }}</p>
+                        <span class="font-mono text-[9px] uppercase text-neutral-400">{{ p.tools.length }} pasos</span>
+                      </div>
+                      <p class="mt-0.5 text-[11px] text-neutral-500">{{ p.goal }}</p>
+                      <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                        <template v-for="(tid, i) in p.tools" :key="tid">
+                          <span v-if="i > 0" class="text-neutral-400">→</span>
+                          <span class="border border-neutral-300 bg-white px-2 py-0.5 font-mono text-[10px]">{{ toolName(tid) }}</span>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

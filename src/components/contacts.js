@@ -77,6 +77,7 @@
             phone: form.phone.trim(),
             tags: [...form.tags],
             customFields: { ...form.customFields },
+            nameSource: 'manual',
           });
           toast('Contacto actualizado', 'success');
         } else {
@@ -91,6 +92,8 @@
             createdAt: Date.now(),
             // Momento 0 del historial de etapas: cae en "Sin asignar" (null)
             leadHistory: [{ tag: null, at: Date.now() }],
+            // Creado a mano: el live nunca lo renombra automáticamente
+            nameSource: 'manual',
           });
           toast('Contacto creado', 'success');
         }

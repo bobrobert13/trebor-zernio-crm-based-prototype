@@ -871,6 +871,21 @@
     return new Date(ts).toLocaleDateString('es-VE', { day: 'numeric', month: 'short' });
   }
 
+  /** @param {*} iso — fecha (ISO/ms/null). @returns {string} "12 ago, 2024, 14:30:00" locale es-VE. */
+  function fmtDT(iso) {
+    return iso ? new Date(iso).toLocaleString('es-VE') : '';
+  }
+
+  /** @param {*} iso — fecha (ISO/ms/null). @returns {string} "12/8/2024" locale es-VE. */
+  function fmtD(iso) {
+    return iso ? new Date(iso).toLocaleDateString('es-VE') : '';
+  }
+
+  /** @param {*} iso — fecha (ISO/ms/null). @returns {string} "14:30:00" locale es-VE. */
+  function fmtT(iso) {
+    return iso ? new Date(iso).toLocaleTimeString('es-VE') : '';
+  }
+
   /**
    * Normaliza respuestas del API de Zernio: acepta arrays directos o
    * envelopes ({ profiles }, { accounts }, { numbers }, { data }, { items },
@@ -912,6 +927,9 @@
     timeAgo,
     formatTime,
     formatDate,
+    fmtDT,
+    fmtD,
+    fmtT,
     asArray,
     PLATFORMS,
     getPlatform,

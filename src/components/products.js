@@ -10,7 +10,7 @@
   const {
     store, toast, uid, canEdit, getNiche,
     getNicheProductFields, PRODUCT_CARD_DEFAULTS, normalizeText,
-    buildProductCard, formatPrice, timeAgo, INTENT_LABELS,
+    buildProductCard, formatPrice, timeAgo, INTENT_LABELS, fmtD,
   } = ZernioCrm;
 
   const components = {};
@@ -584,7 +584,7 @@
         demandRange, demandPeriods, demand, demandTotal, bestSellers, topDemand, exportDemandCsv,
         OP_CASES, opportunities, openConversation, goToLeads,
         productNameOf, oppDrawerOpen, oppSelected, oppLeads, openOppDrawer, closeOppDrawer,
-        timeAgo, INTENT_LABELS,
+        timeAgo, INTENT_LABELS, fmtD,
       };
     },
 
@@ -876,7 +876,7 @@
                 <ui-badge variant="accent">{{ o.count }} consulta(s)</ui-badge>
               </div>
               <p class="mt-2 text-xs text-neutral-500">
-                Última: {{ new Date(o.lastTs || Date.now()).toLocaleDateString('es-VE') }}
+                Última: {{ fmtD(o.lastTs || Date.now()) }}
                 <template v-if="o.contact"> · {{ o.contact.name }}</template>
                 <template v-if="o.prev != null"> · antes: {{ o.prev }}</template>
                 <template v-if="o.product.stock === false"> · <span class="text-red-700">AGOTADO</span></template>
@@ -925,7 +925,7 @@
               </div>
               <div class="border border-neutral-200 p-2.5 text-center">
                 <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Última</p>
-                <p class="mt-1 text-xs font-semibold">{{ new Date(oppSelected.lastTs || Date.now()).toLocaleDateString('es-VE') }}</p>
+                <p class="mt-1 text-xs font-semibold">{{ fmtD(oppSelected.lastTs || Date.now()) }}</p>
               </div>
               <div class="border border-neutral-200 p-2.5 text-center">
                 <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Valor potencial</p>

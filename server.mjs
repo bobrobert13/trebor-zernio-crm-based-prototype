@@ -368,6 +368,13 @@ const server = createServer(async (req, res) => {
     }
 
     if (pathname === '/webhooks/events') {
+      // Feed de eventos solo para el propio frontend (mismo equipo). El polling
+      // corre desde http://localhost:8787 → sigue siendo loopback, no se rompe.
+      if (!isLoopback(req)) {
+        res.writeHead(403, { ...corsHeaders(req), 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Feed de eventos solo disponible en localhost' }));
+        return;
+      }
       res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ events: webhookEvents }));
       return;

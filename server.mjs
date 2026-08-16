@@ -209,8 +209,25 @@ function verifySignature(body, signature, secret) {
   }
 }
 
-/** Proxy: reenvía la petición al API de Zernio inyectando la key. */
+/** ¿La API path apunta a un endpoint de administración? (no debe servir el túnel). */
+function isAdminApiPath(apiPath) {
+  return /^\/(billing|usage|api-keys|phone-numbers|accounts\/health|webhooks)(\/|$)/.test(apiPath);
+}
+
+/**
+ * Proxy: reenvía la petición al API de Zernio inyectando la key.
+ * Las rutas de administración solo se aceptan desde loopback (el propio equipo).
+ * Si la petición llega por el túnel público (no localhost), se rechazan para
+ * evitar que sirva de relay a llamadas admin. Las llamadas de la bandeja diaria
+ * pasan por sub-key y endpoints de conversación (no admin) → no se ven afectadas;
+ * el uso se registra igual tras el guard.
+ */
 function proxyZernio(req, res, apiPath, apiKey) {
+  if (!isLoopback(req) && isAdminApiPath(apiPath)) {
+    res.writeHead(403, { ...corsHeaders(req), 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Ruta de administración solo disponible en localhost' }));
+    return;
+  }
   if (!apiKey) {
     res.writeHead(401, { ...corsHeaders(req), 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Falta X-Zernio-Key en la petición' }));

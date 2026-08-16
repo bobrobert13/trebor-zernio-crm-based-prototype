@@ -230,14 +230,14 @@ function isAdminApiPath(apiPath) {
 
 /**
  * Proxy: reenvía la petición al API de Zernio inyectando la key.
- * Las rutas de administración solo se aceptan desde loopback (el propio equipo).
- * Si la petición llega por el túnel público (no localhost), se rechazan para
- * evitar que sirva de relay a llamadas admin. Las llamadas de la bandeja diaria
- * pasan por sub-key y endpoints de conversación (no admin) → no se ven afectadas;
- * el uso se registra igual tras el guard.
+ * Las rutas de administración solo se aceptan cuando la petición es local por
+ * socket Y Host (isLocalRequest): si entra por el túnel público (socket loopback
+ * pero Host no-local) se rechazan, evitando que sirva de relay a llamadas admin.
+ * Las llamadas de la bandeja diaria pasan por sub-key y endpoints de conversación
+ * (no admin) → no se ven afectadas; el uso se registra igual tras el guard.
  */
 function proxyZernio(req, res, apiPath, apiKey) {
-  if (!isLoopback(req) && isAdminApiPath(apiPath)) {
+  if (!isLocalRequest(req) && isAdminApiPath(apiPath)) {
     res.writeHead(403, { ...corsHeaders(req), 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Ruta de administración solo disponible en localhost' }));
     return;
@@ -403,8 +403,11 @@ const server = createServer(async (req, res) => {
 
     if (pathname === '/webhooks/events') {
       // Feed de eventos solo para el propio frontend (mismo equipo). El polling
-      // corre desde http://localhost:8787 → sigue siendo loopback, no se rompe.
-      if (!isLoopback(req)) {
+      // corre desde http://localhost:8787 → Host local + socket loopback = local.
+      // Se exige isLocalRequest (no solo isLoopback) porque el tráfico del túnel
+      // en la misma máquina también llega con socket 127.0.0.1 pero con Host
+      // público; ese caso debe rechazarse.
+      if (!isLocalRequest(req)) {
         res.writeHead(403, { ...corsHeaders(req), 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Feed de eventos solo disponible en localhost' }));
         return;
@@ -435,6 +438,23 @@ const server = createServer(async (req, res) => {
 function isLoopback(req) {
   const addr = req.socket && req.socket.remoteAddress;
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+}
+
+/** ¿El Host del request es local (localhost / 127.0.0.1 / [::1]), con o sin puerto? */
+function isLocalHost(req) {
+  const host = (req.headers && req.headers.host) || '';
+  return /^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/.test(host);
+}
+
+/**
+ * ¿Request genuinamente local? Se exigen AMBAS condiciones: el socket descarta
+ * conexiones directas remotas y el Host header descarta el tráfico que entra
+ * por el túnel (cloudflared/ngrok) aunque ese túnel corra en la misma máquina
+ * (su socket sería 127.0.0.1 pero el Host es la URL pública del túnel).
+ * Lo usan las rutas que SIEMPRE deben ser locales (feed de eventos y proxy admin).
+ */
+function isLocalRequest(req) {
+  return isLoopback(req) && isLocalHost(req);
 }
 
 /**

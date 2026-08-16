@@ -201,7 +201,7 @@
       /** Score de interés comercial: factores de negocio sobre las menciones
        *  de producto del contacto (compra, frecuencia, alto valor, agotado).
        *  Nivel: alto (>=3 factores, o compra + alto valor), medio (2), bajo (1). */
-      const productMentions = Vue.computed(() => (workspace.value && workspace.value.productMentions) || []);
+      const productMentions = Vue.computed(() => ZernioCrm.productMentionsFor(workspace.value));
 
       // Flujo de cierre compartido con la bandeja (ver shared.js · makeCloseLead).
       // Se instancia aquí (tras productMentions) para pasar el computed de menciones.

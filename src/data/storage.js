@@ -92,16 +92,38 @@
   }
 
   /**
+   * Debounce simple de tipo 'trailing': ejecuta `fn` AL final de la ráfaga.
+   * Devuelve { schedule, flush }. flush() ejecuta la escritura pendiente de
+   * inmediato y limpia el temporizador (útil para volcar antes de cerrar).
+   */
+  function debounce(fn, ms) {
+    let timer = null;
+    return {
+      schedule() {
+        clearTimeout(timer);
+        timer = setTimeout(fn, ms);
+      },
+      flush() {
+        clearTimeout(timer);
+        timer = null;
+        fn();
+      },
+    };
+  }
+
+  /**
    * Engancha la persistencia automática: cualquier mutación profunda del
    * store.workspace o de la sesión se escribe en localStorage.
    * @param {object} store — store reactivo global.
    */
   function initPersistence(store) {
+    const persistWorkspace = debounce(() => {
+      if (store.workspace) upsertWorkspace(store.workspace);
+    }, 350); // 350ms: agrupa ráfagas (mensajes/acks/menciones) sin serializar en cada mutación.
+
     Vue.watch(
       () => store.workspace,
-      (workspace) => {
-        if (workspace) upsertWorkspace(workspace);
-      },
+      () => persistWorkspace.schedule(),
       { deep: true }
     );
     Vue.watch(
@@ -114,6 +136,13 @@
       (session) => saveSession(session),
       { deep: true }
     );
+
+    // Vuelca el workspace pendiente antes de cerrar u ocultar la pestaña
+    // para no perder mutaciones que aún no superaron el debounce.
+    window.addEventListener('beforeunload', persistWorkspace.flush);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') persistWorkspace.flush();
+    });
   }
 
   window.ZernioCrm = window.ZernioCrm || {};

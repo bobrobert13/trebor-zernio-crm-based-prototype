@@ -57,9 +57,9 @@
             return;
           }
           const [numData, healthData, logsData] = await Promise.all([
-            api.listPhoneNumbers().catch(() => ({ purchased: [], connected: [] })),
-            api.getAccountsHealth().catch(() => []),
-            api.getWebhookLogs().catch(() => []),
+            api.listPhoneNumbersOrEmpty(),
+            api.getAccountsHealthOrEmpty(),
+            api.getWebhookLogsOrEmpty(),
           ]);
           numbers.value = numData && (numData.data || numData);
           health.value = asArray(healthData);

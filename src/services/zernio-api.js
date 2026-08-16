@@ -271,6 +271,40 @@
       return this.request('/usage-stats', { admin: !ZernioCrm.store.apiKey });
     }
 
+    // ── Wrappers con fallback internalizado ──────────────────────────────────
+    // Centralizan el patrón `.catch(() => …)` que duplicaban los componentes:
+    // llaman al endpoint y degradan a un valor seguro si falla, sin encadenar.
+
+    /** Consumo con rango; si el endpoint moderno falla, degrada al legado. */
+    getUsageRobust(range = '30d') {
+      return this.getUsage(range).catch(() => this.getUsageStatsLegacy());
+    }
+
+    /** Statement de billing o null si no está disponible. */
+    getBillingOrNull() {
+      return this.getBilling().catch(() => null);
+    }
+
+    /** Precios por operación o null si no están disponibles. */
+    getBillingPricingOrNull() {
+      return this.getBillingPricing().catch(() => null);
+    }
+
+    /** Números WhatsApp o lista vacía si no están disponibles. */
+    listPhoneNumbersOrEmpty() {
+      return this.listPhoneNumbers().catch(() => ({ purchased: [], connected: [] }));
+    }
+
+    /** Health de cuentas o lista vacía si no está disponible. */
+    getAccountsHealthOrEmpty() {
+      return this.getAccountsHealth().catch(() => []);
+    }
+
+    /** Logs de webhooks o lista vacía si no están disponibles. */
+    getWebhookLogsOrEmpty() {
+      return this.getWebhookLogs().catch(() => []);
+    }
+
     /** @returns {Promise<Array<object>>} Health de todas las cuentas del centro (master key; módulo Estados). */
     getAccountsHealth() {
       return this.request('/accounts/health', { admin: true });

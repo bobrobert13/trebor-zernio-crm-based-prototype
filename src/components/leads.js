@@ -85,80 +85,10 @@
       }
 
       // ── Cierre de leads (flujo amigable: concretada / no concretada) ───────
-      const closeOpen = Vue.ref(false);
-      const closeTarget = Vue.ref(null);
-      const closeForm = Vue.reactive({ outcome: 'ganada', note: '', reason: '', products: [] });
+      // La lógica compartida vive en shared.js; aquí solo se mantiene la lista de
+      // motivos de no-concretada (propia de este tablero). El estado del modal se
+      // instancia tras productMentions (necesario como argumento) más abajo.
       const CLOSE_REASONS = ['Compró', 'Sin respuesta', 'Se pospuso', 'Eligió otra opción'];
-      const closeProductQuery = Vue.ref('');
-
-      /** Resultados del buscador de productos del modal de cierre. */
-      const closeProductResults = Vue.computed(() => {
-        const qq = closeProductQuery.value.trim().toLowerCase();
-        return (workspace.value.products || [])
-          .filter((p) => p.active !== false && (!qq || `${p.name} ${(p.aliases || []).join(' ')}`.toLowerCase().includes(qq)))
-          .slice(0, 6);
-      });
-
-      function toggleCloseProduct(id) {
-        const i = closeForm.products.indexOf(id);
-        if (i >= 0) closeForm.products.splice(i, 1);
-        else closeForm.products.push(id);
-      }
-
-      function productName(id) {
-        const p = (workspace.value.products || []).find((x) => x.id === id);
-        return p ? p.name : id;
-      }
-
-      /** Etiqueta amigable del resultado interno (ganada/perdida). */
-      function closeLabel(outcome) {
-        return outcome === 'ganada' ? 'Concretada' : 'No concretada';
-      }
-
-      function openCloseModal(contact) {
-        closeTarget.value = contact;
-        // Preselecciona los productos con menciones del contacto (interés real,
-        // ignorando productos eliminados del catálogo)
-        const catalog = workspace.value.products || [];
-        const ms = productMentions.value.filter(
-          (m) => m.contactId === contact.id && catalog.some((p) => p.id === m.productId)
-        );
-        Object.assign(closeForm, {
-          outcome: 'ganada',
-          note: '',
-          reason: '',
-          products: [...new Set(ms.map((m) => m.productId).filter(Boolean))],
-        });
-        closeProductQuery.value = '';
-        closeOpen.value = true;
-      }
-
-      function confirmClose() {
-        const contact = closeTarget.value;
-        if (!contact) return;
-        contact.leadClosed = { at: Date.now(), outcome: closeForm.outcome, note: closeForm.note.trim(), reason: closeForm.reason || undefined, products: [...closeForm.products] };
-        // El cierre queda registrado en el historial de etapas (timeline del drawer)
-        contact.leadHistory = contact.leadHistory || [];
-        contact.leadHistory.push({
-          tag: `finalizada:${closeForm.outcome}`,
-          at: contact.leadClosed.at,
-          note: closeForm.note.trim() || undefined,
-          reason: closeForm.reason || undefined,
-        });
-        closeOpen.value = false;
-        closeTarget.value = null;
-        detailOpen.value = false;
-        toast(`Lead cerrado como ${closeLabel(closeForm.outcome).toLowerCase()}`, 'success');
-      }
-
-      function reopenLead(contact) {
-        if (!contact) return;
-        contact.leadHistory = contact.leadHistory || [];
-        // Conserva el cierre previo para que la timeline muestre "antes: …"
-        contact.leadHistory.push({ tag: 'reabierta', at: Date.now(), prev: contact.leadClosed });
-        delete contact.leadClosed;
-        toast('Lead reabierto: vuelve al tablero activo', 'success');
-      }
 
       // ── Recordatorios por lead ─────────────────────────────────────────────
       const remInput = Vue.reactive({ text: '', dueAt: '' });
@@ -272,6 +202,18 @@
        *  de producto del contacto (compra, frecuencia, alto valor, agotado).
        *  Nivel: alto (>=3 factores, o compra + alto valor), medio (2), bajo (1). */
       const productMentions = Vue.computed(() => (workspace.value && workspace.value.productMentions) || []);
+
+      // Flujo de cierre compartido con la bandeja (ver shared.js · makeCloseLead).
+      // Se instancia aquí (tras productMentions) para pasar el computed de menciones.
+      // El template de leads usa `productName`, así que se alían los nombres.
+      const {
+        closeOpen, closeTarget, closeForm, closeProductQuery, closeProductResults,
+        closeLabel, toggleCloseProduct, openCloseModal, confirmClose, reopenLead,
+        productNameOf: productName,
+      } = ZernioCrm.makeCloseLead({
+        workspace, productMentions, toast,
+        onClosed: () => { detailOpen.value = false; },
+      });
 
       function interestScore(contact) {
         const empty = { nivel: null, label: '', products: [], value: 0, factors: [], perProduct: [] };

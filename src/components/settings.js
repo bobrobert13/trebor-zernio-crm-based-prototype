@@ -56,47 +56,14 @@
         toast('Branding actualizado', 'success');
       }
 
-      /** Sube el logo de la empresa: lee, redimensiona a ≤256 px y persiste como dataURL. */
-      function uploadLogo(event) {
-        const file = event.target.files && event.target.files[0];
-        event.target.value = ''; // permite volver a elegir el mismo archivo
-        if (!file) return;
-        if (!file.type.startsWith('image/')) {
-          toast('Solo imágenes (PNG/JPG/WebP)', 'error');
-          return;
-        }
-        if (file.size > 2 * 1024 * 1024) {
-          toast('Imagen muy grande: máximo 2 MB', 'error');
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = () => {
-          const img = new Image();
-          img.onerror = () => toast('No se pudo leer la imagen: archivo inválido o formato no soportado', 'error');
-          img.onload = () => {
-            const MAX = 256;
-            const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.max(1, Math.round(img.width * scale));
-            canvas.height = Math.max(1, Math.round(img.height * scale));
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              toast('No se pudo procesar la imagen', 'error');
-              return;
-            }
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            workspace.value.logo = canvas.toDataURL('image/png');
-            toast('Logo actualizado', 'success');
-          };
-          img.src = reader.result;
-        };
-        reader.readAsDataURL(file);
-      }
-
-      function removeLogo() {
-        delete workspace.value.logo;
-        toast('Logo eliminado', 'info');
-      }
+      // Upload/eliminado del logo: lógica compartida en shared.js (makeLogoUpload).
+      const { uploadLogo, removeLogo } = ZernioCrm.makeLogoUpload({
+        toast,
+        onLogo: (dataURL) => { workspace.value.logo = dataURL; },
+        onRemove: () => { delete workspace.value.logo; },
+        successMsg: 'Logo actualizado',
+        removeMsg: 'Logo eliminado',
+      });
 
       /** Guarda la API key y cambia a modo live (si aplica). */
       function saveApiKey() {

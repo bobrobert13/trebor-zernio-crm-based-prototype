@@ -79,47 +79,14 @@
         form.name = n.id === 'personalizado' ? '' : `Mi ${n.nombre.toLowerCase()}`;
       }
 
-      /** Sube el logo del negocio: lee, redimensiona a ≤256 px y lo guarda como dataURL. */
-      function uploadLogo(event) {
-        const file = event.target.files && event.target.files[0];
-        event.target.value = ''; // permite volver a elegir el mismo archivo
-        if (!file) return;
-        if (!file.type.startsWith('image/')) {
-          toast('Solo imágenes (PNG/JPG/WebP)', 'error');
-          return;
-        }
-        if (file.size > 2 * 1024 * 1024) {
-          toast('Imagen muy grande: máximo 2 MB', 'error');
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = () => {
-          const img = new Image();
-          img.onerror = () => toast('No se pudo leer la imagen: archivo inválido o formato no soportado', 'error');
-          img.onload = () => {
-            const MAX = 256;
-            const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.max(1, Math.round(img.width * scale));
-            canvas.height = Math.max(1, Math.round(img.height * scale));
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              toast('No se pudo procesar la imagen', 'error');
-              return;
-            }
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            form.logo = canvas.toDataURL('image/png');
-            toast('Logo listo: se guardará con tu espacio', 'success');
-          };
-          img.src = reader.result;
-        };
-        reader.readAsDataURL(file);
-      }
-
-      function removeLogo() {
-        form.logo = null;
-        toast('Logo quitado', 'info');
-      }
+      // Upload/eliminado del logo: lógica compartida en shared.js (makeLogoUpload).
+      const { uploadLogo, removeLogo } = ZernioCrm.makeLogoUpload({
+        toast,
+        onLogo: (dataURL) => { form.logo = dataURL; },
+        onRemove: () => { form.logo = null; },
+        successMsg: 'Logo listo: se guardará con tu espacio',
+        removeMsg: 'Logo quitado',
+      });
 
       function jumpTo(i) {
         if (i < current.value) current.value = i;

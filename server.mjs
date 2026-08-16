@@ -15,6 +15,10 @@
  * --no-tunnel (no duplica si ya hay una URL vigente en .tunnel-url).
  * Para entrega real de webhooks registra la URL pública impresa en consola
  * con ?secret=... en Configuración → Webhooks.
+ *
+ * TODO(C1): MASTER_API_KEY viaja en claro hacia el proxy /zernio/* (ver
+ * src/services/zernio-api.js). Se deja así por decisión del usuario para el
+ * funcionamiento del prototipo; evaluar moverla a variables de entorno secretas.
  */
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
@@ -209,8 +213,35 @@ function verifySignature(body, signature, secret) {
   }
 }
 
-/** Proxy: reenvía la petición al API de Zernio inyectando la key. */
+/** ¿La API path apunta a un endpoint de administración? (no debe servir el túnel). */
+function isAdminApiPath(apiPath) {
+  // Se compara el path SIN query y ya decodificado: así `/billing?x=1` y
+  // `/%62illing` (percent-encoding) no evaden el regex. Si el decode falla
+  // (URI malformada) se asume admin → se bloquea, criterio seguro para proteger
+  // rutas sensibles (no hay endpoints admin legítimos malformados).
+  let clean;
+  try {
+    clean = decodeURIComponent((apiPath || '').split('?')[0]);
+  } catch {
+    return true;
+  }
+  return /^\/(billing|usage|api-keys|phone-numbers|accounts\/health|webhooks)(\/|$)/.test(clean);
+}
+
+/**
+ * Proxy: reenvía la petición al API de Zernio inyectando la key.
+ * Las rutas de administración solo se aceptan cuando la petición es local por
+ * socket Y Host (isLocalRequest): si entra por el túnel público (socket loopback
+ * pero Host no-local) se rechazan, evitando que sirva de relay a llamadas admin.
+ * Las llamadas de la bandeja diaria pasan por sub-key y endpoints de conversación
+ * (no admin) → no se ven afectadas; el uso se registra igual tras el guard.
+ */
 function proxyZernio(req, res, apiPath, apiKey) {
+  if (!isLocalRequest(req) && isAdminApiPath(apiPath)) {
+    res.writeHead(403, { ...corsHeaders(req), 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Ruta de administración solo disponible en localhost' }));
+    return;
+  }
   if (!apiKey) {
     res.writeHead(401, { ...corsHeaders(req), 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Falta X-Zernio-Key en la petición' }));
@@ -287,7 +318,10 @@ async function serveStatic(req, res, urlPath) {
 
 /** Receptor de webhooks: verifica firma y encola el evento. */
 async function handleWebhook(req, res, url) {
-  const secret = url.searchParams.get('secret') || '';
+  // Secret PREFERENTE por header `x-zernio-secret`; `?secret=` queda SOLO como
+  // fallback/retrocompatibilidad (la entrega real de Zernio usa la URL registrada
+  // con ?secret=...). El secret NUNCA se loguea: solo se usa para el HMAC.
+  const secret = (req.headers['x-zernio-secret'] || '').toString() || url.searchParams.get('secret') || '';
   const body = await readBody(req);
   const signature = req.headers['x-zernio-signature'];
   if (!verifySignature(body, signature, secret)) {
@@ -368,6 +402,16 @@ const server = createServer(async (req, res) => {
     }
 
     if (pathname === '/webhooks/events') {
+      // Feed de eventos solo para el propio frontend (mismo equipo). El polling
+      // corre desde http://localhost:8787 → Host local + socket loopback = local.
+      // Se exige isLocalRequest (no solo isLoopback) porque el tráfico del túnel
+      // en la misma máquina también llega con socket 127.0.0.1 pero con Host
+      // público; ese caso debe rechazarse.
+      if (!isLocalRequest(req)) {
+        res.writeHead(403, { ...corsHeaders(req), 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Feed de eventos solo disponible en localhost' }));
+        return;
+      }
       res.writeHead(200, { ...corsHeaders(req), 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ events: webhookEvents }));
       return;
@@ -394,6 +438,23 @@ const server = createServer(async (req, res) => {
 function isLoopback(req) {
   const addr = req.socket && req.socket.remoteAddress;
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+}
+
+/** ¿El Host del request es local (localhost / 127.0.0.1 / [::1]), con o sin puerto? */
+function isLocalHost(req) {
+  const host = (req.headers && req.headers.host) || '';
+  return /^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/.test(host);
+}
+
+/**
+ * ¿Request genuinamente local? Se exigen AMBAS condiciones: el socket descarta
+ * conexiones directas remotas y el Host header descarta el tráfico que entra
+ * por el túnel (cloudflared/ngrok) aunque ese túnel corra en la misma máquina
+ * (su socket sería 127.0.0.1 pero el Host es la URL pública del túnel).
+ * Lo usan las rutas que SIEMPRE deben ser locales (feed de eventos y proxy admin).
+ */
+function isLocalRequest(req) {
+  return isLoopback(req) && isLocalHost(req);
 }
 
 /**

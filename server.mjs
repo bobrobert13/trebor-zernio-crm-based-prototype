@@ -215,7 +215,17 @@ function verifySignature(body, signature, secret) {
 
 /** ¿La API path apunta a un endpoint de administración? (no debe servir el túnel). */
 function isAdminApiPath(apiPath) {
-  return /^\/(billing|usage|api-keys|phone-numbers|accounts\/health|webhooks)(\/|$)/.test(apiPath);
+  // Se compara el path SIN query y ya decodificado: así `/billing?x=1` y
+  // `/%62illing` (percent-encoding) no evaden el regex. Si el decode falla
+  // (URI malformada) se asume admin → se bloquea, criterio seguro para proteger
+  // rutas sensibles (no hay endpoints admin legítimos malformados).
+  let clean;
+  try {
+    clean = decodeURIComponent((apiPath || '').split('?')[0]);
+  } catch {
+    return true;
+  }
+  return /^\/(billing|usage|api-keys|phone-numbers|accounts\/health|webhooks)(\/|$)/.test(clean);
 }
 
 /**

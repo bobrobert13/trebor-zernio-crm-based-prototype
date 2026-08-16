@@ -105,4 +105,54 @@
       openCloseModal, confirmClose, reopenLead,
     };
   };
+
+  /**
+   * Fábrica del upload/eliminado del logo de la empresa (compartido por settings
+   * y onboarding). El cuerpo FileReader → Image → canvas ≤256px → dataURL es
+   * idéntico; solo cambia el destino del dataURL (onLogo), el mensaje y onRemove.
+   */
+  Z.makeLogoUpload = function makeLogoUpload({ toast, onLogo, onRemove, removeMsg = 'Logo eliminado', successMsg = 'Logo actualizado' }) {
+    function uploadLogo(event) {
+      const file = event.target.files && event.target.files[0];
+      event.target.value = ''; // permite volver a elegir el mismo archivo
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        toast('Solo imágenes (PNG/JPG/WebP)', 'error');
+        return;
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        toast('Imagen muy grande: máximo 2 MB', 'error');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => toast('No se pudo leer la imagen: archivo inválido o formato no soportado', 'error');
+        img.onload = () => {
+          const MAX = 256;
+          const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            toast('No se pudo procesar la imagen', 'error');
+            return;
+          }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          onLogo(canvas.toDataURL('image/png'));
+          toast(successMsg, 'success');
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function removeLogo() {
+      if (onRemove) onRemove();
+      toast(removeMsg, 'info');
+    }
+
+    return { uploadLogo, removeLogo };
+  };
 })();

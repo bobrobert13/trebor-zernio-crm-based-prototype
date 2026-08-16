@@ -694,7 +694,7 @@
                 <p class="truncate font-semibold">{{ closeTarget.name }}</p>
                 <p class="truncate font-mono text-[11px] text-neutral-500">
                   Etapa: {{ stageLabel(closeTarget.leadTag) }}
-                  <span v-if="closeTarget.createdAt"> · Cliente desde {{ new Date(closeTarget.createdAt).toLocaleDateString('es-VE') }}</span>
+                  <span v-if="closeTarget.createdAt"> · Cliente desde {{ fmtD(closeTarget.createdAt) }}</span>
                 </p>
               </div>
               <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ metricsOf(closeTarget).days }} días</span>

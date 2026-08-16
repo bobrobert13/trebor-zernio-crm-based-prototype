@@ -1989,7 +1989,7 @@
                 <p class="truncate font-semibold">{{ closeTarget.name }}</p>
                 <p class="truncate font-mono text-[11px] text-neutral-500">
                   Etapa: {{ stageLabel(closeTarget.leadTag) }}
-                  <span v-if="closeTarget.createdAt"> · Cliente desde {{ closeTarget.createdAt ? fmtD(closeTarget.createdAt) : '' }}</span>
+                  <span v-if="closeTarget.createdAt"> · Cliente desde {{ fmtD(closeTarget.createdAt) }}</span>
                 </p>
               </div>
             </div>

@@ -187,9 +187,9 @@
           // Si ambos fallan, el error se propaga al catch para no dejar
           // la UI en "cargando…" sin explicación.
           const [u, st, pr] = await Promise.all([
-            api.getUsage(range.value).catch(() => api.getUsageStatsLegacy()),
-            api.getBilling().catch(() => null),
-            api.getBillingPricing().catch(() => null),
+            api.getUsageRobust(range.value),
+            api.getBillingOrNull(),
+            api.getBillingPricingOrNull(),
           ]);
           usage.value = u && (u.data || u);
           statement.value = st && (st.data || st);

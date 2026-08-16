@@ -664,6 +664,11 @@
     return out.slice(0, 3);
   }
 
+  /** Menciones de producto del workspace (o lista vacía si no existe). Función pura. */
+  function productMentionsFor(workspace) {
+    return (workspace && workspace.productMentions) || [];
+  }
+
   /** Escapa HTML antes de aplicar el markup de WhatsApp (anti-XSS). */
   function escapeHtml(str) {
     return String(str || '')
@@ -942,6 +947,7 @@
     getNicheProductFields,
     normalizeText,
     matchProducts,
+    productMentionsFor,
     escapeHtml,
     renderWhatsApp,
     buildProductCard,

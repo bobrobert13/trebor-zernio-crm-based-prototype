@@ -628,7 +628,7 @@
       }
 
       // ── Menciones de productos (detección + confirmación del agente) ───────
-      const productMentions = Vue.computed(() => (workspace.value && workspace.value.productMentions) || []);
+      const productMentions = Vue.computed(() => ZernioCrm.productMentionsFor(workspace.value));
 
       /** Menciones asociadas a un mensaje (chips bajo el mensaje). */
       function mentionsOfMessage(messageId) {

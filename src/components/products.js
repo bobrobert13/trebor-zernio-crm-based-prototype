@@ -20,7 +20,7 @@
       const workspace = Vue.computed(() => store.workspace);
       const niche = Vue.computed(() => getNiche(workspace.value && workspace.value.nicheId));
       const products = Vue.computed(() => workspace.value.products || []);
-      const mentions = Vue.computed(() => workspace.value.productMentions || []);
+      const mentions = Vue.computed(() => ZernioCrm.productMentionsFor(workspace.value));
       const cardDefaults = Vue.computed(
         () => (PRODUCT_CARD_DEFAULTS || {})[niche.value.id] || (PRODUCT_CARD_DEFAULTS || {}).generic
       );

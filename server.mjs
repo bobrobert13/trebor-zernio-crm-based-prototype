@@ -287,7 +287,10 @@ async function serveStatic(req, res, urlPath) {
 
 /** Receptor de webhooks: verifica firma y encola el evento. */
 async function handleWebhook(req, res, url) {
-  const secret = url.searchParams.get('secret') || '';
+  // Secret PREFERENTE por header `x-zernio-secret`; `?secret=` queda SOLO como
+  // fallback/retrocompatibilidad (la entrega real de Zernio usa la URL registrada
+  // con ?secret=...). El secret NUNCA se loguea: solo se usa para el HMAC.
+  const secret = (req.headers['x-zernio-secret'] || '').toString() || url.searchParams.get('secret') || '';
   const body = await readBody(req);
   const signature = req.headers['x-zernio-signature'];
   if (!verifySignature(body, signature, secret)) {

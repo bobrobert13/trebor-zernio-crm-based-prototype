@@ -7,7 +7,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, applyAccent, ACCENTS, REFERRERS, WHATSAPP_MODALITIES, canEdit, api, asArray } = ZernioCrm;
+  const { store, toast, applyAccent, ACCENTS, REFERRERS, WHATSAPP_MODALITIES, canEdit, api, asArray, fmtD, fmtT } = ZernioCrm;
 
   const components = {};
 
@@ -620,6 +620,7 @@
         saveWebhooks, deleteWebhooks, testWebhook, openLogs, simulateWebhook, toggleWhEvent,
         buildWebhookUrl, fetchTunnelUrl, checkHealth, disconnectLive, onLiveConnected,
         settingsTab, settingsTabs,
+        fmtD, fmtT,
       };
     },
 
@@ -887,7 +888,7 @@
                 <p class="font-semibold">{{ workspace.whatsapp.phone }}</p>
                 <p class="text-sm text-neutral-500">
                   Modalidad: {{ modality.nombre || workspace.whatsapp.modality }} ·
-                  {{ new Date(workspace.whatsapp.since).toLocaleDateString('es-VE') }}
+                  {{ fmtD(workspace.whatsapp.since) }}
                 </p>
                 <p v-if="workspace.zernio" class="truncate font-mono text-[11px] text-neutral-400">
                   perfil {{ workspace.zernio.profileId }} · cuenta {{ workspace.zernio.accountId }}
@@ -1043,7 +1044,7 @@
                 <li v-for="(entry, i) in store.webhookEvents.slice(0, 6)" :key="i" class="px-3 py-2.5">
                   <div class="flex items-center justify-between gap-2">
                     <span class="font-mono text-[11px] font-semibold text-[var(--accent)]">{{ entry.event.event }}</span>
-                    <span class="font-mono text-[10px] text-neutral-400">{{ new Date(entry.receivedAt).toLocaleTimeString('es-VE') }}</span>
+                    <span class="font-mono text-[10px] text-neutral-400">{{ fmtT(entry.receivedAt) }}</span>
                   </div>
                   <p v-if="entry.event.message" class="mt-0.5 truncate text-xs text-neutral-500">
                     {{ entry.event.message.text || JSON.stringify(entry.event.message).slice(0, 80) }}

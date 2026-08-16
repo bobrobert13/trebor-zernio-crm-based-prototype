@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, getNiche, timeAgo, formatTime, formatDate, uid, canEdit, PLATFORMS, getPlatform, recordProductMentions, confirmMention, discardMention, INTENT_LABELS, buildProductCard, PRODUCT_CARD_DEFAULTS, renderWhatsApp, formatPrice, activeAgents, askAgent } = ZernioCrm;
+  const { store, toast, getNiche, timeAgo, formatTime, formatDate, fmtDT, fmtD, uid, canEdit, PLATFORMS, getPlatform, recordProductMentions, confirmMention, discardMention, INTENT_LABELS, buildProductCard, PRODUCT_CARD_DEFAULTS, renderWhatsApp, formatPrice, activeAgents, askAgent } = ZernioCrm;
 
   const components = {};
 
@@ -1177,7 +1177,7 @@
         openTemplatePicker, closeTemplatePicker, sendApprovedTemplate,
         contactDrawerOpen, contactTab, contactTags, toggleContactTag, setLeadTag, registerContact,
         contactStats, bizFields, remInput, addReminderFor, contactReminders, ZernioCrm,
-        contactConvs, convRange, formatDate,
+        contactConvs, convRange, fmtDT, fmtD, formatDate,
         closeOpen, closeTarget, closeForm, closeProductQuery, closeProductResults,
         closeLabel, stageLabel, historyOf, productNameOf, toggleCloseProduct,
         openCloseModal, confirmClose, reopenLead, CLOSE_REASONS,
@@ -1586,7 +1586,7 @@
                     class="w-full border-b border-transparent bg-transparent font-mono text-xs text-neutral-500 outline-none focus:border-neutral-900" />
                 </div>
               </div>
-              <p class="text-xs text-neutral-400">Cliente desde {{ selectedContact.createdAt ? new Date(selectedContact.createdAt).toLocaleDateString('es-VE') : '—' }}</p>
+              <p class="text-xs text-neutral-400">Cliente desde {{ selectedContact.createdAt ? fmtD(selectedContact.createdAt) : '—' }}</p>
 
               <div>
                 <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Etiquetas de contacto</p>
@@ -1622,7 +1622,7 @@
                     <p class="text-xs">
                       <span class="font-semibold">{{ stageLabel(h.tag) }}</span>
                       <span v-if="historyOf(selectedContact)[i + 1]" class="ml-1 font-mono text-[9px] uppercase text-neutral-400">← desde {{ stageLabel(historyOf(selectedContact)[i + 1].tag) }}</span>
-                      <span class="ml-1 font-mono text-[9px] uppercase text-neutral-400">{{ new Date(h.at).toLocaleString('es-VE') }}</span>
+                      <span class="ml-1 font-mono text-[9px] uppercase text-neutral-400">{{ fmtDT(h.at) }}</span>
                     </p>
                     <p v-if="h.note" class="mt-0.5 text-[11px] text-neutral-500">{{ h.note }}</p>
                     <p v-if="h.reason" class="mt-0.5 text-[11px] text-neutral-500">motivo: {{ h.reason }}</p>
@@ -1640,7 +1640,7 @@
                       <p class="font-semibold" :class="selectedContact.leadClosed.outcome === 'ganada' ? 'text-emerald-700' : 'text-red-700'">
                         Lead cerrado · {{ closeLabel(selectedContact.leadClosed.outcome) }}
                       </p>
-                      <p class="font-mono text-[10px] text-neutral-400">{{ new Date(selectedContact.leadClosed.at).toLocaleString('es-VE') }}</p>
+                      <p class="font-mono text-[10px] text-neutral-400">{{ fmtDT(selectedContact.leadClosed.at) }}</p>
                       <div v-if="(selectedContact.leadClosed.products || []).length" class="mt-1 flex flex-wrap gap-1">
                         <span v-for="pid in selectedContact.leadClosed.products" :key="pid" class="border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
                           {{ productNameOf(pid) }}
@@ -1718,7 +1718,7 @@
                       <p class="truncate text-xs" :class="r.done ? 'line-through' : ''">{{ r.text }}</p>
                       <p v-if="r.dueAt" class="font-mono text-[9px] uppercase"
                         :class="!r.done && Date.parse(r.dueAt) < Date.now() ? 'text-red-700' : 'text-neutral-400'">
-                        {{ new Date(r.dueAt).toLocaleString('es-VE') }}
+                        {{ fmtDT(r.dueAt) }}
                       </p>
                     </div>
                     <button @click="ZernioCrm.removeReminder(r.id)" class="shrink-0 p-1 text-neutral-400 hover:text-red-700" aria-label="Eliminar recordatorio">
@@ -1989,7 +1989,7 @@
                 <p class="truncate font-semibold">{{ closeTarget.name }}</p>
                 <p class="truncate font-mono text-[11px] text-neutral-500">
                   Etapa: {{ stageLabel(closeTarget.leadTag) }}
-                  <span v-if="closeTarget.createdAt"> · Cliente desde {{ new Date(closeTarget.createdAt).toLocaleDateString('es-VE') }}</span>
+                  <span v-if="closeTarget.createdAt"> · Cliente desde {{ fmtD(closeTarget.createdAt) }}</span>
                 </p>
               </div>
             </div>

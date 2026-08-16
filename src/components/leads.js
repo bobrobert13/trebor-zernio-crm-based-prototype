@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, timeAgo, getPlatform, canEdit, getNiche, remindersOf, addReminder, toggleReminder, removeReminder, formatPrice, INTENT_LABELS } = ZernioCrm;
+  const { store, toast, timeAgo, getPlatform, canEdit, getNiche, remindersOf, addReminder, toggleReminder, removeReminder, formatPrice, fmtDT, fmtD, INTENT_LABELS } = ZernioCrm;
 
   const components = {};
 
@@ -279,7 +279,7 @@
         interestScore,
         formatPrice, INTENT_LABELS,
         closeProductQuery, closeProductResults, toggleCloseProduct, productName,
-        getPlatform, timeAgo, canEdit, ZernioCrm,
+        getPlatform, timeAgo, canEdit, fmtDT, fmtD, ZernioCrm,
       };
     },
 
@@ -423,7 +423,7 @@
               <p v-if="c.leadClosed.note" class="mt-3 border-t border-neutral-100 pt-2.5 text-xs leading-relaxed text-neutral-600">{{ c.leadClosed.note }}</p>
               <div class="mt-3 flex items-center justify-between border-t border-neutral-100 pt-2.5">
                 <span class="font-mono text-[9px] uppercase tracking-wider text-neutral-400">
-                  {{ c.leadClosed.at ? new Date(c.leadClosed.at).toLocaleDateString('es-VE') : '' }}
+                  {{ c.leadClosed.at ? fmtD(c.leadClosed.at) : '' }}
                 </span>
                 <button @click.stop="reopenLead(c)" class="border border-neutral-300 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition hover:border-neutral-900">
                   Reabrir
@@ -458,7 +458,7 @@
             <div v-if="detailTab === 'actividades'" class="grid grid-cols-2 gap-3">
               <div class="border border-neutral-200 p-3">
                 <p class="font-mono text-[9px] uppercase tracking-widest text-neutral-400">Cliente desde</p>
-                <p class="mt-0.5 text-sm font-semibold">{{ detailContact.createdAt ? new Date(detailContact.createdAt).toLocaleDateString('es-VE') : '—' }}</p>
+                <p class="mt-0.5 text-sm font-semibold">{{ detailContact.createdAt ? fmtD(detailContact.createdAt) : '—' }}</p>
                 <p class="font-mono text-[10px] text-neutral-400">{{ metricsOf(detailContact).days }} días en el CRM</p>
               </div>
               <div class="border border-neutral-200 p-3">
@@ -513,7 +513,7 @@
                     <p class="truncate text-xs" :class="r.done ? 'line-through' : ''">{{ r.text }}</p>
                     <p v-if="r.dueAt" class="font-mono text-[9px] uppercase"
                       :class="!r.done && Date.parse(r.dueAt) < Date.now() ? 'text-red-700' : 'text-neutral-400'">
-                      {{ new Date(r.dueAt).toLocaleString('es-VE') }}
+                      {{ fmtDT(r.dueAt) }}
                     </p>
                   </div>
                   <button @click="removeReminder(r.id)" class="shrink-0 p-1 text-neutral-400 hover:text-red-700" aria-label="Eliminar recordatorio">
@@ -548,7 +548,7 @@
                   <p class="text-xs">
                     <span class="font-semibold">{{ stageLabel(h.tag) }}</span>
                     <span v-if="historyOf(detailContact)[i + 1]" class="ml-1 font-mono text-[9px] uppercase text-neutral-400">← desde {{ stageLabel(historyOf(detailContact)[i + 1].tag) }}</span>
-                    <span class="ml-1 font-mono text-[9px] uppercase text-neutral-400">{{ new Date(h.at).toLocaleString('es-VE') }}</span>
+                    <span class="ml-1 font-mono text-[9px] uppercase text-neutral-400">{{ fmtDT(h.at) }}</span>
                   </p>
                   <p v-if="h.note" class="mt-0.5 text-[11px] text-neutral-500">{{ h.note }}</p>
                   <p v-if="h.reason" class="mt-0.5 text-[11px] text-neutral-500">motivo: {{ h.reason }}</p>
@@ -566,7 +566,7 @@
                     <p class="font-semibold" :class="detailContact.leadClosed.outcome === 'ganada' ? 'text-emerald-700' : 'text-red-700'">
                       Lead cerrado · {{ closeLabel(detailContact.leadClosed.outcome) }}
                     </p>
-                    <p class="font-mono text-[10px] text-neutral-400">{{ new Date(detailContact.leadClosed.at).toLocaleString('es-VE') }}</p>
+                    <p class="font-mono text-[10px] text-neutral-400">{{ fmtDT(detailContact.leadClosed.at) }}</p>
                     <div v-if="(detailContact.leadClosed.products || []).length" class="mt-1 flex flex-wrap gap-1">
                       <span v-for="pid in detailContact.leadClosed.products" :key="pid" class="border border-neutral-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
                         {{ productName(pid) }}
@@ -670,7 +670,7 @@
                   <span class="truncate text-sm font-semibold">{{ r.contact ? r.contact.name : 'Contacto' }}</span>
                   <span v-if="r.dueAt" class="shrink-0 font-mono text-[9px] uppercase"
                     :class="Date.parse(r.dueAt) < Date.now() ? 'text-red-700' : 'text-neutral-400'">
-                    {{ new Date(r.dueAt).toLocaleString('es-VE') }}
+                    {{ fmtDT(r.dueAt) }}
                   </span>
                 </div>
                 <p class="mt-1 text-xs text-neutral-600">{{ r.text }}</p>
@@ -694,7 +694,7 @@
                 <p class="truncate font-semibold">{{ closeTarget.name }}</p>
                 <p class="truncate font-mono text-[11px] text-neutral-500">
                   Etapa: {{ stageLabel(closeTarget.leadTag) }}
-                  <span v-if="closeTarget.createdAt"> · Cliente desde {{ new Date(closeTarget.createdAt).toLocaleDateString('es-VE') }}</span>
+                  <span v-if="closeTarget.createdAt"> · Cliente desde {{ fmtD(closeTarget.createdAt) }}</span>
                 </p>
               </div>
               <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ metricsOf(closeTarget).days }} días</span>

@@ -12,7 +12,7 @@
 
   const { Vue, ZernioCrm } = window;
   const { store, toast, uid, canEdit } = ZernioCrm;
-  const { AGENT_FLOWS, CANONICAL_FIELDS, MARY_MAPPING, MARY_EXAMPLE, CRM_TOOLS, TOOL_PIPELINES } = ZernioCrm;
+  const { AGENT_FLOWS, CANONICAL_FIELDS, MARY_MAPPING, MARY_EXAMPLE, CRM_TOOLS, TOOL_PIPELINES, fmtT } = ZernioCrm;
 
   const components = {};
 
@@ -165,7 +165,7 @@
         editorOpen, editingId, form, showKey, testing, saving,
         adaptPreview, adaptError, logsOpen, logsAgent,
         openEditor, saveAgent, removeAgent, testConnection, testAdaptation,
-        flowLabel, openLogs, resetForm,
+        flowLabel, openLogs, resetForm, fmtT,
       };
     },
 
@@ -415,7 +415,7 @@
             <li v-for="l in logsAgent.logs" :key="l.id" class="border border-neutral-200 p-2.5 text-xs">
               <div class="flex items-center justify-between gap-2">
                 <span class="font-mono font-semibold">{{ l.event }}</span>
-                <span class="font-mono text-[10px] text-neutral-400">{{ new Date(l.at).toLocaleTimeString('es-VE') }}</span>
+                <span class="font-mono text-[10px] text-neutral-400">{{ fmtT(l.at) }}</span>
               </div>
               <p class="mt-1">
                 <ui-badge :variant="l.ok ? 'success' : 'danger'">{{ l.ok ? 'ok · ' + (l.action || '') : 'error' }}</ui-badge>

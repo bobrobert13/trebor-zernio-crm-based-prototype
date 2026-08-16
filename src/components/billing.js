@@ -9,7 +9,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, api, asArray } = ZernioCrm;
+  const { store, toast, api, asArray, fmtDT, fmtD } = ZernioCrm;
 
   const components = {};
 
@@ -138,8 +138,7 @@
       const billingPeriod = Vue.computed(() => {
         const st = statement.value || {};
         if (!st.period) return (usage.value && usage.value.billingPeriod) || '';
-        const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString('es-VE') : '');
-        return `${fmt(st.period.start)} → ${fmt(st.period.end)}`;
+        return `${fmtD(st.period.start)} → ${fmtD(st.period.end)}`;
       });
 
       /** Últimos 30 días del medidor local para el gráfico. */
@@ -209,6 +208,7 @@
         loading, error, range, usage, statement, pricing, local, store, workspace,
         localDays, maxDay, operations, estimatedCents, usd, pct, isLive, load,
         planName, spentCents, spendLimitCents, balanceCents, paymentStatus, billingPeriod,
+        fmtDT, fmtD,
       };
     },
 
@@ -319,7 +319,7 @@
               </div>
               <div class="border-2 border-neutral-900 p-4">
                 <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Última actividad</p>
-                <p class="mt-1 text-sm font-semibold">{{ local.updatedAt ? new Date(local.updatedAt).toLocaleString('es-VE') : '—' }}</p>
+                <p class="mt-1 text-sm font-semibold">{{ local.updatedAt ? fmtDT(local.updatedAt) : '—' }}</p>
               </div>
             </div>
 

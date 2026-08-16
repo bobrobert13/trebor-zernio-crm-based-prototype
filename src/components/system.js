@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, api, asArray } = ZernioCrm;
+  const { store, toast, api, asArray, fmtDT } = ZernioCrm;
 
   const components = {};
 
@@ -76,7 +76,7 @@
 
       return {
         loading, error, numbers, health, webhookLogs, webhookLogsOpen,
-        purchased, connected, statusTone, isLive, isAdmin, load,
+        purchased, connected, statusTone, isLive, isAdmin, fmtDT, load,
       };
     },
 
@@ -221,7 +221,7 @@
                       {{ log.status || (log.success ? 'delivered' : 'pending') }}
                     </span>
                   </td>
-                  <td class="px-4 py-2.5 font-mono text-[11px] text-neutral-500">{{ log.createdAt ? new Date(log.createdAt).toLocaleString('es-VE') : '—' }}</td>
+                  <td class="px-4 py-2.5 font-mono text-[11px] text-neutral-500">{{ log.createdAt ? fmtDT(log.createdAt) : '—' }}</td>
                 </tr>
               </tbody>
             </table>

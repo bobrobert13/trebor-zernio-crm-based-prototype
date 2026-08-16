@@ -15,6 +15,10 @@
  * --no-tunnel (no duplica si ya hay una URL vigente en .tunnel-url).
  * Para entrega real de webhooks registra la URL pública impresa en consola
  * con ?secret=... en Configuración → Webhooks.
+ *
+ * TODO(C1): MASTER_API_KEY viaja en claro hacia el proxy /zernio/* (ver
+ * src/services/zernio-api.js). Se deja así por decisión del usuario para el
+ * funcionamiento del prototipo; evaluar moverla a variables de entorno secretas.
  */
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';

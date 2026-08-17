@@ -20,245 +20,40 @@
       const conversations = Vue.computed(() => workspace.value.conversations || []);
       const isLive = Vue.computed(() => store.mode === 'live');
       const leadTags = Vue.computed(() => workspace.value.leadTags || niche.value.tags || []);
+      const productMentions = Vue.computed(() => ZernioCrm.productMentionsFor(workspace.value));
 
-      /** Columnas del kanban: "Sin asignar" + etapas del pipeline. */
-      const columns = Vue.computed(() => [
-        { id: '__sin_asignar__', nombre: 'Sin asignar' },
-        ...leadTags.value.map((t) => ({ id: t, nombre: t })),
-      ]);
+      // Composición por bounded context (ver src/leads-composables.js)
+      const board = ZernioCrm.makeLeadBoard({ workspace, leadTags, contacts, canEdit, toast });
+      const metrics = ZernioCrm.makeContactMetrics({ workspace, contacts, conversations });
+      const detail = ZernioCrm.makeLeadDetail({ store, navigate: (r) => ZernioCrm.navigate(r) });
+      const reminders = ZernioCrm.makeLeadReminders({ store, contacts, remindersOf, addReminder, toast });
+      const interest = ZernioCrm.makeLeadInterest({ workspace, productMentions });
 
-      /** Conversaciones de un contacto. */
-      function conversationsOf(contact) {
-        return conversations.value.filter((c) => c.contactId === contact.id);
-      }
-
-      /** Último mensaje (texto y hora) de un contacto. */
-      function lastMessageOf(contact) {
-        const convs = conversationsOf(contact);
-        let best = null;
-        convs.forEach((c) => {
-          const m = c.messages && c.messages[c.messages.length - 1];
-          if (m && (!best || m.ts > best.ts)) best = m;
-        });
-        return best;
-      }
-
-      /** Métricas de relación del contacto (para tarjeta y drawer). */
-      function metricsOf(contact) {
-        const convs = conversationsOf(contact);
-        const totalMsgs = convs.reduce((acc, c) => acc + (c.messages ? c.messages.length : 0), 0);
-        const days = Math.max(1, Math.round((Date.now() - (contact.createdAt || Date.now())) / 864e5));
-        // Canal más frecuente por conteo de mensajes (demo: pseudo si no hay historial)
-        const channelCounts = {};
-        convs.forEach((c) => {
-          const p = c.platform || 'whatsapp';
-          channelCounts[p] = (channelCounts[p] || 0) + (c.messages ? c.messages.length : 0);
-        });
-        if (Object.keys(channelCounts).length === 0) {
-          const seed = ZernioCrm.hashSeed(contact.id + 'ch');
-          channelCounts.whatsapp = (seed % 5) + 1;
-          if (seed % 2 === 0) channelCounts.instagram = (seed % 3) + 1;
-        }
-        const topChannel = Object.entries(channelCounts).sort((a, b) => b[1] - a[1])[0] || ['whatsapp', 0];
-        const freqPerDay = totalMsgs / days;
-        const vip = (contact.tags || []).includes('vip');
-        const frecuente = totalMsgs >= 10 || (contact.tags || []).includes('frecuente');
-        return { convs, totalMsgs, days, channelCounts, topChannel, freqPerDay, vip, frecuente };
-      }
-
-      // ── Tabs: activas / finalizadas ────────────────────────────────────────
-      const viewTab = Vue.ref('activas');
-      const activeContacts = Vue.computed(() => contacts.value.filter((c) => !c.leadClosed));
-      const closedContacts = Vue.computed(() => contacts.value.filter((c) => c.leadClosed));
-
-      /** Contactos de una columna (solo leads activas). */
-      function cardsOf(col) {
-        return activeContacts.value.filter((c) => {
-          if (col.id === '__sin_asignar__') return !c.leadTag || !leadTags.value.includes(c.leadTag);
-          return c.leadTag === col.id;
-        });
-      }
-
-      // ── Cierre de leads (flujo amigable: concretada / no concretada) ───────
-      // La lógica compartida vive en shared.js; aquí solo se mantiene la lista de
-      // motivos de no-concretada (propia de este tablero). El estado del modal se
-      // instancia tras productMentions (necesario como argumento) más abajo.
+      // Cierre de lead: lógica compartida (shared · makeCloseLead). onClosed cierra el drawer.
+      // El template de leads usa `productName`, así que se alía el nombre del factory.
+      const close = ZernioCrm.makeCloseLead({
+        workspace, productMentions, toast,
+        onClosed: () => { detail.detailOpen.value = false; },
+      });
+      const { stageLabel } = ZernioCrm.makeLeadHistory({ closeLabel: close.closeLabel });
       const CLOSE_REASONS = ['Compró', 'Sin respuesta', 'Se pospuso', 'Eligió otra opción'];
 
-      // ── Recordatorios por lead ─────────────────────────────────────────────
-      const remInput = Vue.reactive({ text: '', dueAt: '' });
-      const remPanelOpen = Vue.ref(false);
-
-      /** Pendientes sin completar de un contacto. */
-      function pendingReminders(contact) {
-        return remindersOf(contact.id).filter((r) => !r.done);
-      }
-
-      /** ¿Hay recordatorios vencidos para el contacto? */
-      function hasOverdue(contact) {
-        return pendingReminders(contact).some((r) => r.dueAt && Date.parse(r.dueAt) < Date.now());
-      }
-
-      function addReminderFor(contact) {
-        const text = remInput.text.trim();
-        if (!text) return;
-        addReminder(contact.id, text, remInput.dueAt || null);
-        remInput.text = '';
-        remInput.dueAt = '';
-        toast('Recordatorio creado', 'success');
-      }
-
-      /** Próximos recordatorios de todas las leads (panel del header). */
-      const upcomingReminders = Vue.computed(() =>
-        (store.workspace && store.workspace.reminders || [])
-          .filter((r) => !r.done)
-          .map((r) => ({ ...r, contact: contacts.value.find((c) => c.id === r.contactId) || null }))
-          .sort((a, b) => (a.dueAt || '9999') < (b.dueAt || '9999') ? -1 : 1)
-          .slice(0, 12)
-      );
-
-      // ── Drag & drop nativo HTML5 + botones ─────────────────────────────────
-      const dragContactId = Vue.ref(null);
-
-      function onDragStart(event, contact) {
-        if (!canEdit('leads')) {
-          event.preventDefault();
-          return;
-        }
-        // Firefox exige datos en dataTransfer para iniciar el arrastre
-        event.dataTransfer.setData('text/plain', contact.id);
-        event.dataTransfer.effectAllowed = 'move';
-        dragContactId.value = contact.id;
-      }
-
-      function onDragEnd() {
-        dragContactId.value = null;
-      }
-
-      function onDragOver(event) {
-        event.preventDefault(); // permite el drop
-      }
-
-      function onDrop(col) {
-        const id = dragContactId.value;
-        dragContactId.value = null;
-        if (!id || !canEdit('leads')) return;
-        const contact = contacts.value.find((c) => c.id === id);
-        if (!contact) return;
-        ZernioCrm.applyLeadTag(contact, col.id === '__sin_asignar__' ? null : col.id);
-        toast(`Lead movido a "${col.nombre}"`, 'success');
-      }
-
-      /** Mueve un contacto a la columna anterior/siguiente (respaldo accesible). */
-      function moveContact(contact, dir) {
-        if (!canEdit('leads')) return;
-        const idx = columns.value.findIndex((c) => (contact.leadTag && leadTags.value.includes(contact.leadTag) ? c.id === contact.leadTag : c.id === '__sin_asignar__'));
-        const next = columns.value[idx + dir];
-        if (!next) return;
-        ZernioCrm.applyLeadTag(contact, next.id === '__sin_asignar__' ? null : next.id);
-        toast(`Lead movido a "${next.nombre}"`, 'success');
-      }
-
-      // ── Drawer de detalle del contacto ─────────────────────────────────────
-      const detailOpen = Vue.ref(false);
-      const detailContact = Vue.ref(null);
-      const detailTab = Vue.ref('perfil'); // pestaña del drawer: perfil | actividades
-
-      function openDetail(contact) {
-        detailContact.value = contact;
-        detailTab.value = 'perfil';
-        detailOpen.value = true;
-      }
-
-      /** Suma de mensajes por canal (para barras del drawer). */
-      function channelBars(metrics) {
-        const entries = Object.entries(metrics.channelCounts).sort((a, b) => b[1] - a[1]);
-        const max = Math.max(1, ...entries.map(([, v]) => v));
-        return entries.map(([platform, count]) => ({
-          platform,
-          count,
-          pct: Math.round((count / max) * 100),
-        }));
-      }
-
-      /** Abre la conversación en la bandeja (sin salir de la lógica del drawer). */
-      function openConversation(conv) {
-        if (!conv) return;
-        store.pendingConversationId = conv.id;
-        ZernioCrm.navigate('inbox');
-      }
-
-      /** Historial de etapas del contacto, de la más reciente a la más antigua. */
-      function historyOf(contact) {
-        return ((contact && contact.leadHistory) || []).slice().reverse();
-      }
-
-      /** Score de interés comercial: factores de negocio sobre las menciones
-       *  de producto del contacto (compra, frecuencia, alto valor, agotado).
-       *  Nivel: alto (>=3 factores, o compra + alto valor), medio (2), bajo (1). */
-      const productMentions = Vue.computed(() => ZernioCrm.productMentionsFor(workspace.value));
-      /** Núcleo compartido del score de interés (misma lógica que la bandeja). */
-      const interestCore = ZernioCrm.makeInterestScore({ workspace, productMentions });
-
-      // Flujo de cierre compartido con la bandeja (ver shared.js · makeCloseLead).
-      // Se instancia aquí (tras productMentions) para pasar el computed de menciones.
-      // El template de leads usa `productName`, así que se alían los nombres.
-      const {
-        closeOpen, closeTarget, closeForm, closeProductQuery, closeProductResults,
-        closeLabel, toggleCloseProduct, openCloseModal, confirmClose, reopenLead,
-        productNameOf: productName,
-      } = ZernioCrm.makeCloseLead({
-        workspace, productMentions, toast,
-        onClosed: () => { detailOpen.value = false; },
-      });
-
-      /** Etiquetas legibles de cada factor de interés (solo el tablero las pinta). */
-      const FACTOR_LABELS = {
-        compra: 'Intención de compra',
-        frecuencia: 'Interés frecuente',
-        alto_valor: 'Alto valor',
-        agotado: 'Agotado con demanda',
-      };
-
-      function interestScore(contact) {
-        const empty = { nivel: null, label: '', products: [], value: 0, factors: [], perProduct: [] };
-        const s = interestCore.scoreFor(contact);
-        if (!s) return empty;
-        let nivel = 'bajo';
-        if (s.factors.length >= 3 || (s.factors.includes('compra') && s.factors.includes('alto_valor'))) nivel = 'alto';
-        else if (s.factors.length === 2) nivel = 'medio';
-        const label = nivel === 'alto' ? 'Interés alto' : nivel === 'medio' ? 'Interés medio' : 'Interés';
-        return {
-          nivel, label,
-          factors: s.factors.map((id) => ({ id, label: FACTOR_LABELS[id] })),
-          products: s.perProduct.map((x) => x.product.name),
-          value: s.value,
-          perProduct: s.perProduct.map((x) => ({ product: x.product, count: x.count, intent: x.last.intent, lastTs: x.last.ts })),
-        };
-      }
-
-      /** Etiqueta legible de una entrada del historial (cierres y reaperturas). */
-      function stageLabel(tag) {
-        if (!tag) return 'Sin asignar';
-        if (tag === 'reabierta' || tag === 'reabierto') return 'Reabierta';
-        if (String(tag).startsWith('finalizada:')) return 'Cerrada · ' + closeLabel(tag.split(':')[1]);
-        return tag;
-      }
-
       return {
-        workspace, isLive, leadTags, columns, cardsOf, metricsOf, lastMessageOf,
-        contacts, conversations,
-        dragContactId, onDragStart, onDragOver, onDrop, moveContact,
-        detailOpen, detailContact, detailTab, openDetail, channelBars, openConversation,
-        viewTab, activeContacts, closedContacts,
-        closeOpen, closeTarget, closeForm, openCloseModal, confirmClose, reopenLead,
-        remInput, remPanelOpen, pendingReminders, hasOverdue, addReminderFor, upcomingReminders,
+        workspace, isLive, leadTags, contacts, conversations,
+        ...board,           // columns, viewTab, active/closedContacts, cardsOf, drag handlers, moveContact
+        ...metrics,         // lastMessageOf, metricsOf, channelBars
+        ...detail,          // detailOpen, detailContact, detailTab, openDetail, openConversation, historyOf
+        ...reminders,       // remInput, remPanelOpen, pendingReminders, hasOverdue, addReminderFor, upcomingReminders
+        ...interest,        // interestScore
+        stageLabel,
+        closeOpen: close.closeOpen, closeTarget: close.closeTarget, closeForm: close.closeForm,
+        openCloseModal: close.openCloseModal, confirmClose: close.confirmClose, reopenLead: close.reopenLead,
+        closeProductQuery: close.closeProductQuery, closeProductResults: close.closeProductResults,
+        toggleCloseProduct: close.toggleCloseProduct, productName: close.productNameOf,
+        closeLabel: close.closeLabel,
+        CLOSE_REASONS,
         remindersOf, toggleReminder, removeReminder,
-        historyOf, stageLabel, closeLabel, CLOSE_REASONS,
-        interestScore,
-        formatPrice, INTENT_LABELS,
-        closeProductQuery, closeProductResults, toggleCloseProduct, productName,
-        getPlatform, timeAgo, canEdit, fmtDT, fmtD, ZernioCrm,
+        formatPrice, INTENT_LABELS, getPlatform, timeAgo, canEdit, fmtDT, fmtD, ZernioCrm,
       };
     },
 

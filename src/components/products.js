@@ -162,9 +162,7 @@
       }
 
       function moveDetailRow(i, dir) {
-        const next = i + dir;
-        if (next < 0 || next >= form.details.length) return;
-        [form.details[i], form.details[next]] = [form.details[next], form.details[i]];
+        ZernioCrm.swapInPlace(form.details, i, dir);
       }
 
       /** Inserta markup en el textarea de descripción (posición del cursor). */
@@ -211,27 +209,6 @@
       const csvPlaceholder = 'Arroz con pollo,producto,Platos principales,8.5,porción,"arroz con pollo asado",si';
       const jsonPlaceholder = '[{"name":"Arroz con pollo","type":"producto","category":"Platos principales","price":8.5}]';
 
-      function parseCsv(text) {
-        return text
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map((line) => {
-            const cols = [];
-            let cur = '';
-            let inQ = false;
-            for (const ch of line) {
-              if (ch === '"') inQ = !inQ;
-              else if (ch === ',' && !inQ) {
-                cols.push(cur.trim());
-                cur = '';
-              } else cur += ch;
-            }
-            cols.push(cur.trim());
-            return cols;
-          });
-      }
-
       /** Normaliza una fila importada al shape de producto. */
       function rowToProduct(cols) {
         return {
@@ -259,7 +236,7 @@
             if (!Array.isArray(parsed)) throw new Error('Se espera un array JSON');
             raw = parsed.map((o) => [o.name, o.type, o.category, o.price, o.unit, (o.aliases || []).join(', '), o.stock]);
           } else {
-            raw = parseCsv(text);
+            raw = ZernioCrm.parseCsv(text);
             const headerIdx = raw.findIndex((r) => ['name', 'nombre'].includes(normalizeText(r[0] || '')));
             if (headerIdx >= 0) raw = raw.slice(headerIdx + 1);
           }
@@ -327,17 +304,7 @@
             ].join(',')
           );
         });
-        downloadText('catalogo-productos.csv', lines.join('\n'), 'text/csv');
-      }
-
-      function downloadText(filename, content, mime) {
-        const blob = new Blob([content], { type: mime || 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        ZernioCrm.downloadText('catalogo-productos.csv', lines.join('\n'), 'text/csv');
       }
 
       // ── Demanda y ventas ───────────────────────────────────────────────────

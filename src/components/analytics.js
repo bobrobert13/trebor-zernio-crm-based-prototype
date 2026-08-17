@@ -22,14 +22,9 @@
     { id: '12-16', label: '12–16' }, { id: '16-20', label: '16–20' }, { id: '20-24', label: '20–24' },
   ];
 
-  /** Hash determinista para series demo. */
-  function hashSeed(str) {
-    return [...str].reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) >>> 0, 7);
-  }
-
   /** Valor pseudo-determinista en [min, max] para (seed, día). */
   function pseudo(seed, salt, min, max) {
-    return min + (hashSeed(seed + salt) % (max - min + 1));
+    return min + (ZernioCrm.hashSeed(seed + salt) % (max - min + 1));
   }
 
   components['analytics-view'] = {
@@ -62,7 +57,7 @@
         // Tendencia pseudo-determinista por KPI: up/down/flat + %
         // Para "resp" (minutos) bajar es MEJOR: el color se invierte en el template
         const trendOf = (id) => {
-          const h = hashSeed(seed + id + range.value);
+          const h = ZernioCrm.hashSeed(seed + id + range.value);
           const pct = 4 + (h % 18);
           return h % 3 === 0 ? { dir: 'flat', pct: 0 } : { dir: h % 2 === 0 ? 'up' : 'down', pct };
         };
@@ -104,7 +99,7 @@
         return WEEKDAYS.map((day, di) => ({
           day,
           slots: SLOTS.map((slot, si) => {
-            const v = hashSeed(seed + day + slot.id) % 5;
+            const v = ZernioCrm.hashSeed(seed + day + slot.id) % 5;
             return { ...slot, value: v, intensity: v };
           }),
         }));
@@ -174,13 +169,7 @@
       function exportCsv() {
         const rows = [['fecha', 'conversaciones'], ...daily.value.map((d) => [new Date(d.date).toISOString().slice(0, 10), d.value])];
         const csv = rows.map((r) => r.join(',')).join('\n');
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${workspace.value.name.replace(/\s+/g, '-').toLowerCase()}-analytics.csv`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        ZernioCrm.downloadText(`${workspace.value.name.replace(/\s+/g, '-').toLowerCase()}-analytics.csv`, csv, 'text/csv');
         toast('CSV exportado', 'success');
       }
 

@@ -12,11 +12,6 @@
 
   const components = {};
 
-  /** Hash determinista para métricas demo estables por contacto. */
-  function hashSeed(str) {
-    return [...String(str)].reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) >>> 0, 7);
-  }
-
   components['leads-view'] = {
     setup() {
       const workspace = Vue.computed(() => store.workspace);
@@ -60,7 +55,7 @@
           channelCounts[p] = (channelCounts[p] || 0) + (c.messages ? c.messages.length : 0);
         });
         if (Object.keys(channelCounts).length === 0) {
-          const seed = hashSeed(contact.id + 'ch');
+          const seed = ZernioCrm.hashSeed(contact.id + 'ch');
           channelCounts.whatsapp = (seed % 5) + 1;
           if (seed % 2 === 0) channelCounts.instagram = (seed % 3) + 1;
         }

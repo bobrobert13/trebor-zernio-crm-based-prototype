@@ -47,14 +47,8 @@
       const newContactId = Vue.ref(null);
       const tipsOpen = Vue.ref(true);
 
-      /** Temporizadores activos (cleanup en onUnmounted). */
-      const timers = [];
-      function later(fn, ms) {
-        const id = setTimeout(fn, ms);
-        timers.push(id);
-        return id;
-      }
-      Vue.onUnmounted(() => timers.forEach(clearTimeout));
+      /** Temporizadores con cleanup en onUnmounted (composable general). */
+      const { later } = ZernioCrm.makeTimers();
 
       const workspace = Vue.computed(() => store.workspace);
       const niche = Vue.computed(() => getNiche(workspace.value && workspace.value.nicheId));

@@ -247,15 +247,12 @@
     const context = buildContext(event, payload);
     let raw;
     if (ZernioCrm.store.mode === 'live' && agent.url) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
       try {
-        const res = await window.fetch(agent.url, {
+        const res = await ZernioCrm.fetchWithTimeout(agent.url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${agent.apiKey || ''}` },
           body: JSON.stringify(context),
-          signal: controller.signal,
-        });
+        }, AGENT_TIMEOUT_MS);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         raw = await res.json();
       } catch (err) {
@@ -264,8 +261,6 @@
           : err && err.message ? err.message : String(err);
         logAgent(agent, { event, ok: false, error: message });
         return { ok: false, error: message, action: { action: 'none' }, context };
-      } finally {
-        clearTimeout(timer);
       }
     } else {
       raw = demoRespond(context);
@@ -281,20 +276,13 @@
       await new Promise((resolve) => setTimeout(resolve, 350));
       return { ok: true, simulated: true };
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
-    try {
-      const res = await window.fetch(agent.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${agent.apiKey || ''}` },
-        body: JSON.stringify({ event: 'connection_test', workspace: { name: (ZernioCrm.store.workspace || {}).name } }),
-        signal: controller.signal,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return { ok: true };
-    } finally {
-      clearTimeout(timer);
-    }
+    const res = await ZernioCrm.fetchWithTimeout(agent.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${agent.apiKey || ''}` },
+      body: JSON.stringify({ event: 'connection_test', workspace: { name: (ZernioCrm.store.workspace || {}).name } }),
+    }, AGENT_TIMEOUT_MS);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return { ok: true };
   }
 
   window.ZernioCrm = window.ZernioCrm || {};

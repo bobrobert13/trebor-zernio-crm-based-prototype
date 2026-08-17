@@ -39,6 +39,7 @@
       const CLOSE_REASONS = ['Compró', 'Sin respuesta', 'Se pospuso', 'Eligió otra opción'];
       const setViewTab = (t) => { board.viewTab.value = t; };
       const setDetailTab = (t) => { detail.detailTab.value = t; };
+      const setRemPanelOpen = (v) => { reminders.remPanelOpen.value = v; };
 
       return {
         workspace, isLive, leadTags, contacts, conversations,
@@ -47,7 +48,7 @@
         ...detail,          // detailOpen, detailContact, detailTab, openDetail, openConversation, historyOf
         ...reminders,       // remInput, remPanelOpen, pendingReminders, hasOverdue, addReminderFor, upcomingReminders
         ...interest,        // interestScore
-        setViewTab, setDetailTab,
+        setViewTab, setDetailTab, setRemPanelOpen,
         stageLabel,
         closeOpen: close.closeOpen, closeTarget: close.closeTarget, closeForm: close.closeForm,
         openCloseModal: close.openCloseModal, confirmClose: close.confirmClose, reopenLead: close.reopenLead,
@@ -112,99 +113,18 @@
           @close="detailOpen = false"></lead-drawer>
 
         <!-- Drawer: próximos recordatorios (todas las leads) -->
-        <ui-drawer :open="remPanelOpen" title="Recordatorios próximos" width="max-w-md" @close="remPanelOpen = false">
-          <div class="space-y-2">
-            <div v-for="r in upcomingReminders" :key="r.id">
-              <button v-if="r.contact" @click="remPanelOpen = false; openDetail(r.contact)"
-                class="w-full border border-neutral-200 p-3 text-left transition hover:border-neutral-900 hover:bg-stone-50"
-                :class="r.dueAt && Date.parse(r.dueAt) < Date.now() ? 'border-red-700 bg-red-50' : ''">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="truncate text-sm font-semibold">{{ r.contact ? r.contact.name : 'Contacto' }}</span>
-                  <span v-if="r.dueAt" class="shrink-0 font-mono text-[9px] uppercase"
-                    :class="Date.parse(r.dueAt) < Date.now() ? 'text-red-700' : 'text-neutral-400'">
-                    {{ fmtDT(r.dueAt) }}
-                  </span>
-                </div>
-                <p class="mt-1 text-xs text-neutral-600">{{ r.text }}</p>
-              </button>
-            </div>
-            <p v-if="upcomingReminders.length === 0" class="py-8 text-center text-sm text-neutral-400">Sin recordatorios pendientes.</p>
-          </div>
-        </ui-drawer>
+        <lead-reminders-panel
+          :open="remPanelOpen" :upcoming="upcomingReminders" :fmt-d-t="fmtDT"
+          :open-detail="openDetail" :set-open="setRemPanelOpen"></lead-reminders-panel>
 
         <!-- Modal: cerrar lead -->
-        <ui-modal :open="closeOpen" :title="'Cerrar lead · ' + (closeTarget ? closeTarget.name : '')" width="max-w-md" @close="closeOpen = false">
-          <div class="space-y-4">
-            <p class="text-sm text-neutral-500">
-              Da por terminado el seguimiento de este lead. Puedes reabrirlo cuando quieras.
-            </p>
-
-            <!-- Resumen del lead -->
-            <div v-if="closeTarget" class="flex items-center gap-3 border border-neutral-200 bg-stone-50 p-3">
-              <ui-avatar :name="closeTarget.name" size="h-10 w-10 text-sm"></ui-avatar>
-              <div class="min-w-0 flex-1">
-                <p class="truncate font-semibold">{{ closeTarget.name }}</p>
-                <p class="truncate font-mono text-[11px] text-neutral-500">
-                  Etapa: {{ stageLabel(closeTarget.leadTag) }}
-                  <span v-if="closeTarget.createdAt"> · Cliente desde {{ fmtD(closeTarget.createdAt) }}</span>
-                </p>
-              </div>
-              <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ metricsOf(closeTarget).days }} días</span>
-            </div>
-
-            <ui-field label="¿Se concretó?">
-              <div class="flex gap-1.5">
-                <button @click="closeForm.outcome = 'ganada'" class="flex-1 border-2 px-3 py-2 text-sm font-medium transition"
-                  :class="closeForm.outcome === 'ganada' ? 'border-emerald-800 bg-emerald-50 text-emerald-900' : 'border-neutral-300'">
-                  Sí, se concretó
-                </button>
-                <button @click="closeForm.outcome = 'perdida'" class="flex-1 border-2 px-3 py-2 text-sm font-medium transition"
-                  :class="closeForm.outcome === 'perdida' ? 'border-red-800 bg-red-50 text-red-900' : 'border-neutral-300'">
-                  No se concretó
-                </button>
-              </div>
-            </ui-field>
-
-            <!-- Productos/servicios vinculados al cierre (preselección desde menciones) -->
-            <div v-if="(workspace.products || []).length">
-              <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">¿Qué productos/servicios se cerraron?</p>
-              <div v-if="closeForm.products.length" class="mb-2 flex flex-wrap gap-1.5">
-                <button v-for="id in closeForm.products" :key="id" @click="toggleCloseProduct(id)"
-                  class="border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition border-[var(--accent)] bg-[var(--accent)] text-white">
-                  {{ productName(id) }} ✕
-                </button>
-              </div>
-              <input v-model.trim="closeProductQuery" type="search" placeholder="Buscar y agregar producto…"
-                class="w-full border-2 border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900" />
-              <div v-if="closeProductQuery" class="mt-1.5 flex flex-wrap gap-1.5">
-                <button v-for="p in closeProductResults" :key="p.id" @click="toggleCloseProduct(p.id)"
-                  class="border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="closeForm.products.includes(p.id) ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
-                  {{ p.name }}
-                </button>
-              </div>
-            </div>
-
-            <ui-field label="Motivo (opcional)">
-              <div class="flex flex-wrap gap-1.5">
-                <button v-for="r in CLOSE_REASONS" :key="r" @click="closeForm.reason = closeForm.reason === r ? '' : r"
-                  class="border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="closeForm.reason === r ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
-                  {{ r }}
-                </button>
-              </div>
-            </ui-field>
-
-            <ui-field label="Nota (opcional)">
-              <textarea v-model.trim="closeForm.note" rows="3" placeholder="Cuéntanos cómo fue el cierre…"
-                class="w-full resize-none border-2 border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900"></textarea>
-            </ui-field>
-            <button @click="confirmClose"
-              class="w-full border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2.5 font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
-              Confirmar cierre
-            </button>
-          </div>
-        </ui-modal>
+        <lead-close-modal
+          :open="closeOpen" :target="closeTarget" :form="closeForm"
+          v-model:productQuery="closeProductQuery" :product-results="closeProductResults"
+          :workspace-products="workspace.products" :stage-label="stageLabel" :metrics-of="metricsOf"
+          :fmt-d="fmtD" :product-name="productName" :toggle-close-product="toggleCloseProduct"
+          :confirm-close="confirmClose" :close-reasons="CLOSE_REASONS"
+          @close="closeOpen = false"></lead-close-modal>
       </div>`,
   };
 

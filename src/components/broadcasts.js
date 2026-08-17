@@ -1423,10 +1423,7 @@
       const footerText = Vue.computed(() => fill(footer.text || '', null));
       const hasBody = Vue.computed(() => Boolean(String(bodyText.value).trim()));
       const headerFormat = Vue.computed(() => (header.format ? String(header.format).toLowerCase() : ''));
-      const variables = Vue.computed(() => {
-        const m = String(props.tpl.body || body.text || '').match(/\{\{\d+\}\}/g) || [];
-        return [...new Set(m)];
-      });
+      const variables = Vue.computed(() => ZernioCrm.makeTemplateVars(props.tpl.body || body.text || ''));
       /** Envelope sin componentes ni body: no hay nada que renderizar. */
       const noComponents = Vue.computed(() => !comps.length && !props.tpl.body);
       return { bodyText, headerText, footerText, buttons, fill, hasBody, headerFormat, variables, noComponents };

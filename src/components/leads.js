@@ -197,6 +197,8 @@
        *  de producto del contacto (compra, frecuencia, alto valor, agotado).
        *  Nivel: alto (>=3 factores, o compra + alto valor), medio (2), bajo (1). */
       const productMentions = Vue.computed(() => ZernioCrm.productMentionsFor(workspace.value));
+      /** Núcleo compartido del score de interés (misma lógica que la bandeja). */
+      const interestCore = ZernioCrm.makeInterestScore({ workspace, productMentions });
 
       // Flujo de cierre compartido con la bandeja (ver shared.js · makeCloseLead).
       // Se instancia aquí (tras productMentions) para pasar el computed de menciones.
@@ -210,46 +212,28 @@
         onClosed: () => { detailOpen.value = false; },
       });
 
+      /** Etiquetas legibles de cada factor de interés (solo el tablero las pinta). */
+      const FACTOR_LABELS = {
+        compra: 'Intención de compra',
+        frecuencia: 'Interés frecuente',
+        alto_valor: 'Alto valor',
+        agotado: 'Agotado con demanda',
+      };
+
       function interestScore(contact) {
         const empty = { nivel: null, label: '', products: [], value: 0, factors: [], perProduct: [] };
-        if (!contact) return empty;
-        // Ignora menciones de productos eliminados del catálogo
-        const catalog = workspace.value.products || [];
-        const ms = productMentions.value.filter(
-          (m) => m.contactId === contact.id && catalog.some((p) => p.id === m.productId)
-        );
-        if (!ms.length) return empty;
-        // Productos únicos con su última mención
-        const byProduct = {};
-        ms.forEach((m) => {
-          const p = catalog.find((x) => x.id === m.productId);
-          if (!p) return;
-          const cur = byProduct[p.id] || { product: p, count: 0, last: m };
-          cur.count += 1;
-          if (m.ts >= cur.last.ts) cur.last = m;
-          byProduct[p.id] = cur;
-        });
-        const perProduct = Object.values(byProduct);
-        const value = perProduct.reduce((acc, x) => acc + (Number(x.product.price) > 0 ? Number(x.product.price) : 0), 0);
-        // Umbral de "alto valor": percentil 75 de precios del catálogo (piso $50 si no hay precios)
-        const priced = catalog.map((p) => Number(p.price)).filter((n) => n > 0).sort((a, b) => a - b);
-        const p75 = priced.length ? priced[Math.floor(0.75 * (priced.length - 1))] : 0;
-        const threshold = p75 > 0 ? p75 : 50;
-        const factors = [];
-        if (ms.some((m) => ['pedido', 'precio', 'reserva'].includes(m.intent))) factors.push({ id: 'compra', label: 'Intención de compra' });
-        if (ms.length >= 2) factors.push({ id: 'frecuencia', label: 'Interés frecuente' });
-        if (value >= threshold) factors.push({ id: 'alto_valor', label: 'Alto valor' });
-        if (perProduct.some((x) => x.product.stock === false)) factors.push({ id: 'agotado', label: 'Agotado con demanda' });
+        const s = interestCore.scoreFor(contact);
+        if (!s) return empty;
         let nivel = 'bajo';
-        if (factors.length >= 3 || (factors.some((f) => f.id === 'compra') && factors.some((f) => f.id === 'alto_valor'))) nivel = 'alto';
-        else if (factors.length === 2) nivel = 'medio';
+        if (s.factors.length >= 3 || (s.factors.includes('compra') && s.factors.includes('alto_valor'))) nivel = 'alto';
+        else if (s.factors.length === 2) nivel = 'medio';
         const label = nivel === 'alto' ? 'Interés alto' : nivel === 'medio' ? 'Interés medio' : 'Interés';
         return {
           nivel, label,
-          factors,
-          products: perProduct.map((x) => x.product.name),
-          value,
-          perProduct: perProduct.map((x) => ({ product: x.product, count: x.count, intent: x.last.intent, lastTs: x.last.ts })),
+          factors: s.factors.map((id) => ({ id, label: FACTOR_LABELS[id] })),
+          products: s.perProduct.map((x) => x.product.name),
+          value: s.value,
+          perProduct: s.perProduct.map((x) => ({ product: x.product, count: x.count, intent: x.last.intent, lastTs: x.last.ts })),
         };
       }
 

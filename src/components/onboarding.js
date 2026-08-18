@@ -41,16 +41,8 @@
       /** Resultado de la conexión real (live-connect). */
       const liveResult = Vue.ref(null);
 
-      /** Temporizadores activos (limpieza en onUnmounted). */
-      const timers = [];
-
-      function later(fn, ms) {
-        const id = setTimeout(fn, ms);
-        timers.push(id);
-        return id;
-      }
-
-      Vue.onUnmounted(() => timers.forEach(clearTimeout));
+      /** Temporizadores con cleanup en onUnmounted (composable general). */
+      const { later } = ZernioCrm.makeTimers();
 
       const niche = Vue.computed(() => ZernioCrm.getNiche(form.nicheId));
       const accent = Vue.computed(() => ZernioCrm.ACCENTS.find((a) => a.id === form.accentId) || ZernioCrm.ACCENTS[0]);

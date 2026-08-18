@@ -11,14 +11,9 @@
 
   const components = {};
 
-  /** Hash determinista para valores pseudo-aleatorios de KPIs demo. */
-  function hashSeed(str) {
-    return [...str].reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) >>> 0, 7);
-  }
-
   /** Valor pseudo-determinista en [min, max] por workspace. */
   function pseudo(workspace, salt, min, max) {
-    return min + (hashSeed(workspace.id + salt) % (max - min + 1));
+    return min + (ZernioCrm.hashSeed(workspace.id + salt) % (max - min + 1));
   }
 
   /** Calcula el valor de un KPI del nicho a partir de datos del workspace. */
@@ -112,7 +107,7 @@
       /** Mini-tendencia pseudo-determinista (7 puntos) para cada KPI. */
       function kpiTrend(k) {
         const base = k.value;
-        return Array.from({ length: 7 }, (_, i) => Math.max(1, Math.round(base * (0.6 + ((hashSeed(k.id + i) % 50) / 100)))));
+        return Array.from({ length: 7 }, (_, i) => Math.max(1, Math.round(base * (0.6 + ((ZernioCrm.hashSeed(k.id + i) % 50) / 100)))));
       }
 
       const SECTION_LABELS = {

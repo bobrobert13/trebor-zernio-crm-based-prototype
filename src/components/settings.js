@@ -109,13 +109,11 @@
 
       /** Exporta el workspace como JSON descargable. */
       function exportData() {
-        const blob = new Blob([JSON.stringify(workspace.value, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${workspace.value.name.replace(/\s+/g, '-').toLowerCase()}-workspace.json`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        ZernioCrm.downloadText(
+          `${workspace.value.name.replace(/\s+/g, '-').toLowerCase()}-workspace.json`,
+          JSON.stringify(workspace.value, null, 2),
+          'application/json'
+        );
         toast('Workspace exportado', 'success');
       }
 
@@ -396,9 +394,7 @@
 
       function moveTag(listKey, index, dir) {
         const list = [...(workspace.value[listKey] || [])];
-        const next = index + dir;
-        if (next < 0 || next >= list.length) return;
-        [list[index], list[next]] = [list[next], list[index]];
+        if (!ZernioCrm.swapInPlace(list, index, dir)) return;
         workspace.value[listKey] = list;
       }
 
@@ -470,9 +466,7 @@
 
       function moveField(index, dir) {
         const list = [...customFields.value];
-        const next = index + dir;
-        if (next < 0 || next >= list.length) return;
-        [list[index], list[next]] = [list[next], list[index]];
+        if (!ZernioCrm.swapInPlace(list, index, dir)) return;
         workspace.value.customFields = list;
       }
 

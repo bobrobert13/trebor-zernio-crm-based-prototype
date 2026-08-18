@@ -197,6 +197,13 @@
       const timers = [];
       Vue.onUnmounted(() => timers.forEach(clearTimeout));
 
+      // Formateadores/mappers presentacionales reutilizables (servicio de UI).
+      const {
+        seqStatusTone, seqStepText, formatSeqDelay,
+        seqTotalMinutes, seqCumulative, formatSeqTotal,
+        flowScreens, flowFields, flowFooter,
+      } = ZernioCrm;
+
       const workspace = Vue.computed(() => store.workspace);
       const niche = Vue.computed(() => getNiche(workspace.value && workspace.value.nicheId));
       const profileId = Vue.computed(() => workspace.value.zernio && workspace.value.zernio.profileId);
@@ -633,49 +640,7 @@
         }
       }
 
-      function seqStatusTone(status) {
-        return status === 'active' ? 'success' : status === 'paused' ? 'warn' : 'neutral';
-      }
-
       // ── Pipeline de envío de secuencias ────────────────────────────────────
-
-      /** Texto legible de un paso (mensaje directo o plantilla). */
-      function seqStepText(st) {
-        return (st && ((st.message && st.message.text) || (st.template && st.template.name))) || 'Mensaje';
-      }
-
-      /** Retraso de un paso en formato corto ('Inmediato', '30 min', '24 h', '3 d'). */
-      function formatSeqDelay(minutes) {
-        const m = Number(minutes) || 0;
-        if (m === 0) return 'Inmediato';
-        if (m < 60) return `${m} min`;
-        if (m < 1440) return `${Math.round(m / 60)} h`;
-        return `${Math.round(m / 1440)} d`;
-      }
-
-      /** Duración total de la secuencia en minutos. */
-      function seqTotalMinutes(seq) {
-        return (seq && seq.steps || []).reduce((acc, s) => acc + (Number(s.delayMinutes) || 0), 0);
-      }
-
-      /** Minutos acumulados hasta el inicio de un paso (desde el primer mensaje). */
-      function seqCumulative(seq, index) {
-        return (seq && seq.steps || []).slice(0, index).reduce((acc, s) => acc + (Number(s.delayMinutes) || 0), 0);
-      }
-
-      /** Duración total en formato largo ('3 d 4 h'). */
-      function formatSeqTotal(minutes) {
-        const m = Number(minutes) || 0;
-        if (m === 0) return '0 min';
-        const d = Math.floor(m / 1440);
-        const h = Math.floor((m % 1440) / 60);
-        const mm = m % 60;
-        const parts = [];
-        if (d) parts.push(`${d} d`);
-        if (h) parts.push(`${h} h`);
-        if (mm) parts.push(`${mm} min`);
-        return parts.join(' ');
-      }
 
       /** Abre el pipeline de envío de una secuencia. */
       function openSeqPreview(seq) {
@@ -684,23 +649,6 @@
       }
 
       // ── Vista previa presentacional de flows ───────────────────────────────
-
-      /** Pantallas de un flow (JSON Meta 6.0 a nivel raíz o dentro de data). */
-      function flowScreens(flow) {
-        return (flow && (flow.screens || (flow.data && flow.data.screens) || [])) || [];
-      }
-
-      /** Campos del formulario de una pantalla. */
-      function flowFields(screen) {
-        const form = screen && screen.data && screen.data.form;
-        return (form && form.fields) || [];
-      }
-
-      /** Footer del formulario de una pantalla (o vacío). */
-      function flowFooter(screen) {
-        const form = screen && screen.data && screen.data.form;
-        return (form && form.footer) || '';
-      }
 
       /** Abre la vista previa del flow (cómo lo verá el cliente). */
       function openFlowPreview(flow) {
@@ -1423,10 +1371,7 @@
       const footerText = Vue.computed(() => fill(footer.text || '', null));
       const hasBody = Vue.computed(() => Boolean(String(bodyText.value).trim()));
       const headerFormat = Vue.computed(() => (header.format ? String(header.format).toLowerCase() : ''));
-      const variables = Vue.computed(() => {
-        const m = String(props.tpl.body || body.text || '').match(/\{\{\d+\}\}/g) || [];
-        return [...new Set(m)];
-      });
+      const variables = Vue.computed(() => ZernioCrm.makeTemplateVars(props.tpl.body || body.text || ''));
       /** Envelope sin componentes ni body: no hay nada que renderizar. */
       const noComponents = Vue.computed(() => !comps.length && !props.tpl.body);
       return { bodyText, headerText, footerText, buttons, fill, hasBody, headerFormat, variables, noComponents };

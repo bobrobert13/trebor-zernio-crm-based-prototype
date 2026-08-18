@@ -47,14 +47,8 @@
       const newContactId = Vue.ref(null);
       const tipsOpen = Vue.ref(true);
 
-      /** Temporizadores activos (cleanup en onUnmounted). */
-      const timers = [];
-      function later(fn, ms) {
-        const id = setTimeout(fn, ms);
-        timers.push(id);
-        return id;
-      }
-      Vue.onUnmounted(() => timers.forEach(clearTimeout));
+      /** Temporizadores con cleanup en onUnmounted (composable general). */
+      const { later } = ZernioCrm.makeTimers();
 
       const workspace = Vue.computed(() => store.workspace);
       const niche = Vue.computed(() => getNiche(workspace.value && workspace.value.nicheId));
@@ -491,9 +485,7 @@
         if (!t) return [];
         const comps = t.components || [];
         const body = comps.find((c) => c.type === 'body') || {};
-        const text = t.body || body.text || '';
-        const m = String(text).match(/\{\{(\d+)\}\}/g) || [];
-        return [...new Set(m)];
+        return ZernioCrm.makeTemplateVars(t.body || body.text || '');
       });
 
       /** Carga las plantillas APROBADAS del accountId (o demo). Los errores se
@@ -629,6 +621,8 @@
 
       // ── Menciones de productos (detección + confirmación del agente) ───────
       const productMentions = Vue.computed(() => ZernioCrm.productMentionsFor(workspace.value));
+      /** Núcleo compartido del score de interés (misma lógica que el tablero). */
+      const interestCore = ZernioCrm.makeInterestScore({ workspace, productMentions });
 
       /** Menciones asociadas a un mensaje (chips bajo el mensaje). */
       function mentionsOfMessage(messageId) {
@@ -650,12 +644,7 @@
       const productPickOpen = Vue.ref(false);
       const productPickTarget = Vue.ref(null); // id de mention o null (vinculación manual)
       const productPickQuery = Vue.ref('');
-      const productPickResults = Vue.computed(() => {
-        const qq = productPickQuery.value.trim().toLowerCase();
-        return (workspace.value.products || [])
-          .filter((p) => p.active !== false && (!qq || `${p.name} ${(p.aliases || []).join(' ')}`.toLowerCase().includes(qq)))
-          .slice(0, 8);
-      });
+      const productPickResults = ZernioCrm.makeProductSearch(workspace, { query: productPickQuery, limit: 8 });
 
       function openProductPick(targetMentionId) {
         productPickTarget.value = targetMentionId || null;
@@ -764,12 +753,7 @@
       const atQuery = Vue.ref('');
 
       /** Resultados del '@': productos activos filtrados por el texto tecleado. */
-      const atResults = Vue.computed(() => {
-        const qq = atQuery.value.trim().toLowerCase();
-        return (workspace.value.products || [])
-          .filter((p) => p.active !== false && (!qq || `${p.name} ${(p.aliases || []).join(' ')}`.toLowerCase().includes(qq)))
-          .slice(0, 6);
-      });
+      const atResults = ZernioCrm.makeProductSearch(workspace, { query: atQuery, limit: 6 });
 
       /** Detecta el token '@query' al final del borrador y abre el menú. */
       Vue.watch(draft, (val) => {
@@ -855,30 +839,11 @@
 
       /** Nivel de interés comercial compacto (misma lógica que el tablero). */
       function aiInterest(contact) {
-        const catalog = workspace.value.products || [];
-        const ms = productMentions.value.filter(
-          (m) => m.contactId === (contact || {}).id && catalog.some((p) => p.id === m.productId)
-        );
-        if (!ms.length) return { nivel: null, value: 0, productos: [] };
-        const byP = {};
-        ms.forEach((m) => {
-          const cur = byP[m.productId] || { product: catalog.find((p) => p.id === m.productId), count: 0, last: m };
-          cur.count += 1;
-          if (m.ts >= cur.last.ts) cur.last = m;
-          byP[m.productId] = cur;
-        });
-        const per = Object.values(byP).filter((x) => x.product);
-        const value = per.reduce((acc, x) => acc + (Number(x.product.price) > 0 ? Number(x.product.price) : 0), 0);
-        const priced = catalog.map((p) => Number(p.price)).filter((n) => n > 0).sort((a, b) => a - b);
-        const threshold = priced.length ? priced[Math.floor(0.75 * (priced.length - 1))] : 50;
-        const factors = [];
-        if (ms.some((m) => ['pedido', 'precio', 'reserva'].includes(m.intent))) factors.push('compra');
-        if (ms.length >= 2) factors.push('frecuencia');
-        if (value >= threshold) factors.push('alto_valor');
-        if (per.some((x) => x.product.stock === false)) factors.push('agotado');
-        const nivel = factors.length >= 3 || (factors.includes('compra') && factors.includes('alto_valor'))
-          ? 'alto' : factors.length === 2 ? 'medio' : factors.length === 1 ? 'bajo' : null;
-        return { nivel, value, productos: per.map((x) => ({ product: x.product, count: x.count, intent: x.last.intent })) };
+        const s = interestCore.scoreFor(contact);
+        if (!s) return { nivel: null, value: 0, productos: [] };
+        const nivel = s.factors.length >= 3 || (s.factors.includes('compra') && s.factors.includes('alto_valor'))
+          ? 'alto' : s.factors.length === 2 ? 'medio' : s.factors.length === 1 ? 'bajo' : null;
+        return { nivel, value: s.value, productos: s.perProduct.map((x) => ({ product: x.product, count: x.count, intent: x.last.intent })) };
       }
 
       /** Análisis completo: diagnóstico, señales, plan de acción y respuestas. */
@@ -963,9 +928,14 @@
           toast('El agente intentó cerrar la venta sin un resultado válido', 'error');
           return;
         }
-        contact.leadClosed = { at: Date.now(), outcome, note: action.note || 'Cierre autónomo del agente', reason: action.reason || undefined, products: [] };
-        contact.leadHistory = contact.leadHistory || [];
-        contact.leadHistory.push({ tag: `finalizada:${outcome}`, at: contact.leadClosed.at, note: contact.leadClosed.note, reason: contact.leadClosed.reason });
+        const note = action.note || 'Cierre autónomo del agente';
+        ZernioCrm.applyLeadClose(contact, {
+          outcome,
+          note,
+          reason: action.reason || undefined,
+          products: [],
+          historyNote: note,
+        });
         toast(`El agente cerró el lead como ${closeLabel(outcome).toLowerCase()}`, 'success');
       }
 

@@ -14,12 +14,7 @@
     const closeProductQuery = Vue.ref('');
 
     /** Resultados del buscador de productos del modal de cierre. */
-    const closeProductResults = Vue.computed(() => {
-      const qq = closeProductQuery.value.trim().toLowerCase();
-      return (workspace.value.products || [])
-        .filter((p) => p.active !== false && (!qq || `${p.name} ${(p.aliases || []).join(' ')}`.toLowerCase().includes(qq)))
-        .slice(0, 6);
-    });
+    const closeProductResults = Z.makeProductSearch(workspace, { query: closeProductQuery, limit: 6 });
 
     function toggleCloseProduct(id) {
       const i = closeForm.products.indexOf(id);
@@ -70,19 +65,13 @@
     function confirmClose() {
       const contact = closeTarget.value;
       if (!contact) return;
-      contact.leadClosed = {
-        at: Date.now(),
+      const note = closeForm.note.trim();
+      Z.applyLeadClose(contact, {
         outcome: closeForm.outcome,
-        note: closeForm.note.trim(),
+        note,
         reason: closeForm.reason || undefined,
         products: [...closeForm.products],
-      };
-      contact.leadHistory = contact.leadHistory || [];
-      contact.leadHistory.push({
-        tag: `finalizada:${closeForm.outcome}`,
-        at: contact.leadClosed.at,
-        note: closeForm.note.trim() || undefined,
-        reason: closeForm.reason || undefined,
+        historyNote: note || undefined,
       });
       closeOpen.value = false;
       closeTarget.value = null;

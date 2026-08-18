@@ -24,6 +24,9 @@
       openPreview: Function, submitApproval: Function, discard: Function,
       tplSaving: Boolean,
     },
+    setup() {
+      return { templateTones: TEMPLATE_TONES };
+    },
     template: `
       <div class="space-y-6">
         <div v-if="broadcasts.length === 0" class="border-2 border-dashed border-neutral-300 bg-white">
@@ -83,7 +86,7 @@
                   <td class="px-4 py-3 font-mono text-xs">{{ t.name }}</td>
                   <td class="px-4 py-3"><ui-badge variant="neutral">{{ t.category }}</ui-badge></td>
                   <td class="px-4 py-3 font-mono text-xs uppercase text-neutral-500">{{ t.language }}</td>
-                  <td class="px-4 py-3"><ui-badge :variant="t.status === 'draft' ? 'neutral' : TEMPLATE_TONES[t.status] || 'neutral'" dot>{{ t.status }}</ui-badge></td>
+                  <td class="px-4 py-3"><ui-badge :variant="t.status === 'draft' ? 'neutral' : templateTones[t.status] || 'neutral'" dot>{{ t.status }}</ui-badge></td>
                   <td class="px-4 py-3">
                     <div class="flex justify-end gap-1.5">
                       <button @click="openPreview(t)" class="border border-neutral-300 px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition hover:border-neutral-900">Ver preview</button>

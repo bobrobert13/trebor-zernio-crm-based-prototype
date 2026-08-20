@@ -2,7 +2,8 @@
  * @file onboarding.js — Wizard de configuración inicial (7 pasos).
  * Paso 1→nicho, 2→convenio de uso, 3→branding (nombre, logo, color),
  * 4→referencia, 5→canales, 6→equipo inicial. Conexión real de WhatsApp
- * vía live-connect.
+ * vía live-connect. Orquestador por bounded context: la lógica vive en
+ * src/onboarding-composables.js (1:1 con el comportamiento previo).
  */
 (function () {
   'use strict';
@@ -16,176 +17,28 @@
 
   components['onboarding-wizard'] = {
     setup() {
-      /** Datos del formulario (solo se persiste al finalizar). */
-      const form = Vue.reactive({
-        nicheId: null,
-        focus: null,
-        name: '',
-        slogan: '',
-        accentId: 'carbono',
-        referrer: null,
-        referrerDetail: '',
-        ownerName: '',
-        ownerEmail: '',
-        inviteAgent: true,
-        inviteVendor: true,
-        skipConnect: false, // "Configurar después": termina sin canal conectado
-        accepted: false, // convenio de uso aceptado (paso 2, obligatorio)
-        logo: null, // logo del negocio (dataURL, opcional)
-      });
-
-      const current = Vue.ref(0);
-      const enterLoading = Vue.ref(false);
-      const creating = Vue.ref(false);
-
-      /** Resultado de la conexión real (live-connect). */
       const liveResult = Vue.ref(null);
-
-      /** Temporizadores con cleanup en onUnmounted (composable general). */
       const { later } = ZernioCrm.makeTimers();
 
-      const niche = Vue.computed(() => ZernioCrm.getNiche(form.nicheId));
-      const accent = Vue.computed(() => ZernioCrm.ACCENTS.find((a) => a.id === form.accentId) || ZernioCrm.ACCENTS[0]);
-
-      /** Nicho seleccionado (para la preview del paso 1). */
-      const selectedNiche = Vue.computed(() => ZernioCrm.getNiche(form.nicheId));
-
-      /** ¿Es válido el paso actual para continuar? */
-      const canContinue = Vue.computed(() => {
-        switch (current.value) {
-          case 1: return Boolean(form.nicheId);
-          case 2: return Boolean(form.accepted); // convenio de uso obligatorio
-          case 3: return form.name.trim().length > 0;
-          case 4: return Boolean(form.referrer);
-          case 5: return Boolean(liveResult.value) || form.skipConnect;
-          case 6: return !creating.value;
-          default: return true;
-        }
-      });
-
-      /** Al elegir nicho se precargan foco y sugerencia de nombre. */
-      function selectNiche(id) {
-        form.nicheId = id;
-        const n = ZernioCrm.getNiche(id);
-        form.focus = n.focusDefault;
-        form.name = n.id === 'personalizado' ? '' : `Mi ${n.nombre.toLowerCase()}`;
-      }
-
-      // Upload/eliminado del logo: lógica compartida en shared.js (makeLogoUpload).
-      const { uploadLogo, removeLogo } = ZernioCrm.makeLogoUpload({
-        toast,
-        onLogo: (dataURL) => { form.logo = dataURL; },
-        onRemove: () => { form.logo = null; },
-        successMsg: 'Logo listo: se guardará con tu espacio',
-        removeMsg: 'Logo quitado',
-      });
-
-      function jumpTo(i) {
-        if (i < current.value) current.value = i;
-      }
-
-      function next() {
-        if (!canContinue.value) return;
-        const target = current.value + 1;
-        if (target === 1) {
-          enterLoading.value = true;
-          later(() => { enterLoading.value = false; current.value = 1; }, 700);
-          return;
-        }
-        current.value = target;
-      }
-
-      function back() {
-        if (current.value > 0 && !creating.value) current.value -= 1;
-      }
-
-      /** Recibe la conexión real de live-connect y habilita el siguiente paso. */
-      function onLiveConnected(result) {
-        liveResult.value = result;
-        form.skipConnect = false;
-      }
-
-      /** Crea el workspace, inicia sesión como propietario y entra al dashboard. */
-      function finish() {
-        if (!canContinue.value) return;
-        creating.value = true;
-        later(() => {
-          const ws = ZernioCrm.demo.buildWorkspace({
-            nicheId: form.nicheId,
-            focus: form.focus,
-            name: form.name.trim(),
-            slogan: form.slogan.trim(),
-            accentId: form.accentId,
-            referrer: form.referrer,
-            referrerDetail: form.referrerDetail.trim(),
-            ownerName: form.ownerName.trim(),
-            ownerEmail: form.ownerEmail.trim(),
-          });
-          if (!form.inviteAgent) ws.users = ws.users.filter((u) => u.role !== 'agente');
-          if (!form.inviteVendor) ws.users = ws.users.filter((u) => u.role !== 'vendedor');
-          // Logo del negocio subido en el paso de Marca
-          if (form.logo) ws.logo = form.logo;
-          // Migración del workspace recién creado: completa etiquetas, campos,
-          // historial, catálogo y preferencias del panel para que el dashboard
-          // cargue completo a la primera (sin depender de una recarga).
-          ZernioCrm.migrateWorkspace(ws);
-          // "Configurar después": workspace sin canal conectado (conecta luego desde Canales)
-          if (form.skipConnect && !liveResult.value) {
-            ws.zernio = null;
-            ws.whatsapp = { connected: false, modality: 'pending', phone: '', status: 'disconnected', since: Date.now(), about: 'Canal pendiente de conexión' };
-            ws.channels = (ws.channels || []).filter((c) => c.platform !== 'whatsapp');
-            store.mode = 'demo';
-          }
-          // Conexión real con Zernio (si el cliente la eligió)
-          if (liveResult.value) {
-            ws.zernio = {
-              profileId: liveResult.value.profileId,
-              accountId: liveResult.value.accountId,
-              phone: liveResult.value.phone,
-              // Sub-key scoped del negocio (creada por live-connect; el workspace
-              // aún no existía al crearla, por eso viaja en el evento 'connected')
-              subKey: liveResult.value.subKey || '',
-              subKeyProfileId: liveResult.value.profileId || '',
-            };
-            ws.whatsapp = {
-              connected: true,
-              modality: 'live',
-              phone: liveResult.value.phone,
-              status: 'connected',
-              since: Date.now(),
-              about: 'Conexión real con Zernio',
-              accountId: liveResult.value.accountId,
-            };
-            store.mode = 'live';
-          }
-          // Convenio de uso aceptado (con versión para futuras auditorías)
-          ws.convenio = { acceptedAt: Date.now(), version: 1 };
-          store.workspace = ws;
-          store.currentUser = ws.users.find((u) => u.role === 'owner');
-          applyAccent(ws);
-          toast(`¡${ws.name} está listo!`, 'success');
-          // Tras la configuración: a Analítica si ya hay canal de mensajería;
-          // si no, a Canales con el aviso de la importancia de conectar uno.
-          if (ws.whatsapp && ws.whatsapp.connected) {
-            navigate('analytics');
-          } else {
-            navigate('channels');
-            toast('Conecta un canal para que tus clientes puedan escribirte', 'info', 7000);
-          }
-        }, 1400);
-      }
+      // Composición por bounded context (ver src/onboarding-composables.js)
+      const f = ZernioCrm.makeOnboardingForm({ getNiche: (id) => ZernioCrm.getNiche(id), ACCENTS: ZernioCrm.ACCENTS });
+      const flow = ZernioCrm.makeOnboardingFlow({ form: f.form, liveResult, later });
+      const conn = ZernioCrm.makeOnboardingConnection({ form: f.form, liveResult });
+      const ws = ZernioCrm.makeOnboardingWorkspace({ form: f.form, liveResult, flow, store, toast, applyAccent, navigate, later });
 
       return {
-        STEPS, form, current, enterLoading, creating, niche, accent, selectedNiche,
+        STEPS,
+        ...f,       // form, niche, accent, selectedNiche, selectNiche
+        ...flow,    // current, enterLoading, creating, canContinue, jumpTo, next, back
+        ...conn,    // onLiveConnected
+        ...ws,      // uploadLogo, removeLogo, finish
         liveResult,
-        selectNiche, jumpTo, next, back, onLiveConnected, finish,
-        uploadLogo, removeLogo,
-        canContinue,
         ui: ZernioCrm,
       };
     },
 
     template: `
+
       <div class="grid min-h-screen bg-stone-100 lg:grid-cols-[420px_1fr]">
         <!-- Panel izquierdo de marca (escritorio) -->
         <aside class="sticky top-0 hidden h-screen flex-col justify-between bg-[var(--accent)] p-10 text-white lg:flex">

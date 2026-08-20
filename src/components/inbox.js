@@ -8,7 +8,7 @@
   'use strict';
 
   const { Vue, ZernioCrm } = window;
-  const { store, toast, getNiche, timeAgo, formatTime, formatDate, fmtDT, fmtD, uid, canEdit, getPlatform, recordProductMentions, confirmMention, discardMention, INTENT_LABELS, buildProductCard, PRODUCT_CARD_DEFAULTS, renderWhatsApp, formatPrice, activeAgents, askAgent } = ZernioCrm;
+  const { store, toast, getNiche, timeAgo, formatTime, formatDate, fmtDT, fmtD, uid, canEdit, getPlatform, confirmMention, discardMention, INTENT_LABELS, renderWhatsApp, formatPrice, activeAgents, askAgent } = ZernioCrm;
 
   const components = {};
 
@@ -16,18 +16,6 @@
    *  mensajes entrantes se registra UNA vez por página (evita duplicados en remounts). */
   let agentAutoReply = null;
   let agentHookRegistered = false;
-
-  /** Respuestas entrantes simuladas para el modo demo. */
-  const DEMO_REPLIES = [
-    '¡Perfecto, gracias! 🙌',
-    '¿Me puedes confirmar el precio?',
-    'Ok, lo reviso y te escribo.',
-    '¡Genial! ¿Cuándo me lo entregas?',
-    'Muchas gracias por la atención 😊',
-  ];
-
-  /** Respuestas rápidas sugeridas en el composer. */
-  const QUICK_REPLIES = ['Hola 👋', '¿Tienes disponibilidad?', 'Quiero hacer un pedido', 'Gracias'];
 
   /** Motivos de cierre de lead (misma lista que el tablero de Leads). */
   const CLOSE_REASONS = ['Compró', 'Sin respuesta', 'Se pospuso', 'Eligió otra opción'];
@@ -38,10 +26,13 @@
       const shell = ZernioCrm.makeInboxShell({ store, getNiche, makeTimers: ZernioCrm.makeTimers });
       const { workspace, niche, contacts, conversations, leadTags, bizFields, isLive, productMentions, interestCore, loading, later } = shell;
 
+      // detachCard se inyecta por closure TDZ: products se compone después de
+      // list, pero selectConversation corre siempre post-setup, así que la
+      // referencia adelantada se resuelve antes del primer uso.
       const list = ZernioCrm.makeInboxList({
         shell, toast, api: ZernioCrm.api, asArray: ZernioCrm.asArray,
         uid: ZernioCrm.uid, resolveContactName: ZernioCrm.resolveContactName,
-        detachCard,
+        detachCard: () => products.detachCard(),
       });
       const {
         search, filter, platformFilter, selectedId, syncing, newConvOpen, newContactId, humanAgent,
@@ -59,165 +50,50 @@
       });
       const { attentionTips, tipsOpen, canHumanAgent, blockedByWindow } = tips;
 
+      // Composición BC: products → composer → templates. products obtiene draft
+      // y list obtiene detachCard por closures TDZ (referencias adelantadas);
+      // ambas se invocan post-setup (render/eventos), así que son seguras.
+      const products = ZernioCrm.makeInboxProducts({
+        shell, list, toast, uid: ZernioCrm.uid,
+        getDraft: () => composer.draft,
+      });
+
+      const composer = ZernioCrm.makeInboxComposer({
+        shell, list, products, toast, api: ZernioCrm.api, uid: ZernioCrm.uid, later,
+        onIncoming: (contact, conv, msg) => agentAutoReply && agentAutoReply(contact, conv, msg),
+      });
+
+      const templates = ZernioCrm.makeInboxTemplates({
+        shell, list, toast, api: ZernioCrm.api, asArray: ZernioCrm.asArray, uid: ZernioCrm.uid,
+      });
+
+      // BC Products — menciones, picker de productos y ficha adjunta
+      const {
+        mentionsOfMessage, contactProductMentions, productOf,
+        productPickOpen, productPickTarget, productPickQuery, productPickResults,
+        openProductPick, pickProduct,
+        cardAttach, cardGreeting, cardPreview, openCardPicker, attachCard, detachCard,
+        productInfoOpen, productInfoTarget, cardOfTarget, openProductInfo, closeProductInfo, sendFichaFromInfo,
+      } = products;
+
+      // BC Composer — borrador, envío y autocompletado '@'
+      const {
+        draft, sending, QUICK_REPLIES, simulateDelivery, send,
+        atOpen, atResults, atIndex, pickMention, onComposerKeydown,
+      } = composer;
+
+      // BC Templates — plantillas aprobadas (re-enganche >24h y primer mensaje)
+      const {
+        tplPickerOpen, tplList, tplSelected, tplParams, tplVariables, tplSending, tplError,
+        tplTarget, tplModalOpen, tplFirstOpen,
+        openTemplatePicker, closeTemplatePicker, sendApprovedTemplate,
+      } = templates;
+
       /** Abre el flujo de plantilla aprobada cuando la conversación nueva lo exige. */
       const startConversation = () => listStartConversation(() => openTemplatePicker(null));
 
       /** Pantalla de carga simulada al entrar a la bandeja. */
       later(() => { loading.value = false; }, 600);
-
-      // ── Composer (envío + simulación demo) — BC Composer ──────────────────
-      const draft = Vue.ref('');
-      const sending = Vue.ref(false);
-
-      /** Marca un mensaje saliente como entregado/leído (demo). */
-      function simulateDelivery(msg) {
-        later(() => { if (msg.status === 'sent') msg.status = 'delivered'; }, 450);
-        later(() => { if (msg.status === 'delivered') msg.status = 'read'; }, 1100);
-      }
-
-      /** Programa una respuesta entrante simulada (demo). */
-      function simulateIncoming(conv) {
-        const delay = 2200 + Math.random() * 1800;
-        later(() => {
-          const catalog = (workspace.value.products || []).filter((p) => p.active !== false);
-          let reply = DEMO_REPLIES[(Math.random() * DEMO_REPLIES.length) | 0];
-          // A veces el cliente demo pregunta por un producto del catálogo (demanda demo)
-          if (catalog.length && Math.random() < 0.55) {
-            const p = catalog[(Math.random() * catalog.length) | 0];
-            const alias = (p.aliases && p.aliases.length ? p.aliases[0] : p.name);
-            const pool = [
-              `¿Tienen ${p.name}?`,
-              `¿Cuánto cuesta ${alias}?`,
-              `¿Hay ${p.name} disponible?`,
-              `Quiero pedir ${p.name} para delivery`,
-              `¿Precio de ${alias}?`,
-            ];
-            reply = pool[(Math.random() * pool.length) | 0];
-          }
-          const msg = { id: uid('msg'), from: 'in', text: reply, ts: Date.now(), status: 'delivered' };
-          conv.messages.push(msg);
-          conv.lastTs = Date.now();
-          if (selectedId.value !== conv.id) conv.unread += 1;
-          const contact = contacts.value.find((c) => c.id === conv.contactId);
-          if (contact) recordProductMentions(contact, conv, msg, reply);
-          // Auto-respuesta del agente IA (demo) — solo envío, sin nueva simulación
-          if (agentAutoReply) agentAutoReply(contact, conv, msg);
-        }, delay);
-      }
-
-      /** Envía el borrador por la conversación seleccionada. */
-      async function send() {
-        const text = draft.value.trim();
-        const conv = selected.value;
-        if ((!text && !cardAttach.value) || !conv || sending.value) return;
-        // Políticas de ventana de 24h (validación ANTES de insertar el mensaje)
-        if (isLive.value && outsideWindow.value) {
-          if (conv.platform === 'whatsapp') {
-            toast('WhatsApp fuera de la ventana de 24h: usa una plantilla aprobada (Campañas)', 'error');
-            return;
-          }
-          if (['instagram', 'facebook'].includes(conv.platform) && !humanAgent.value) {
-            toast('Fuera de la ventana de 24h: activa "Enviar como agente humano"', 'error');
-            return;
-          }
-        }
-        // Si hay una ficha adjunta, el mensaje final = saludo + tarjeta formateada
-        const finalText = cardAttach.value ? (cardPreview.value || text) : text;
-        sending.value = true;
-        const msg = { id: uid('msg'), from: 'out', text: finalText, ts: Date.now(), status: 'sent', card: Boolean(cardAttach.value) };
-        conv.messages.push(msg);
-        conv.lastTs = msg.ts;
-        draft.value = '';
-        detachCard();
-        try {
-          if (isLive.value) {
-            const payload = {
-              accountId: (conv.accountId || (workspace.value.zernio && workspace.value.zernio.accountId)) || '',
-              message: finalText,
-            };
-            if (['instagram', 'facebook'].includes(conv.platform) && outsideWindow.value) {
-              payload.messagingType = 'MESSAGE_TAG';
-              payload.messageTag = 'HUMAN_AGENT';
-            }
-            await ZernioCrm.api.sendMessage(conv.id, payload);
-          } else {
-            simulateDelivery(msg);
-            simulateIncoming(conv);
-          }
-        } catch (err) {
-          msg.status = 'failed';
-          toast(err.message || 'No se pudo enviar el mensaje', 'error');
-        } finally {
-          sending.value = false;
-        }
-      }
-
-      // ── Plantillas aprobadas (fuera de 24h y primer mensaje) ───────────────
-      const tplModalOpen = Vue.ref(false); // re-enganche >24h
-      const tplFirstOpen = Vue.ref(false); // primer mensaje de conversación nueva
-      const tplList = Vue.ref([]);
-      const tplSelected = Vue.ref(null);
-      const tplParams = Vue.reactive({});
-      const tplSending = Vue.ref(false);
-      const tplTarget = Vue.ref(null); // conversación objetivo (null = abrir nueva)
-      const tplError = Vue.ref(''); // error persistente al cargar plantillas (no toast efímero)
-
-      /** ¿Algún selector de plantilla abierto? */
-      const tplPickerOpen = Vue.computed(() => tplModalOpen.value || tplFirstOpen.value);
-
-      function zernioAccountId() {
-        return (workspace.value.zernio && workspace.value.zernio.accountId) || '';
-      }
-
-      /** Variables {{n}} del body de la plantilla seleccionada. */
-      const tplVariables = Vue.computed(() => {
-        const t = tplSelected.value;
-        if (!t) return [];
-        const comps = t.components || [];
-        const body = comps.find((c) => c.type === 'body') || {};
-        return ZernioCrm.makeTemplateVars(t.body || body.text || '');
-      });
-
-      /** Carga las plantillas APROBADAS del accountId (o demo). Los errores se
-       *  muestran DENTRO del modal (tplError, persistente) — un toast se oculta
-       *  solo y el usuario no sabría por qué la lista quedó vacía. */
-      async function loadApprovedTemplates() {
-        tplError.value = '';
-        if (isLive.value) {
-          const accountId = zernioAccountId();
-          if (!accountId) {
-            tplError.value = 'Sin cuenta WhatsApp vinculada: reconecta el canal en Canales o Configuración';
-            return;
-          }
-          try {
-            const data = await ZernioCrm.api.listTemplates(accountId);
-            tplList.value = ZernioCrm.asArray(data).filter((t) => (t.status || '').toUpperCase() === 'APPROVED');
-          } catch (err) {
-            tplError.value = err.message || 'No se pudieron cargar las plantillas';
-          }
-        } else {
-          const seeded = (workspace.value.templates || []).filter((t) => t.status === 'APPROVED');
-          tplList.value = seeded.length
-            ? seeded
-            : [{ id: uid('tpl'), name: 'confirmacion_pedido', category: 'UTILITY', language: 'es', status: 'APPROVED', body: 'Hola {{1}}, tu pedido {{2}} fue confirmado. Te avisamos cuando esté listo.' }];
-        }
-      }
-
-      /** Abre el selector de plantilla: target=conversación (>24h) o null (nueva). */
-      function openTemplatePicker(target) {
-        tplTarget.value = target || null;
-        tplSelected.value = null;
-        Object.keys(tplParams).forEach((k) => delete tplParams[k]);
-        tplError.value = '';
-        (target ? tplModalOpen : tplFirstOpen).value = true;
-        loadApprovedTemplates();
-      }
-
-      function closeTemplatePicker() {
-        tplModalOpen.value = false;
-        tplFirstOpen.value = false;
-        tplError.value = '';
-      }
 
       // ── Ficha del cliente (drawer, flujo CRM por conversación) ─────────────
       const contactDrawerOpen = Vue.ref(false);
@@ -307,187 +183,6 @@
       function convRange(conv) {
         const first = (conv.messages && conv.messages[0] && conv.messages[0].ts) || conv.createdAt || conv.lastTs;
         return { from: first || Date.now(), to: conv.lastTs || Date.now() };
-      }
-
-      // ── Menciones de productos (detección + confirmación del agente) ───────
-
-      /** Menciones asociadas a un mensaje (chips bajo el mensaje). */
-      function mentionsOfMessage(messageId) {
-        return productMentions.value.filter((m) => m.messageId === messageId);
-      }
-
-      /** Menciones del contacto seleccionado (sección de la ficha). */
-      function contactProductMentions(contact) {
-        if (!contact) return [];
-        return productMentions.value.filter((m) => m.contactId === contact.id);
-      }
-
-      /** Producto de una mention (o null si fue eliminado). */
-      function productOf(mention) {
-        return (workspace.value.products || []).find((p) => p.id === mention.productId) || null;
-      }
-
-      // Picker de productos reutilizable (confirmar mention, vincular manual)
-      const productPickOpen = Vue.ref(false);
-      const productPickTarget = Vue.ref(null); // id de mention o null (vinculación manual)
-      const productPickQuery = Vue.ref('');
-      const productPickResults = ZernioCrm.makeProductSearch(workspace, { query: productPickQuery, limit: 8 });
-
-      function openProductPick(targetMentionId) {
-        productPickTarget.value = targetMentionId || null;
-        productPickQuery.value = '';
-        productPickOpen.value = true;
-      }
-
-      function pickProduct(product) {
-        if (!product) return;
-        if (productPickTarget.value === 'attach') {
-          attachCard(product);
-          productPickOpen.value = false;
-          return;
-        }
-        if (productPickTarget.value) {
-          confirmMention(productPickTarget.value, product.id);
-          toast('Producto confirmado: ' + product.name, 'success');
-        } else {
-          // Vinculación manual desde la ficha del cliente
-          const conv = selected.value;
-          const contact = selectedContact.value;
-          if (conv && contact) {
-            workspace.value.productMentions.push({
-              id: uid('men'),
-              productId: product.id,
-              messageId: null,
-              contactId: contact.id,
-              convId: conv.id,
-              ts: Date.now(),
-              intent: 'consulta',
-              match: 'exacta',
-              status: 'confirmada',
-              source: 'manual',
-              text: 'Vinculación manual del agente',
-            });
-            toast('Producto vinculado al cliente', 'success');
-          }
-        }
-        productPickOpen.value = false;
-      }
-
-      // ── Adjuntar ficha de producto al borrador (composer) ──────────────────
-      const cardAttach = Vue.ref(null); // producto adjunto al draft
-      const cardGreeting = Vue.ref('');
-
-      /** Preview del mensaje final compuesto (saludo + draft + tarjeta formateada). */
-      const cardPreview = Vue.computed(() => {
-        if (!cardAttach.value) return '';
-        const card = buildProductCard(cardAttach.value, niche.value.id);
-        const parts = [];
-        if (cardGreeting.value.trim()) parts.push(cardGreeting.value.trim());
-        if (draft.value.trim()) parts.push(draft.value.trim());
-        parts.push(card);
-        return parts.join('\n\n');
-      });
-
-      function openCardPicker() {
-        productPickTarget.value = 'attach';
-        productPickQuery.value = '';
-        productPickOpen.value = true;
-      }
-
-      // ── Modal de información completa del producto detectado (Ver más) ─────
-      const productInfoOpen = Vue.ref(false);
-      const productInfoTarget = Vue.ref(null);
-
-      const cardOfTarget = Vue.computed(() => {
-        const p = productInfoTarget.value;
-        return p ? buildProductCard(p, niche.value.id) : '';
-      });
-
-      function openProductInfo(p) {
-        productInfoTarget.value = p;
-        productInfoOpen.value = true;
-      }
-
-      function closeProductInfo() {
-        productInfoOpen.value = false;
-        productInfoTarget.value = null;
-      }
-
-      /** Envía la ficha del producto visto al chat y cierra el modal. */
-      function sendFichaFromInfo() {
-        const p = productInfoTarget.value;
-        if (!p) return;
-        attachCard(p);
-        closeProductInfo();
-        toast('Ficha adjuntada: ' + p.name, 'success');
-      }
-
-      function attachCard(product) {
-        if (!product || product.active === false) return;
-        cardAttach.value = product;
-        const defaults = (PRODUCT_CARD_DEFAULTS || {})[niche.value.id] || (PRODUCT_CARD_DEFAULTS || {}).generic || {};
-        cardGreeting.value = defaults.greeting || '';
-      }
-
-      function detachCard() {
-        cardAttach.value = null;
-        cardGreeting.value = '';
-      }
-
-      // ── Autocompletado '@' de productos en el composer ────────────────────
-      const atOpen = Vue.ref(false);
-      const atIndex = Vue.ref(0);
-      const atQuery = Vue.ref('');
-
-      /** Resultados del '@': productos activos filtrados por el texto tecleado. */
-      const atResults = ZernioCrm.makeProductSearch(workspace, { query: atQuery, limit: 6 });
-
-      /** Detecta el token '@query' al final del borrador y abre el menú. */
-      Vue.watch(draft, (val) => {
-        const m = /(^|\s)@(\S*)$/.exec(val);
-        if (m) {
-          atQuery.value = m[2];
-          atIndex.value = 0;
-          atOpen.value = true;
-        } else {
-          closeAt();
-        }
-      });
-
-      function closeAt() {
-        atOpen.value = false;
-        atQuery.value = '';
-      }
-
-      /** Selecciona un producto del menú '@': quita el token y adjunta la ficha. */
-      function pickMention(product) {
-        if (!product) return;
-        const idx = draft.value.lastIndexOf('@');
-        const before = idx >= 0 ? draft.value.slice(0, idx).replace(/\s+$/, '') : draft.value;
-        draft.value = before;
-        closeAt();
-        attachCard(product);
-        toast('Ficha adjuntada: ' + product.name, 'success');
-      }
-
-      /** Teclado del composer: navega el menú '@' o envía con Enter. */
-      function onComposerKeydown(e) {
-        if (atOpen.value) {
-          if (e.key === 'ArrowDown' && atResults.value.length) { e.preventDefault(); atIndex.value = (atIndex.value + 1) % atResults.value.length; return; }
-          if (e.key === 'ArrowUp' && atResults.value.length) { e.preventDefault(); atIndex.value = (atIndex.value - 1 + atResults.value.length) % atResults.value.length; return; }
-          if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-            // Menú abierto: Enter/Tab selecciona (o cierra si no hay resultados)
-            e.preventDefault();
-            if (atResults.value.length) pickMention(atResults.value[atIndex.value] || atResults.value[0]);
-            else closeAt();
-            return;
-          }
-          if (e.key === 'Escape') { e.preventDefault(); closeAt(); return; }
-        }
-        if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
-          e.preventDefault();
-          send();
-        }
       }
 
       function addReminderFor(contact) {
@@ -717,79 +412,6 @@
         }
         if (action.action === 'close_sale' && selectedContact.value) {
           closeAgentSale(selectedContact.value, action);
-        }
-      }
-
-      /** Envía la plantilla seleccionada (re-enganche >24h o primer mensaje). */
-      async function sendApprovedTemplate() {
-        const t = tplSelected.value;
-        if (!t || tplSending.value) return;
-        tplSending.value = true;
-        try {
-          const accountId = zernioAccountId();
-          const params = tplVariables.value.map((v) => (tplParams[v] || '').trim());
-          const name = t.name;
-          // Body con variables {{n}} resueltas: mismo texto para el hilo local
-          // (conversación nueva o re-enganche), para que el mensaje nunca quede vacío.
-          // Se sustituye por token ({{1}}..{{n}} en cualquier orden) y no por índice
-          const bodyText = t.body || ((t.components || []).find((c) => c.type === 'body') || {}).text || '';
-          let resolved = bodyText;
-          tplVariables.value.forEach((token) => {
-            resolved = String(resolved).split(token).join((tplParams[token] || '').trim());
-          });
-          if (!String(resolved).trim()) throw new Error('La plantilla no tiene texto de cuerpo');
-          if (!tplTarget.value) {
-            // Conversación nueva: WhatsApp exige plantilla aprobada para abrir el hilo
-            const contact = contacts.value.find((c) => c.id === newContactId.value);
-            if (!contact) throw new Error('Elige un contacto primero');
-            let conv;
-            if (isLive.value) {
-              const created = await ZernioCrm.api.createConversationWithTemplate({
-                accountId,
-                participantId: contact.phone,
-                templateName: name,
-                templateLanguage: t.language || 'es',
-                ...(params.length ? { templateParams: params } : {}),
-              });
-              const convData = created.conversation || created.data || created;
-              conv = {
-                id: convData.id || convData._id || uid('conv'),
-                contactId: contact.id,
-                platform: 'whatsapp',
-                status: 'active',
-                unread: 0,
-                tags: contact.tags.slice(0, 1),
-                messages: [],
-                lastTs: Date.now(),
-                accountId,
-              };
-            } else {
-              conv = { id: uid('conv'), contactId: contact.id, platform: 'whatsapp', status: 'active', unread: 0, tags: contact.tags.slice(0, 1), messages: [], lastTs: Date.now(), accountId: 'demo_wa' };
-            }
-            conv.messages.push({ id: uid('msg'), from: 'out', text: `[Plantilla ${name}] ${resolved}`, ts: Date.now(), status: 'delivered' });
-            workspace.value.conversations.unshift(conv);
-            selectedId.value = conv.id;
-            closeTemplatePicker();
-            newContactId.value = null;
-            toast(`Conversación iniciada con la plantilla ${name}`, 'success');
-          } else {
-            // Re-enganche >24h: plantilla dentro del hilo existente
-            const conv = tplTarget.value;
-            if (isLive.value) {
-              await ZernioCrm.api.sendTemplate(conv.id, {
-                accountId,
-                template: { elements: [{ name, language: t.language || 'es', components: [{ type: 'body', text: resolved }] }] },
-              });
-            }
-            conv.messages.push({ id: uid('msg'), from: 'out', text: `[Plantilla ${name}] ${resolved}`, ts: Date.now(), status: 'delivered' });
-            conv.lastTs = Date.now();
-            closeTemplatePicker();
-            toast('Plantilla enviada: el cliente debe responder para abrir la ventana de 24 h', 'info', 6000);
-          }
-        } catch (err) {
-          toast(err.message || 'No se pudo enviar la plantilla', 'error');
-        } finally {
-          tplSending.value = false;
         }
       }
 

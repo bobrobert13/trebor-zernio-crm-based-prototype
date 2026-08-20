@@ -1,7 +1,7 @@
 /**
  * @file settings-data-panel.js — Panel presentacional de Datos (exportación,
- * reset demo y eliminación) + modales de confirmación. Emite update:* para
- * sincronizar confirmReset/confirmDelete con el orquestador. Verbatim.
+ * reset demo y eliminación) + modales de confirmación. Emite update:*.
+ * Verbatim del bloque original.
  */
 (function () {
   'use strict';
@@ -10,18 +10,14 @@
 
   components['settings-data-panel'] = {
     props: {
-      workspace: Object,
-      confirmReset: Boolean,
-      confirmDelete: Boolean,
-      exportData: Function,
-      resetDemo: Function,
-      deleteWorkspace: Function,
+      workspace: Object, confirmReset: Boolean, confirmDelete: Boolean,
+      exportData: Function, resetDemo: Function, deleteWorkspace: Function,
     },
 
     emits: ['update:confirmReset', 'update:confirmDelete'],
 
     template: `
-        <section v-if="settingsTab === 'datos'" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
+        <section  class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Datos</h3>
           <div class="flex flex-wrap gap-2">
             <button @click="exportData"
@@ -38,7 +34,6 @@
             </button>
           </div>
         </section>
-
         <!-- Confirmaciones -->
         <ui-modal :open="confirmReset" title="Reset de datos demo" width="max-w-md" @close="$emit('update:confirmReset', false)">
           <p class="text-sm text-neutral-600">Se borrarán todos los workspaces y la sesión local. Volverás al onboarding.</p>

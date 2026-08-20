@@ -1,7 +1,6 @@
 /**
- * @file settings-fields-panel.js — Panel presentacional de campos del negocio
- * (alta, edición, tipo, opciones y orden). Recibe datos y handlers.
- * Verbatim del bloque original.
+ * @file settings-fields-panel.js — Panel presentacional de campos del negocio.
+ * Recibe datos y handlers por props. Verbatim del bloque original.
  */
 (function () {
   'use strict';
@@ -10,19 +9,13 @@
 
   components['settings-fields-panel'] = {
     props: {
-      customFields: Array,
-      fieldInput: Object,
-      fieldTypeOptions: Array,
-      addField: Function,
-      removeField: Function,
-      moveField: Function,
-      renameField: Function,
-      updateFieldType: Function,
-      updateFieldOptions: Function,
+      customFields: Array, fieldInput: Object, fieldTypeOptions: Array,
+      addField: Function, removeField: Function, moveField: Function,
+      renameField: Function, updateFieldType: Function, updateFieldOptions: Function,
     },
 
     template: `
-        <section v-if="settingsTab === 'campos'" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
+        <section  class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Campos del negocio</h3>
           <p class="text-sm text-neutral-600">
             Información que registras de cada cliente (además del nombre y teléfono).

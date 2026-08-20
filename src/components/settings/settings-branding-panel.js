@@ -1,6 +1,5 @@
 /**
- * @file settings-branding-panel.js — Panel presentacional de Marca (nombre,
- * slogan, color y logo). Recibe datos y handlers por props. Verbatim.
+ * @file settings-branding-panel.js — Panel presentacional de Marca. Verbatim.
  */
 (function () {
   'use strict';
@@ -9,16 +8,12 @@
 
   components['settings-branding-panel'] = {
     props: {
-      workspace: Object,
-      referrer: Object,
-      accents: Array,
-      uploadLogo: Function,
-      removeLogo: Function,
-      saveBranding: Function,
+      workspace: Object, referrer: Object, accents: Array,
+      uploadLogo: Function, removeLogo: Function, saveBranding: Function,
     },
 
     template: `
-        <section v-if="settingsTab === 'marca'" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
+        <section  class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Branding</h3>
           <div class="grid gap-4 sm:grid-cols-2">
             <ui-field label="Nombre del negocio">

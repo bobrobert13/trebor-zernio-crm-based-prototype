@@ -9,19 +9,13 @@
 
   components['settings-tags-panel'] = {
     props: {
-      leadTags: Array,
-      contactTags: Array,
-      leadInput: String,
-      contactInput: String,
-      addLeadTag: Function,
-      addContactTag: Function,
-      removeTag: Function,
-      moveTag: Function,
-      renameTag: Function,
+      leadTags: Array, contactTags: Array, leadInput: String, contactInput: String,
+      addLeadTag: Function, addContactTag: Function, removeTag: Function,
+      moveTag: Function, renameTag: Function,
     },
 
     template: `
-        <section v-if="settingsTab === 'pipeline'" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
+        <section  class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Gestión de leads</h3>
           <p class="text-sm text-neutral-600">
             Define las etapas de tu pipeline de clientes: se usan como pestañas en la bandeja y como columnas del tablero de Leads.
@@ -55,9 +49,7 @@
             </button>
           </div>
         </section>
-
-        <!-- Etiquetas de contacto (clasificación general, separadas de las leads) -->
-        <section v-if="settingsTab === 'pipeline'" class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
+        <section  class="border-2 border-neutral-900 bg-white p-5 lg:col-start-2">
           <h3 class="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Etiquetas de contacto</h3>
           <p class="text-sm text-neutral-600">
             Clasificación general de tus clientes (vip, frecuente, pedido…). Es independiente del pipeline de leads.

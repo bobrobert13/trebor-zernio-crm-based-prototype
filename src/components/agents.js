@@ -5,7 +5,8 @@
  * acción canónica del CRM (con prueba de adaptación), flujos de venta que
  * atiende cada agente (atención, clasificación, leads, personalización,
  * campañas), autonomía (auto-respuesta y cierre de ventas) y log de
- * interacciones. Demo: el agente se simula localmente (Mary demo).
+ * interacciones. Orquestador por bounded context: la lógica vive en
+ * src/agents-composables.js (1:1 con el comportamiento previo).
  */
 (function () {
   'use strict';
@@ -18,154 +19,33 @@
 
   components['agents-view'] = {
     setup() {
-      const isLive = Vue.computed(() => store.mode === 'live');
-      const agents = Vue.computed(() => (store.workspace && store.workspace.agents) || []);
-
-      const editorOpen = Vue.ref(false);
-      const editingId = Vue.ref(null); // null = agente nuevo
-      const showKey = Vue.ref(false);
-      const testing = Vue.ref(false);
-      const saving = Vue.ref(false);
-      const adaptPreview = Vue.ref('');
-      const adaptError = Vue.ref('');
-      const logsOpen = Vue.ref(false);
-      const logsAgent = Vue.ref(null);
-      const toolsOpen = Vue.ref(false); // capacidades MCP del CRM expuestas al agente
-
-      /** Formulario del editor (flujos y mapeo como objetos editables). */
-      const form = Vue.reactive({
-        name: '',
-        provider: 'Mary',
-        url: '',
-        apiKey: '',
-        active: true,
-        flows: { inbox: true, classification: true, leads: true, personalization: false, campaigns: false },
-        autoReply: false,
-        autoCloseSale: false,
-        responseExample: MARY_EXAMPLE,
-        mapping: {},
+      // Composición por bounded context (ver src/agents-composables.js)
+      const shell = ZernioCrm.makeAgentsShell({ store, AGENT_FLOWS, CRM_TOOLS });
+      let diagnostics = null;
+      const editor = ZernioCrm.makeAgentEditor({
+        workspace: shell.workspace, agents: shell.agents, toast, uid, canEdit,
+        MARY_EXAMPLE, MARY_MAPPING,
+        onResetForms: () => {
+          if (diagnostics) {
+            diagnostics.adaptPreview.value = '';
+            diagnostics.adaptError.value = '';
+          }
+        },
       });
-
-      function resetForm() {
-        editingId.value = null;
-        Object.assign(form, {
-          name: '', provider: 'Mary', url: '', apiKey: '', active: true,
-          flows: { inbox: true, classification: true, leads: true, personalization: false, campaigns: false },
-          autoReply: false, autoCloseSale: false,
-          responseExample: MARY_EXAMPLE,
-          mapping: Object.assign({}, MARY_MAPPING),
-        });
-        showKey.value = false;
-        adaptPreview.value = '';
-        adaptError.value = '';
-      }
-
-      /** Abre el editor (agente existente o nuevo). */
-      function openEditor(agent) {
-        resetForm();
-        if (agent) {
-          editingId.value = agent.id;
-          Object.assign(form, {
-            name: agent.name, provider: agent.provider || 'Mary', url: agent.url || '',
-            apiKey: agent.apiKey || '', active: agent.active !== false,
-            flows: Object.assign({ inbox: true, classification: true, leads: true, personalization: false, campaigns: false }, agent.flows || {}),
-            autoReply: Boolean(agent.autoReply), autoCloseSale: Boolean(agent.autoCloseSale),
-            responseExample: agent.responseExample || MARY_EXAMPLE,
-            mapping: Object.assign({}, MARY_MAPPING, agent.mapping || {}),
-          });
-        }
-        editorOpen.value = true;
-      }
-
-      /** Guarda (crea o actualiza) el agente en workspace.agents (persistido). */
-      function saveAgent() {
-        if (saving.value) return;
-        if (!form.name.trim()) {
-          toast('Ponle un nombre al agente', 'error');
-          return;
-        }
-        saving.value = true;
-        const payload = {
-          name: form.name.trim(),
-          provider: form.provider || 'Mary',
-          url: form.url.trim(),
-          apiKey: form.apiKey.trim(),
-          active: form.active,
-          flows: Object.assign({}, form.flows),
-          autoReply: Boolean(form.autoReply),
-          autoCloseSale: Boolean(form.autoCloseSale),
-          responseExample: form.responseExample,
-          mapping: Object.assign({}, form.mapping),
-        };
-        if (editingId.value) {
-          const agent = agents.value.find((a) => a.id === editingId.value);
-          if (agent) Object.assign(agent, payload);
-          toast(`Agente ${payload.name} actualizado`, 'success');
-        } else {
-          store.workspace.agents.unshift({ id: uid('ag'), logs: [], ...payload });
-          toast(`Agente ${payload.name} conectado`, 'success');
-        }
-        saving.value = false;
-        editorOpen.value = false;
-      }
-
-      function removeAgent(agent) {
-        if (!canEdit('agents')) return;
-        const i = agents.value.indexOf(agent);
-        if (i >= 0) agents.value.splice(i, 1);
-        toast('Agente eliminado', 'info');
-      }
-
-      /** Prueba la conexión al servicio (live) o simula (demo). */
-      async function testConnection(agent) {
-        if (testing.value) return;
-        testing.value = true;
-        try {
-          await ZernioCrm.testAgent(agent);
-          toast('Conexión OK: el servicio respondió', 'success');
-        } catch (err) {
-          toast(err.message || 'No se pudo conectar con el servicio', 'error');
-        } finally {
-          testing.value = false;
-        }
-      }
-
-      /** Corre el JSON de ejemplo por el mapeo y muestra la acción canónica. */
-      function testAdaptation() {
-        adaptError.value = '';
-        adaptPreview.value = '';
-        try {
-          const raw = JSON.parse(form.responseExample);
-          const action = ZernioCrm.adapt({ mapping: form.mapping }, raw);
-          adaptPreview.value = JSON.stringify(action, null, 2);
-        } catch (err) {
-          adaptError.value = err.message || 'JSON inválido';
-        }
-      }
-
-      function flowLabel(id) {
-        const f = AGENT_FLOWS.find((x) => x.id === id);
-        return f ? f.label : id;
-      }
-
-      /** Nombre legible de una herramienta MCP por id (pipelines). */
-      function toolName(id) {
-        const t = CRM_TOOLS.find((x) => x.id === id);
-        return t ? t.name : id;
-      }
-
-      function openLogs(agent) {
-        logsAgent.value = agent;
-        logsOpen.value = true;
-      }
+      diagnostics = ZernioCrm.makeAgentDiagnostics({
+        form: editor.form,
+        toast,
+        testAgent: (a) => ZernioCrm.testAgent(a),
+        adapt: (ctx, raw) => ZernioCrm.adapt(ctx, raw),
+      });
+      const logs = ZernioCrm.makeAgentLogs();
 
       return {
-        isLive, agents, canEdit, AGENT_FLOWS, CANONICAL_FIELDS,
-        CRM_TOOLS, TOOL_PIPELINES, toolsOpen, toolName,
-        editorOpen, editingId, form, showKey, testing, saving,
-        adaptPreview, adaptError, logsOpen, logsAgent,
-        openEditor, saveAgent, removeAgent, testConnection, testAdaptation,
-        flowLabel, openLogs, resetForm, fmtT,
+        ...shell,       // workspace, isLive, agents, flowLabel, toolName
+        ...editor,      // editorOpen, editingId, showKey, saving, toolsOpen, form, resetForm, openEditor, saveAgent, removeAgent
+        ...diagnostics, // testing, adaptPreview, adaptError, testConnection, testAdaptation
+        ...logs,        // logsOpen, logsAgent, openLogs
+        canEdit, AGENT_FLOWS, CANONICAL_FIELDS, CRM_TOOLS, TOOL_PIPELINES, fmtT,
       };
     },
 

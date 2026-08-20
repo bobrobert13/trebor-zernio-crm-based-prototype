@@ -1,118 +1,29 @@
 /**
  * @file contacts.js — Directorio de contactos con búsqueda, filtros por tag
  * y columnas dinámicas según los campos personalizados del nicho.
- * CRUD local sobre store.workspace.contacts (persistencia automática).
+ * Orquestador por bounded context: la lógica vive en src/contacts-composables.js
+ * (1:1 con el comportamiento previo).
  */
 (function () {
   'use strict';
 
-  const { Vue, ZernioCrm } = window;
+  const { ZernioCrm } = window;
   const { store, toast, getNiche, formatDate, uid, canEdit } = ZernioCrm;
 
   const components = {};
 
-  /** Plantilla de formulario de contacto (create/edit). */
-  function emptyForm() {
-    return { id: null, name: '', phone: '', tags: [], customFields: {} };
-  }
-
   components['contacts-view'] = {
     setup() {
-      const search = Vue.ref('');
-      const tagFilter = Vue.ref('all');
-      const modalOpen = Vue.ref(false);
-      const confirmDelete = Vue.ref(null);
-      const form = Vue.reactive(emptyForm());
-
-      const workspace = Vue.computed(() => store.workspace);
-      const niche = Vue.computed(() => getNiche(workspace.value && workspace.value.nicheId));
-      const contacts = Vue.computed(() => workspace.value.contacts || []);
-
-      /** Tags disponibles: etiquetas de contacto del negocio (administrables en Configuración). */
-      const availableTags = Vue.computed(() => workspace.value.contactTags || [...new Set([...niche.value.tags, 'cliente'])]);
-
-      /** Campos del negocio (personalizables en Configuración). */
-      const fields = Vue.computed(() => workspace.value.customFields || niche.value.customFields || []);
-
-      /** Contactos filtrados por búsqueda y tag. */
-      const filtered = Vue.computed(() => {
-        const q = search.value.trim().toLowerCase();
-        return contacts.value.filter((c) => {
-          if (tagFilter.value !== 'all' && !c.tags.includes(tagFilter.value)) return false;
-          if (q && !`${c.name} ${c.phone}`.toLowerCase().includes(q)) return false;
-          return true;
-        });
-      });
-
-      function openCreate() {
-        Object.assign(form, emptyForm());
-        modalOpen.value = true;
-      }
-
-      function openEdit(contact) {
-        Object.assign(form, {
-          id: contact.id,
-          name: contact.name,
-          phone: contact.phone,
-          tags: [...contact.tags],
-          customFields: { ...contact.customFields },
-        });
-        modalOpen.value = true;
-      }
-
-      function toggleTag(tag) {
-        const i = form.tags.indexOf(tag);
-        if (i >= 0) form.tags.splice(i, 1);
-        else form.tags.push(tag);
-      }
-
-      /** Guarda contacto nuevo o editado (solo edición del propio registro). */
-      function save() {
-        if (!form.name.trim() || !form.phone.trim()) return;
-        if (form.id) {
-          const contact = contacts.value.find((c) => c.id === form.id);
-          if (!contact) return;
-          Object.assign(contact, {
-            name: form.name.trim(),
-            phone: form.phone.trim(),
-            tags: [...form.tags],
-            customFields: { ...form.customFields },
-            nameSource: 'manual',
-          });
-          toast('Contacto actualizado', 'success');
-        } else {
-          workspace.value.contacts.unshift({
-            id: uid('ct'),
-            name: form.name.trim(),
-            phone: form.phone.trim(),
-            platform: 'whatsapp',
-            tags: [...form.tags],
-            leadTag: null,
-            customFields: { ...form.customFields },
-            createdAt: Date.now(),
-            // Momento 0 del historial de etapas: cae en "Sin asignar" (null)
-            leadHistory: [{ tag: null, at: Date.now() }],
-            // Creado a mano: el live nunca lo renombra automáticamente
-            nameSource: 'manual',
-          });
-          toast('Contacto creado', 'success');
-        }
-        modalOpen.value = false;
-      }
-
-      function remove() {
-        const id = confirmDelete.value;
-        workspace.value.contacts = workspace.value.contacts.filter((c) => c.id !== id);
-        workspace.value.conversations = workspace.value.conversations.filter((c) => c.contactId !== id);
-        workspace.value.reminders = (workspace.value.reminders || []).filter((r) => r.contactId !== id);
-        confirmDelete.value = null;
-        toast('Contacto eliminado', 'info');
-      }
+      // Composición por bounded context (ver src/contacts-composables.js)
+      const directory = ZernioCrm.makeContactDirectory({ store, getNiche });
+      const editor = ZernioCrm.makeContactEditor({ workspace: directory.workspace, contacts: directory.contacts, toast, uid });
+      const lifecycle = ZernioCrm.makeContactLifecycle({ workspace: directory.workspace, toast });
 
       return {
-        search, tagFilter, modalOpen, confirmDelete, form,
-        workspace, niche, contacts, availableTags, filtered, fields,
-        openCreate, openEdit, toggleTag, save, remove, canEdit, formatDate,
+        ...directory,   // workspace, niche, contacts, search, tagFilter, availableTags, fields, filtered
+        ...editor,      // modalOpen, form, openCreate, openEdit, toggleTag, save
+        ...lifecycle,   // confirmDelete, remove
+        canEdit, formatDate,
       };
     },
 

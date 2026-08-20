@@ -3,7 +3,8 @@
  * Paso 1→nicho, 2→convenio de uso, 3→branding (nombre, logo, color),
  * 4→referencia, 5→canales, 6→equipo inicial. Conexión real de WhatsApp
  * vía live-connect. Orquestador por bounded context: la lógica vive en
- * src/onboarding-composables.js (1:1 con el comportamiento previo).
+ * src/onboarding-composables.js y la presentación en
+ * src/components/onboarding/*. 1:1 con el comportamiento previo.
  */
 (function () {
   'use strict';
@@ -97,7 +98,6 @@
 
           <!-- Transición entre pasos (fade + deslizamiento sutil) -->
           <transition name="step" mode="out-in">
-          <!-- Pantalla de carga al pasar de bienvenida a nicho -->
           <div v-if="enterLoading" class="bg-white p-8">
             <div class="mb-6 flex items-center gap-2">
               <ui-spinner class="text-[var(--accent)]"></ui-spinner>
@@ -109,390 +109,27 @@
               <ui-skeleton h="h-16"></ui-skeleton>
             </div>
           </div>
-
           <!-- 0 · Bienvenida -->
-          <section v-else-if="current === 0" class="hero-bg relative overflow-hidden text-white">
-            <div class="px-8 py-14 sm:px-14 lg:py-20">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="flex items-center gap-1.5 border border-white/30 bg-white/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest backdrop-blur">
-                  <ui-icon name="whatsapp" class="h-3.5 w-3.5"></ui-icon> WhatsApp
-                </span>
-                <span class="flex items-center gap-1.5 border border-white/30 bg-white/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest backdrop-blur">
-                  <ui-icon name="instagram" class="h-3.5 w-3.5"></ui-icon> Instagram
-                </span>
-                <span class="flex items-center gap-1.5 border border-white/30 bg-[var(--accent)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest">
-                  <ui-icon name="sparkles" class="h-3.5 w-3.5"></ui-icon> Agente de ventas IA
-                </span>
-              </div>
-              <h2 class="mt-6 max-w-2xl text-4xl font-bold leading-tight lg:text-5xl">Tu negocio atendiendo y vendiendo, incluso cuando duermes.</h2>
-              <p class="mt-4 max-w-xl text-lg text-white/80">
-                Conecta tus canales, gestiona a tus clientes con un CRM completo y activa tu
-                <strong class="text-white">agente de ventas IA</strong>: atiende, clasifica y cierra ventas 24/7.
-              </p>
-
-              <!-- Flujo agentico destacado: la característica protagonista -->
-              <div class="mt-7 max-w-2xl border-2 border-[var(--accent)] bg-white/10 p-4 backdrop-blur">
-                <div class="flex items-center gap-2">
-                  <ui-icon name="sparkles" class="h-4 w-4 text-white"></ui-icon>
-                  <p class="font-mono text-[10px] uppercase tracking-widest text-white">Flujo agentico de ventas</p>
-                  <span class="border border-white/30 px-1.5 py-0.5 font-mono text-[9px] uppercase text-white/80">próximamente conectable</span>
-                </div>
-                <div class="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
-                  <span class="border border-white/30 bg-white/10 px-2 py-1">Recibe el mensaje</span>
-                  <span class="opacity-70">→</span>
-                  <span class="border border-white/30 bg-white/10 px-2 py-1">Analiza el contexto (inventario, leads, historial)</span>
-                  <span class="opacity-70">→</span>
-                  <span class="border border-white/30 bg-white/10 px-2 py-1">Responde y clasifica</span>
-                  <span class="opacity-70">→</span>
-                  <span class="border-2 border-[var(--accent)] bg-white px-2 py-1 font-semibold text-neutral-900">Cierra la venta</span>
-                </div>
-                <p class="mt-2.5 text-xs text-white/70">
-                  Con barreras seguras: respeta la ventana de 24h de WhatsApp, una sola respuesta por mensaje y solo modifica datos con tu permiso.
-                </p>
-              </div>
-
-              <button @click="next" class="mt-8 bg-white px-8 py-3.5 font-semibold text-neutral-900 shadow-brutal transition hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none">
-                Comenzar mi configuración →
-              </button>
-
-              <!-- Tres pilares: clientes · canales · ventas agenticas (protagonista) -->
-              <div class="mt-10 grid gap-3 border-t border-white/20 pt-6 sm:grid-cols-3">
-                <div class="border border-white/20 bg-white/5 p-3.5">
-                  <div class="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-white/70">
-                    <ui-icon name="users" class="h-3.5 w-3.5"></ui-icon> Gestión de clientes
-                  </div>
-                  <p class="mt-1.5 text-sm text-white/85">
-                    Fichas, historial, etapas de lead e intención de compra en un solo lugar.
-                  </p>
-                </div>
-                <div class="border border-white/20 bg-white/5 p-3.5">
-                  <div class="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-white/70">
-                    <ui-icon name="layers" class="h-3.5 w-3.5"></ui-icon> Canales y equipo
-                  </div>
-                  <p class="mt-1.5 text-sm text-white/85">
-                    WhatsApp e Instagram con roles y permisos para tu equipo de trabajo.
-                  </p>
-                </div>
-                <div class="border-2 border-[var(--accent)] bg-[var(--accent)] p-3.5">
-                  <div class="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-white">
-                    <ui-icon name="sparkles" class="h-3.5 w-3.5"></ui-icon> Ventas agenticas
-                  </div>
-                  <p class="mt-1.5 text-sm text-white">
-                    Tu agente de IA atiende, clasifica y cierra ventas con total libertad sobre tu catálogo.
-                  </p>
-                </div>
-              </div>
-
-              <div class="mt-6 grid gap-4 sm:grid-cols-3">
-                <div>
-                  <p class="text-2xl font-bold">≈5 min</p>
-                  <p class="text-sm text-white/70">de configuración guiada</p>
-                </div>
-                <div>
-                  <p class="text-2xl font-bold">2 canales</p>
-                  <p class="text-sm text-white/70">WhatsApp hoy · Instagram pronto</p>
-                </div>
-                <div>
-                  <p class="text-2xl font-bold">Ventas 24/7</p>
-                  <p class="text-sm text-white/70">con tu agente de ventas IA</p>
-                </div>
-              </div>
-            </div>
-          </section>
+          <onboarding-welcome v-if="current === 0" :ui="ui" :next="next"></onboarding-welcome>
 
           <!-- 1 · Nicho -->
-          <section v-else-if="current === 1" class="bg-white p-8">
-            <h2 class="text-2xl font-bold">¿A qué se dedica tu negocio?</h2>
-            <p class="mt-1 text-sm text-neutral-500">Elige el modelo más parecido: ajustamos campos, plantillas y etapas de seguimiento.</p>
-            <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <button v-for="(n, ni) in ui.NICHES" :key="n.id" @click="selectNiche(n.id)"
-                class="stagger-in border-2 p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-brutal-sm"
-                :style="{ animationDelay: (ni * 40) + 'ms' }"
-                :class="form.nicheId === n.id ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-brutal-sm' : 'border-neutral-200 bg-white hover:border-neutral-900'">
-                <div class="flex items-start justify-between gap-2">
-                  <span class="flex h-11 w-11 items-center justify-center bg-[var(--accent)] text-xl shadow-brutal-sm" :class="form.nicheId === n.id ? 'text-white' : 'bg-stone-100'">{{ n.emoji }}</span>
-                  <ui-icon v-if="form.nicheId === n.id" name="check-circle" class="h-5 w-5 text-[var(--accent)]"></ui-icon>
-                </div>
-                <h3 class="mt-3 font-semibold">{{ n.nombre }}</h3>
-                <p class="mt-1 text-xs leading-relaxed text-neutral-500">{{ n.descripcion }}</p>
-                <div class="mt-3 flex flex-wrap gap-1.5">
-                  <span class="border border-neutral-300 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">{{ (n.customFields || []).length }} campos</span>
-                  <span class="border border-neutral-300 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">Plantillas demo</span>
-                  <span class="border border-neutral-300 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">WhatsApp + IG</span>
-                </div>
-              </button>
-              <button @click="selectNiche('personalizado')"
-                class="stagger-in border-2 border-dashed p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-brutal-sm"
-                :style="{ animationDelay: (ui.NICHES.length * 40) + 'ms' }"
-                :class="form.nicheId === 'personalizado' ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-brutal-sm' : 'border-neutral-300 hover:border-neutral-900'">
-                <span class="flex h-11 w-11 items-center justify-center bg-stone-100 text-xl">✨</span>
-                <h3 class="mt-3 font-semibold">Otro / Personalizado</h3>
-                <p class="mt-1 text-xs text-neutral-500">Configuración genérica adaptable a cualquier negocio.</p>
-              </button>
-            </div>
-
-            <!-- Preview del nicho seleccionado (atracción psicológica) -->
-            <div v-if="selectedNiche && selectedNiche.id !== 'personalizado'" class="mt-6 grid gap-4 border border-neutral-200 bg-stone-50 p-5 sm:grid-cols-2">
-              <div>
-                <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Campos del cliente que registrarás</p>
-                <div class="mt-2 flex flex-wrap gap-1.5">
-                  <span v-for="f in selectedNiche.customFields" :key="f.slug" class="border border-neutral-300 bg-white px-2 py-1 text-xs">
-                    {{ f.name }}
-                  </span>
-                </div>
-              </div>
-              <div>
-                <p class="font-mono text-[10px] uppercase tracking-widest text-neutral-400">Lo que incluye tu espacio</p>
-                <ul class="mt-2 space-y-1">
-                  <li class="flex items-center gap-2 text-sm text-neutral-600">
-                    <ui-icon name="message" class="h-3.5 w-3.5 text-neutral-400"></ui-icon>
-                    Plantillas demo de WhatsApp del nicho
-                  </li>
-                  <li class="flex items-center gap-2 text-sm text-neutral-600">
-                    <ui-icon name="tag" class="h-3.5 w-3.5 text-neutral-400"></ui-icon>
-                    Campos del negocio y etapas del pipeline
-                  </li>
-                  <li class="flex items-center gap-2 text-sm text-neutral-600">
-                    <ui-icon name="users" class="h-3.5 w-3.5 text-neutral-400"></ui-icon>
-                    Equipo inicial con roles
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </section>
+          <onboarding-niche v-else-if="current === 1" :ui="ui" :form="form" :selected-niche="selectedNiche" :select-niche="selectNiche"></onboarding-niche>
 
           <!-- 2 · Convenio de uso -->
-          <section v-else-if="current === 2" class="bg-white p-8">
-            <h2 class="text-2xl font-bold">Convenio de uso</h2>
-            <p class="mt-1 text-sm text-neutral-500">Conoce lo que podrás hacer con tu espacio y acepta las condiciones para empezar.</p>
-
-            <!-- Resumen de capacidades -->
-            <div class="mt-6 border-2 border-neutral-900 bg-stone-50 p-5">
-              <p class="mb-3 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Lo que podrás hacer</p>
-              <div class="grid gap-3 sm:grid-cols-2">
-                <div class="flex items-start gap-3">
-                  <span class="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--accent)] text-white">
-                    <ui-icon name="message" class="h-4 w-4"></ui-icon>
-                  </span>
-                  <div>
-                    <p class="text-sm font-semibold">Responder a tus clientes</p>
-                    <p class="text-xs text-neutral-500">Bandeja unificada por WhatsApp e Instagram con historial completo.</p>
-                  </div>
-                </div>
-                <div class="flex items-start gap-3">
-                  <span class="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--accent)] text-white">
-                    <ui-icon name="tag" class="h-4 w-4"></ui-icon>
-                  </span>
-                  <div>
-                    <p class="text-sm font-semibold">Gestionar leads y pedidos</p>
-                    <p class="text-xs text-neutral-500">Seguimiento por etapas, cierres y recordatorios para no perder ventas.</p>
-                  </div>
-                </div>
-                <div class="flex items-start gap-3">
-                  <span class="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--accent)] text-white">
-                    <ui-icon name="box" class="h-4 w-4"></ui-icon>
-                  </span>
-                  <div>
-                    <p class="text-sm font-semibold">Catálogo con fichas técnicas</p>
-                    <p class="text-xs text-neutral-500">Productos y servicios con detalle listo para enviar en el chat.</p>
-                  </div>
-                </div>
-                <div class="flex items-start gap-3">
-                  <span class="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--accent)] text-white">
-                    <ui-icon name="users" class="h-4 w-4"></ui-icon>
-                  </span>
-                  <div>
-                    <p class="text-sm font-semibold">Equipo y métricas</p>
-                    <p class="text-xs text-neutral-500">Roles con permisos y resumen del desempeño de tu negocio.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Cláusulas del convenio -->
-            <div class="mt-5 space-y-2.5">
-              <p class="mb-3 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Al usar este espacio aceptas</p>
-              <p v-for="(c, i) in ui.CONVENIO_CLAUSULAS" :key="i" class="flex items-start gap-2.5 text-sm text-neutral-600">
-                <ui-icon name="check-circle" class="mt-0.5 h-4 w-4 shrink-0 text-emerald-700"></ui-icon>
-                <span>{{ c }}</span>
-              </p>
-            </div>
-
-            <!-- Aceptación obligatoria -->
-            <label class="mt-6 flex cursor-pointer items-start gap-3 border-2 p-4 transition"
-              :class="form.accepted ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-neutral-300 hover:border-neutral-900'">
-              <input type="checkbox" v-model="form.accepted" class="mt-0.5 h-4 w-4 accent-[var(--accent)]" />
-              <span class="text-sm font-medium">Acepto el convenio de uso y las políticas de datos de clientes.</span>
-            </label>
-            <p v-if="!form.accepted" class="mt-2 text-xs text-neutral-400">Debes aceptar el convenio para continuar con la configuración.</p>
-          </section>
+          <onboarding-agreement v-else-if="current === 2" :ui="ui" :form="form"></onboarding-agreement>
 
           <!-- 3 · Branding -->
-          <section v-else-if="current === 3" class="bg-white p-8">
-            <h2 class="text-2xl font-bold">Dale identidad a tu espacio</h2>
-            <p class="mt-1 text-sm text-neutral-500">Nombre, slogan y color de marca. Siempre podrás cambiarlo en Configuración.</p>
-            <div class="mt-6 grid gap-6 sm:grid-cols-2">
-              <ui-field label="Nombre del negocio">
-                <input v-model.trim="form.name" type="text" placeholder="Ej: Sabores de la Casa"
-                  class="w-full border-2 border-neutral-300 px-3 py-2 outline-none transition focus:border-neutral-900" />
-              </ui-field>
-              <ui-field label="Slogan (opcional)">
-                <input v-model.trim="form.slogan" type="text" placeholder="Ej: Cocina casera desde 1998"
-                  class="w-full border-2 border-neutral-300 px-3 py-2 outline-none transition focus:border-neutral-900" />
-              </ui-field>
-            </div>
-            <div class="mt-6">
-              <span class="mb-3 block font-mono text-[11px] font-semibold uppercase tracking-widest text-neutral-500">Color de marca</span>
-              <div class="flex flex-wrap gap-3">
-                <button v-for="a in ui.ACCENTS" :key="a.id" @click="form.accentId = a.id"
-                  class="flex items-center gap-2 border-2 px-3 py-2 transition"
-                  :class="form.accentId === a.id ? 'border-neutral-900 shadow-brutal-sm' : 'border-neutral-200'">
-                  <span class="h-5 w-5 border border-black/10" :style="{ background: a.value }"></span>
-                  <span class="text-xs font-medium">{{ a.nombre }}</span>
-                </button>
-              </div>
-            </div>
-            <div class="mt-6 flex flex-wrap items-center gap-4 border-2 border-dashed border-neutral-300 p-4">
-              <span class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden bg-white text-lg font-bold text-[var(--accent)] shadow-brutal-sm"
-                :style="form.logo ? {} : { background: accent.value, color: '#fff' }">
-                <img v-if="form.logo" :src="form.logo" :alt="'Logo de ' + (form.name || 'tu negocio')" class="h-full w-full object-contain" />
-                <template v-else>{{ (form.name || 'T').trim().slice(0, 2).toUpperCase() }}</template>
-              </span>
-              <div class="min-w-0 flex-1">
-                <p class="truncate font-semibold">{{ form.name || 'Nombre del negocio' }}</p>
-                <p class="truncate text-sm text-neutral-500">{{ form.slogan || 'Tu slogan aquí' }}</p>
-              </div>
-              <div class="flex shrink-0 gap-2">
-                <label class="cursor-pointer border-2 border-neutral-900 bg-white px-3 py-1.5 text-xs font-medium shadow-brutal-sm transition hover:shadow-none">
-                  {{ form.logo ? 'Reemplazar logo' : 'Subir logo' }}
-                  <input type="file" accept="image/*" class="sr-only" @change="uploadLogo" />
-                </label>
-                <button v-if="form.logo" @click="removeLogo" class="border-2 border-neutral-300 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:border-red-700">
-                  Quitar logo
-                </button>
-              </div>
-            </div>
-          </section>
+          <onboarding-branding v-else-if="current === 3" :ui="ui" :form="form" :accent="accent" :upload-logo="uploadLogo" :remove-logo="removeLogo"></onboarding-branding>
 
           <!-- 4 · Referencia -->
-          <section v-else-if="current === 4" class="bg-white p-8">
-            <h2 class="text-2xl font-bold">¿Quién nos recomendó?</h2>
-            <p class="mt-1 text-sm text-neutral-500">Nos ayuda a mejorar nuestro servicio. Tus datos nunca se comparten.</p>
-            <div class="mt-6 grid gap-3 sm:grid-cols-3">
-              <button v-for="r in ui.REFERRERS" :key="r.id" @click="form.referrer = r.id"
-                class="flex items-center gap-3 border-2 p-4 transition"
-                :class="form.referrer === r.id ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-brutal-sm' : 'border-neutral-200 hover:border-neutral-900'">
-                <ui-icon :name="r.icon" class="h-5 w-5" :class="form.referrer === r.id ? 'text-[var(--accent)]' : 'text-neutral-400'"></ui-icon>
-                <span class="text-sm font-medium">{{ r.nombre }}</span>
-              </button>
-            </div>
-            <ui-field v-if="form.referrer === 'referido' || form.referrer === 'otro'" label="Cuéntanos más" hint="Opcional">
-              <input v-model.trim="form.referrerDetail" type="text" placeholder="Ej: María, clienta de la tienda"
-                class="mt-2 w-full border-2 border-neutral-300 px-3 py-2 outline-none transition focus:border-neutral-900" />
-            </ui-field>
-          </section>
+          <onboarding-referral v-else-if="current === 4" :ui="ui" :form="form"></onboarding-referral>
 
           <!-- 5 · Canales -->
-          <section v-else-if="current === 5" class="bg-white p-8">
-            <h2 class="text-2xl font-bold">Conecta tus canales</h2>
-            <p class="mt-1 text-sm text-neutral-500">WhatsApp ahora · Instagram próximamente. Todo desde un solo lugar.</p>
+          <onboarding-channels v-else-if="current === 5" :ui="ui" :form="form" :live-result="liveResult" :creating="creating" :on-live-connected="onLiveConnected" :finish="finish"></onboarding-channels>
 
-            <div class="mt-6 border border-neutral-200 bg-white p-5">
-              <div class="mb-4 flex items-center gap-3">
-                <span class="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
-                  <ui-icon name="whatsapp" class="h-5 w-5"></ui-icon>
-                </span>
-                <div>
-                  <h3 class="font-semibold">Conecta el número de tu negocio</h3>
-                  <p class="text-sm text-neutral-500">Meta te guía: autoriza con tu cuenta y verifica tu número con un código SMS. Sin pasos técnicos.</p>
-                </div>
-              </div>
-              <live-connect :business-name="form.name" @connected="onLiveConnected"></live-connect>
-              <p v-if="liveResult" class="mt-3 font-mono text-xs text-emerald-700">
-                ✓ Número vinculado: {{ liveResult.phone }}
-              </p>
-            </div>
-
-            <div class="mt-4 flex items-center gap-3 border border-dashed border-neutral-300 bg-stone-50 p-4">
-              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-pink-100 text-pink-700">
-                <ui-icon name="instagram" class="h-5 w-5"></ui-icon>
-              </span>
-              <div class="min-w-0">
-                <p class="font-semibold">Instagram</p>
-                <p class="text-sm text-neutral-500">Disponible próximamente en la configuración. Ya puedes gestionarlo desde Canales.</p>
-              </div>
-              <ui-badge variant="neutral" class="ml-auto shrink-0">Próximamente</ui-badge>
-            </div>
-
-            <button @click="form.skipConnect = true; finish()" :disabled="creating"
-              class="mt-6 text-sm font-medium text-neutral-500 underline transition hover:text-neutral-900">
-              Configurar después (conectaré mi número desde Canales)
-            </button>
-          </section>
-
-          <!-- 7 · Equipo -->
-          <section v-else class="bg-white p-8">
-            <h2 class="text-2xl font-bold">Tu equipo inicial</h2>
-            <p class="mt-1 text-sm text-neutral-500">Crea tu cuenta de propietario y añade miembros sugeridos. Los permisos se gestionan después en Equipo.</p>
-            <div class="mt-6 grid gap-4 sm:grid-cols-2">
-              <ui-field label="Tu nombre">
-                <input v-model.trim="form.ownerName" type="text" :placeholder="form.name || 'Tu nombre'"
-                  class="w-full border-2 border-neutral-300 px-3 py-2 outline-none transition focus:border-neutral-900" />
-              </ui-field>
-              <ui-field label="Tu correo">
-                <input v-model.trim="form.ownerEmail" type="email" placeholder="tu@negocio.com"
-                  class="w-full border-2 border-neutral-300 px-3 py-2 outline-none transition focus:border-neutral-900" />
-              </ui-field>
-            </div>
-            <div class="mt-6 divide-y-2 divide-neutral-200 border-2 border-neutral-900">
-              <div class="flex items-center justify-between p-4">
-                <div class="flex items-center gap-3">
-                  <ui-avatar :name="form.name || 'T'"></ui-avatar>
-                  <div>
-                    <p class="font-semibold">{{ form.ownerName || form.name || 'Propietario' }}</p>
-                    <p class="text-xs text-neutral-500">{{ form.ownerEmail || 'propietario@demo.com' }}</p>
-                  </div>
-                </div>
-                <ui-badge variant="accent">Propietario</ui-badge>
-              </div>
-              <div class="flex items-center justify-between p-4">
-                <div class="flex items-center gap-3">
-                  <ui-avatar name="María Fernández"></ui-avatar>
-                  <div>
-                    <p class="font-semibold">María Fernández</p>
-                    <p class="text-xs text-neutral-500">maria@demo.com</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-3">
-                  <ui-badge variant="neutral">Agente</ui-badge>
-                  <ui-toggle v-model="form.inviteAgent" aria-label="Incluir agente"></ui-toggle>
-                </div>
-              </div>
-              <div class="flex items-center justify-between p-4">
-                <div class="flex items-center gap-3">
-                  <ui-avatar name="José Pérez"></ui-avatar>
-                  <div>
-                    <p class="font-semibold">José Pérez</p>
-                    <p class="text-xs text-neutral-500">jose@demo.com</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-3">
-                  <ui-badge variant="neutral">Vendedor</ui-badge>
-                  <ui-toggle v-model="form.inviteVendor" aria-label="Incluir vendedor"></ui-toggle>
-                </div>
-              </div>
-            </div>
-            <button @click="finish" :disabled="creating"
-              class="mt-6 w-full border-2 border-neutral-900 bg-[var(--accent)] px-8 py-3 font-semibold text-white shadow-brutal transition hover:shadow-none disabled:opacity-60">
-              <span v-if="creating" class="flex items-center justify-center gap-2">
-                <ui-spinner class="h-4 w-4"></ui-spinner> Creando tu espacio de trabajo…
-              </span>
-              <span v-else>Crear mi espacio de trabajo →</span>
-            </button>
-          </section>
+          <!-- 6 · Equipo -->
+          <onboarding-team v-else :ui="ui" :form="form" :creating="creating" :finish="finish"></onboarding-team>
           </transition>
-
-          <!-- Navegación inferior (sticky) -->
           <footer v-if="current > 0 && current < 6" class="sticky bottom-0 z-10 -mx-5 mt-8 flex items-center justify-between gap-3 border-t border-neutral-200 bg-stone-100/95 px-5 py-4 backdrop-blur lg:-mx-16 lg:px-16">
             <button @click="back" class="border-2 border-neutral-900 bg-white px-5 py-2.5 font-medium shadow-brutal-sm transition hover:shadow-none">
               ← Volver

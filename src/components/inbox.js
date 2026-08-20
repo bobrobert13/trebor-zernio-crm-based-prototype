@@ -233,261 +233,32 @@
 
         <!-- Cuerpo de la bandeja (sin marco exterior) -->
         <div v-else class="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-white lg:grid-cols-[340px_1fr]">
-          <!-- Lista de conversaciones -->
-          <aside :class="['flex min-h-0 flex-col lg:border-r lg:border-neutral-200', selected ? 'hidden lg:flex' : 'flex']">
-            <div class="shrink-0 border-b border-neutral-200 p-3">
-              <div class="flex items-center gap-2 border border-neutral-300 bg-stone-50 px-3 py-2.5 focus-within:border-neutral-900 focus-within:bg-white">
-                <ui-icon name="search" class="h-4 w-4 text-neutral-400"></ui-icon>
-                <input v-model.trim="search" type="search" placeholder="Buscar conversación…"
-                  class="w-full bg-transparent text-sm outline-none" />
-              </div>
-              <!-- Pestañas por plataforma -->
-              <div class="mt-2.5 flex gap-1.5 overflow-x-auto scrollbar-none">
-                <button @click="platformFilter = 'all'"
-                  class="flex shrink-0 items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="platformFilter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
-                  Todas
-                </button>
-                <button v-for="p in presentPlatforms" :key="p.id" @click="platformFilter = p.id"
-                  class="flex shrink-0 items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="platformFilter === p.id ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
-                  <ui-icon :name="p.icon" class="h-3.5 w-3.5"></ui-icon>
-                  {{ p.nombre }}
-                </button>
-              </div>
-              <div class="mt-2 flex gap-1.5 overflow-x-auto scrollbar-none">
-                <button @click="filter = 'all'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="filter === 'all' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
-                  Todas ({{ activeConversations.length }})
-                </button>
-                <button @click="filter = 'unread'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="filter === 'unread' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
-                  No leídas ({{ unreadTotal }})
-                </button>
-                <button @click="filter = 'Sin asignar'" class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="filter === 'Sin asignar' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
-                  Sin asignar
-                </button>
-                <button v-for="t in leadTags" :key="t" @click="filter = t"
-                  class="shrink-0 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition"
-                  :class="filter === t ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300 hover:border-neutral-900'">
-                  {{ t }}
-                </button>
-              </div>
-            </div>
-            <ul class="min-h-0 flex-1 overflow-y-auto">
-              <!-- TikTok no tiene mensajería en Zernio -->
-              <ui-empty v-if="tiktokEmpty" icon="tiktok" title="TikTok no tiene mensajería en Zernio"
-                desc="Zernio solo expone publicación para TikTok. Responde a tus DM desde la app de TikTok." class="m-4">
-                <a v-if="tiktokChannel && tiktokChannel.username" :href="'https://www.tiktok.com/@' + tiktokChannel.username.replace('@', '')" target="_blank"
-                  class="border-2 border-neutral-900 bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-brutal-sm transition hover:shadow-none">
-                  Abrir perfil externo
-                </a>
-              </ui-empty>
-              <ui-empty v-else-if="filtered.length === 0" icon="message" title="Sin conversaciones"
-                desc="Prueba con otro filtro o inicia una conversación nueva." class="m-4"></ui-empty>
-              <li v-for="conv in filtered" :key="conv.id">
-                <button @click="selectConversation(conv)"
-                  class="flex w-full items-center gap-3 border-b border-l-2 border-neutral-100 px-4 py-3.5 text-left transition"
-                  :class="conv.id === selectedId
-                    ? 'border-l-[var(--accent)] bg-[var(--accent-soft)]'
-                    : 'border-l-transparent hover:bg-stone-100'">
-                  <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
-                    :class="(getPlatform(conv.platform || 'whatsapp') || {}).tone">
-                    <ui-icon :name="(getPlatform(conv.platform || 'whatsapp') || {}).icon" class="h-3 w-3"></ui-icon>
-                  </span>
-                  <ui-avatar :name="(contacts.find(c => c.id === conv.contactId) || {}).name" size="h-10 w-10 text-sm"></ui-avatar>
-                  <div class="min-w-0 flex-1">
-                    <div class="flex items-baseline justify-between gap-2">
-                      <p class="truncate text-sm font-semibold">{{ (contacts.find(c => c.id === conv.contactId) || {}).name }}</p>
-                      <span class="shrink-0 font-mono text-[10px] text-neutral-400">{{ timeAgo(conv.lastTs) }}</span>
-                    </div>
-                    <p class="truncate text-sm text-neutral-500">{{ lastMessage(conv) }}</p>
-                  </div>
-                  <span v-if="conv.unread > 0" class="flex h-6 min-w-6 items-center justify-center rounded-full bg-[var(--accent)] px-1.5 font-mono text-[11px] font-bold text-white tabular-nums">
-                    {{ conv.unread }}
-                  </span>
-                </button>
-              </li>
-            </ul>
-          </aside>
+          <!-- Lista de conversaciones (BC List) -->
+          <inbox-list :search="search" :platform-filter="platformFilter" :filter="filter"
+            :present-platforms="presentPlatforms" :lead-tags="leadTags"
+            :active-count="activeConversations.length" :unread-total="unreadTotal"
+            :tiktok-empty="tiktokEmpty" :tiktok-channel="tiktokChannel"
+            :filtered="filtered" :selected="selected" :selected-id="selectedId" :contacts="contacts"
+            :get-platform="getPlatform" :time-ago="timeAgo" :last-message="lastMessage"
+            v-model:search="search" v-model:platform-filter="platformFilter" v-model:filter="filter"
+            @select="selectConversation"></inbox-list>
 
-          <!-- Panel de chat (integrado sobre stone-50, separación sutil) -->
-          <section :class="['flex min-h-0 flex-col bg-stone-50', selected ? 'flex' : 'hidden lg:flex']">
-            <!-- Estado vacío sin conversación seleccionada -->
-            <div v-if="!selected" class="flex flex-1 flex-col items-center justify-center gap-4 p-10 text-center">
-              <span class="flex h-16 w-16 items-center justify-center rounded-full bg-white text-emerald-700 shadow-sm">
-                <ui-icon name="whatsapp" class="h-8 w-8"></ui-icon>
-              </span>
-              <h3 class="text-lg font-semibold">Selecciona una conversación</h3>
-              <p class="max-w-md text-sm text-neutral-500">Las consultas de tus clientes por WhatsApp aparecerán aquí.</p>
-            </div>
-
-            <template v-else>
-              <!-- Header del chat -->
-              <header class="flex shrink-0 items-center justify-between border-b border-neutral-200 bg-white px-5 py-3">
-                <div class="flex items-center gap-3">
-                  <button class="lg:hidden" @click="backToList" aria-label="Volver a la lista">
-                    <ui-icon name="chevron-left" class="h-5 w-5"></ui-icon>
-                  </button>
-                  <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-                    :class="(getPlatform(selected.platform || 'whatsapp') || {}).tone">
-                    <ui-icon :name="(getPlatform(selected.platform || 'whatsapp') || {}).icon" class="h-4 w-4"></ui-icon>
-                  </span>
-                  <ui-avatar :name="selectedContact ? selectedContact.name : '?'" size="h-10 w-10 text-sm"></ui-avatar>
-                  <div>
-                    <p class="font-semibold leading-tight">{{ selectedContact ? selectedContact.name : 'Contacto' }}
-                      <span class="ml-1.5 font-mono text-[10px] uppercase tracking-wider text-neutral-400">{{ (getPlatform(selected.platform || 'whatsapp') || {}).nombre }}</span>
-                    </p>
-                    <p class="font-mono text-[11px] uppercase tracking-wider text-neutral-400">{{ selectedContact ? selectedContact.phone : '' }}</p>
-                    <p v-if="selected.igProfile" class="font-mono text-[10px] text-neutral-400">
-                      {{ selected.igProfile.isFollower ? '· te sigue' : '' }}{{ selected.igProfile.followerCount != null ? ' · ' + selected.igProfile.followerCount + ' seguidores' : '' }}
-                    </p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-1.5">
-                  <!-- Etiquetas vivas del contacto (no el snapshot de la conversación) -->
-                  <ui-badge v-for="t in (selectedContact ? selectedContact.tags : [])" :key="t" variant="neutral">{{ t }}</ui-badge>
-                  <ui-badge v-if="selectedContact && selectedContact.leadTag" variant="accent" dot>{{ selectedContact.leadTag }}</ui-badge>
-                  <button v-if="selectedContact" @click="aiOpen = true" class="flex items-center gap-1 rounded-full border border-[var(--accent)] px-2 py-1 text-[11px] font-bold text-[var(--accent)] transition hover:bg-[var(--accent)] hover:text-white" aria-label="Asistente IA">
-                    <ui-icon name="sparkles" class="h-3.5 w-3.5"></ui-icon> IA
-                  </button>
-                  <button @click="contactDrawerOpen = true; contactTab = 'ficha'" class="p-1.5 hover:text-[var(--accent)]" aria-label="Ficha del cliente">
-                    <ui-icon name="user" class="h-4 w-4"></ui-icon>
-                  </button>
-                </div>
-              </header>
-
-              <!-- Consejos de atención al equipo -->
-              <div v-if="attentionTips.length" class="shrink-0 border-b border-neutral-200 bg-amber-50/80">
-                <button @click="tipsOpen = !tipsOpen" class="flex w-full items-center gap-2 px-4 py-2 text-left text-xs font-semibold text-amber-900">
-                  <ui-icon name="alert" class="h-3.5 w-3.5 text-amber-700"></ui-icon>
-                  Consejos de atención · {{ attentionTips.length }}
-                  <ui-icon :name="tipsOpen ? 'chevron-up' : 'chevron-down'" class="ml-auto h-3.5 w-3.5 text-amber-700"></ui-icon>
-                </button>
-                <ul v-if="tipsOpen" class="space-y-1.5 px-4 pb-3">
-                  <li v-for="(t, i) in attentionTips" :key="i" class="flex items-start gap-2 text-xs text-amber-900">
-                    <ui-icon :name="t.icon" class="mt-0.5 h-3.5 w-3.5 shrink-0"></ui-icon>
-                    <span>{{ t.text }}</span>
-                  </li>
-                </ul>
-              </div>
-
-              <!-- Mensajes -->
-              <div class="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5">
-                <div v-for="m in selected.messages" :key="m.id" class="space-y-1.5" :class="m.from === 'out' ? 'flex flex-col items-end' : 'flex flex-col items-start'">
-                  <div class="flex max-w-[70%] px-4 py-2.5 shadow-sm"
-                    :class="m.from === 'out'
-                      ? 'bg-[var(--accent)] text-white'
-                      : 'border border-neutral-200 bg-white'">
-                    <p v-if="m.card" class="wa-rich whitespace-pre-wrap break-words text-[15px] leading-relaxed" v-html="renderWhatsApp(m.text)"></p>
-                    <p v-else class="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{{ m.text }}</p>
-                    <div class="mt-1 flex items-center justify-end gap-1.5">
-                      <span class="font-mono text-[10px] uppercase tracking-wider opacity-60">{{ formatTime(m.ts) }}</span>
-                      <ui-icon v-if="m.from === 'out'" name="check" class="h-3 w-3"
-                        :class="m.status === 'read' ? 'text-emerald-400' : m.status === 'failed' ? 'text-red-400' : 'opacity-60'"></ui-icon>
-                    </div>
-                  </div>
-                  <!-- Feedback de productos detectados en el mensaje entrante -->
-                  <div v-for="men in mentionsOfMessage(m.id)" :key="men.id" class="max-w-[85%] text-xs"
-                    :class="men.match === 'exacta'
-                      ? 'flex items-center gap-2 border border-emerald-700 bg-emerald-50 px-2.5 py-1.5 text-emerald-900'
-                      : 'border border-amber-600 bg-amber-50 px-2.5 py-1.5 text-amber-900'">
-                    <template v-if="men.match === 'exacta'">
-                      <span class="flex items-center gap-1"><ui-icon name="check-circle" class="h-3.5 w-3.5"></ui-icon> Producto detectado: <strong>{{ productOf(men) ? productOf(men).name : '—' }}</strong></span>
-                      <template v-if="productOf(men)">
-                        <span class="font-mono text-[10px] tabular-nums">{{ formatPrice(productOf(men).price) }}</span>
-                        <span :class="productOf(men).stock === false ? 'font-semibold text-red-700' : 'font-semibold text-emerald-700'">{{ productOf(men).stock === false ? 'AGOTADO' : 'Disponible' }}</span>
-                        <button @click="openProductInfo(productOf(men))" class="font-semibold underline">Ver más</button>
-                      </template>
-                      <button @click="openProductPick(men.id)" class="font-semibold underline">Cambiar</button>
-                    </template>
-                    <template v-else>
-                      <span>Posible producto: <strong>{{ productOf(men) ? productOf(men).name : '—' }}</strong> (coincidencia parcial)</span>
-                      <template v-if="productOf(men)">
-                        <span class="font-mono text-[10px] tabular-nums">{{ formatPrice(productOf(men).price) }}</span>
-                        <span :class="productOf(men).stock === false ? 'font-semibold text-red-700' : 'font-semibold text-emerald-700'">{{ productOf(men).stock === false ? 'AGOTADO' : 'Disponible' }}</span>
-                        <button @click="openProductInfo(productOf(men))" class="font-semibold underline">Ver más</button>
-                      </template>
-                      <span class="flex gap-2">
-                        <button v-if="productOf(men)" @click="confirmMention(men.id, men.productId)" class="font-semibold underline">Sí, ese</button>
-                        <button @click="openProductPick(men.id)" class="font-semibold underline">Elegir otro</button>
-                        <button @click="discardMention(men.id)" class="underline">Descartar</button>
-                      </span>
-                    </template>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Composer -->
-              <footer class="shrink-0 border-t border-neutral-200 bg-white p-3.5">
-                <div v-if="canHumanAgent" class="mb-2.5 flex items-center gap-2.5 border border-amber-600 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  <ui-toggle v-model="humanAgent" class="shrink-0"></ui-toggle>
-                  <span>El cliente no ha escrito en 24 h: activa el modo agente humano para que Meta permita responder.</span>
-                </div>
-                <div v-if="blockedByWindow" class="mb-2.5 border border-red-700 bg-red-50 px-3 py-2 text-xs text-red-800">
-                  WhatsApp fuera de la ventana de 24h:
-                  <button @click="openTemplatePicker(selected)" class="font-semibold underline">envía una plantilla aprobada</button>
-                  para re-enganchar la conversación.
-                </div>
-                <div class="mb-2.5 flex gap-1.5 overflow-x-auto scrollbar-none">
-                  <button v-for="qr in QUICK_REPLIES" :key="qr" @click="draft = qr"
-                    class="shrink-0 border border-neutral-300 bg-white px-3 py-1.5 text-sm transition hover:border-neutral-900">
-                    {{ qr }}
-                  </button>
-                </div>
-                <div class="flex items-end gap-2">
-                  <div class="flex-1">
-                    <!-- Ficha de producto adjunta al borrador (preview en vivo) -->
-                    <div v-if="cardAttach" class="mb-2 border-2 border-[var(--accent)] bg-white p-2.5">
-                      <div class="mb-2 flex items-center justify-between gap-2">
-                        <span class="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
-                          <ui-icon name="box" class="h-3.5 w-3.5 text-[var(--accent)]"></ui-icon>
-                          <span class="truncate">Ficha: {{ cardAttach.name }}</span>
-                        </span>
-                        <span class="flex shrink-0 gap-1">
-                          <button @click="openCardPicker" class="text-[11px] font-medium underline">Cambiar</button>
-                          <button @click="detachCard" class="text-[11px] text-red-700 underline">Quitar</button>
-                        </span>
-                      </div>
-                      <input v-model.trim="cardGreeting" type="text" placeholder="Saludo del mensaje…"
-                        class="mb-2 w-full border border-neutral-300 px-2 py-1.5 text-sm outline-none focus:border-neutral-900" />
-                      <wa-preview :text="cardPreview" :show-header="false"></wa-preview>
-                    </div>
-                    <div class="relative">
-                      <textarea v-model="draft" rows="2" placeholder="Escribe un mensaje… (@ para adjuntar un producto · Enter para enviar)"
-                        @keydown="onComposerKeydown"
-                        class="w-full resize-none border border-neutral-300 bg-stone-50 px-3 py-2.5 text-sm outline-none transition focus:border-neutral-900 focus:bg-white"></textarea>
-                      <div v-if="atOpen && atResults.length" class="absolute inset-x-0 bottom-full z-20 mb-1.5 max-h-56 overflow-y-auto border-2 border-neutral-900 bg-white shadow-brutal">
-                        <p class="border-b border-neutral-100 px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400">Adjuntar ficha de producto</p>
-                        <button v-for="(p, i) in atResults" :key="p.id" @mousedown.prevent="pickMention(p)" @mouseenter="atIndex = i"
-                          class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition"
-                          :class="i === atIndex ? 'bg-[var(--accent)] text-white' : 'hover:bg-stone-100'">
-                          <ui-icon name="box" class="h-3.5 w-3.5 shrink-0"></ui-icon>
-                          <span class="min-w-0 flex-1 truncate font-medium">{{ p.name }}</span>
-                          <span class="shrink-0 font-mono text-[10px] tabular-nums opacity-80">{{ formatPrice(p.price) }}</span>
-                          <span v-if="p.stock === false" class="shrink-0 font-mono text-[9px] uppercase text-red-600">agotado</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="flex shrink-0 flex-col gap-1.5">
-                    <button v-if="(workspace.products || []).length" @click="openCardPicker"
-                      class="flex h-11 w-11 items-center justify-center border-2 border-neutral-900 bg-white text-neutral-700 shadow-brutal-sm transition hover:shadow-none"
-                      aria-label="Adjuntar ficha de producto">
-                      <ui-icon name="box" class="h-5 w-5"></ui-icon>
-                    </button>
-                    <button @click="send" :disabled="sending || (!draft.trim() && !cardAttach)"
-                      class="flex h-11 w-11 shrink-0 items-center justify-center border-2 border-neutral-900 bg-[var(--accent)] text-white shadow-brutal-sm transition hover:shadow-none disabled:opacity-40"
-                      aria-label="Enviar mensaje">
-                      <ui-spinner v-if="sending" size="h-4 w-4"></ui-spinner>
-                      <ui-icon v-else name="send" class="h-5 w-5"></ui-icon>
-                    </button>
-                  </div>
-                </div>
-              </footer>
-            </template>
-          </section>
+          <!-- Panel de chat con composer (BC Chat + BC Composer) -->
+          <inbox-chat :selected="selected" :selected-contact="selectedContact" :back-to-list="backToList"
+            :get-platform="getPlatform" :format-time="formatTime"
+            :attention-tips="attentionTips" :tips-open="tipsOpen" @toggle-tips="tipsOpen = !tipsOpen"
+            :render-whatsapp="renderWhatsApp" :mentions-of-message="mentionsOfMessage" :product-of="productOf"
+            :format-price="formatPrice" :open-product-info="openProductInfo" :open-product-pick="openProductPick"
+            :confirm-mention="confirmMention" :discard-mention="discardMention"
+            @open-ai="aiOpen = true" @open-drawer="contactDrawerOpen = true; contactTab = 'ficha'"
+            :can-human-agent="canHumanAgent" v-model:human-agent="humanAgent"
+            :blocked-by-window="blockedByWindow" :has-products="(workspace.products || []).length > 0"
+            :sending="sending" :quick-replies="QUICK_REPLIES" v-model:draft="draft"
+            :card-attach="cardAttach" v-model:card-greeting="cardGreeting" :card-preview="cardPreview"
+            :at-open="atOpen" :at-results="atResults" v-model:at-index="atIndex"
+            :open-template-picker="openTemplatePicker" :open-card-picker="openCardPicker"
+            :detach-card="detachCard" :on-composer-keydown="onComposerKeydown"
+            :pick-mention="pickMention" :send="send"></inbox-chat>
         </div>
 
         <!-- Modal: nueva conversación -->

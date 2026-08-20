@@ -858,9 +858,344 @@
     };
   }
 
+  /**
+   * BC ContactDrawer: estado y operaciones de la ficha del cliente dentro de la
+   * conversación (pestañas ficha/actividades, etiquetas, etapa de lead,
+   * registro de huérfanos, recordatorios y rango de fechas de cada hilo).
+   */
+  function makeInboxContactDrawer({ shell, list, toast, uid }) {
+    const { workspace, conversations } = shell;
+
+    const contactDrawerOpen = Vue.ref(false);
+    const contactTab = Vue.ref('ficha'); // pestaña del drawer: ficha | actividades
+    const contactTags = Vue.computed(() => workspace.value.contactTags || []);
+
+    /** Estadísticas de comunicación del contacto (pestaña Actividades). */
+    const contactStats = Vue.computed(() => {
+      const c = list.selectedContact.value;
+      if (!c) return null;
+      let totalIn = 0;
+      let totalOut = 0;
+      let first = null;
+      let last = null;
+      const channels = {};
+      contactConvs.value.forEach((x) => {
+        const plat = x.platform || 'whatsapp';
+        channels[plat] = (channels[plat] || 0) + 1;
+        (x.messages || []).forEach((m) => {
+          if (m.from === 'in') totalIn += 1;
+          else totalOut += 1;
+          if (first === null || m.ts < first) first = m.ts;
+          if (last === null || m.ts > last) last = m.ts;
+        });
+      });
+      return {
+        totalIn,
+        totalOut,
+        first,
+        last,
+        channels: Object.entries(channels).sort((a, b) => b[1] - a[1]),
+      };
+    });
+
+    /** Alterna una etiqueta de contacto (clasificación general, no lead). */
+    function toggleContactTag(tag) {
+      const c = list.selectedContact.value;
+      if (!c) return;
+      const i = c.tags.indexOf(tag);
+      if (i >= 0) c.tags.splice(i, 1);
+      else c.tags.push(tag);
+    }
+
+    /** Asigna la etapa del lead al contacto (centralizado en store.applyLeadTag). */
+    function setLeadTag(tag) {
+      const contact = list.selectedContact.value;
+      const wasClosed = Boolean(contact && contact.leadClosed);
+      ZernioCrm.applyLeadTag(contact, tag || null);
+      if (wasClosed) toast('Lead reabierto al cambiar de etapa', 'info');
+    }
+
+    /** Registra un contacto desde una conversación huérfana (sin ficha). */
+    function registerContact() {
+      const conv = list.selected.value;
+      if (!conv || list.selectedContact.value) return;
+      const contact = {
+        id: uid('ct'),
+        name: 'Cliente sin ficha',
+        phone: '',
+        platform: conv.platform || 'whatsapp',
+        tags: ['cliente'],
+        leadTag: null,
+        customFields: {},
+        createdAt: Date.now(),
+        // Momento 0 del historial de etapas: cae en "Sin asignar" (null)
+        leadHistory: [{ tag: null, at: Date.now() }],
+      };
+      workspace.value.contacts.unshift(contact);
+      conv.contactId = contact.id;
+      toast('Contacto registrado: completa su ficha aquí mismo', 'success');
+    }
+
+    // ── Recordatorios (reutiliza los helpers del store) ────────────────────
+    const remInput = Vue.reactive({ text: '', dueAt: '' });
+
+    /** Conversaciones del contacto seleccionado, ordenadas por última actividad (desc). */
+    const contactConvs = Vue.computed(() => {
+      const c = list.selectedContact.value;
+      if (!c) return [];
+      return conversations.value
+        .filter((x) => x.contactId === c.id)
+        .slice()
+        .sort((a, b) => (b.lastTs || 0) - (a.lastTs || 0));
+    });
+
+    /** Rango de fechas de una conversación (primera → última actividad). */
+    function convRange(conv) {
+      const first = (conv.messages && conv.messages[0] && conv.messages[0].ts) || conv.createdAt || conv.lastTs;
+      return { from: first || Date.now(), to: conv.lastTs || Date.now() };
+    }
+
+    function addReminderFor(contact) {
+      const text = remInput.text.trim();
+      if (!text || !contact) return;
+      ZernioCrm.addReminder(contact.id, text, remInput.dueAt || null);
+      remInput.text = '';
+      remInput.dueAt = '';
+      toast('Recordatorio creado', 'success');
+    }
+
+    function contactReminders(contact) {
+      return contact ? ZernioCrm.remindersOf(contact.id) : [];
+    }
+
+    return {
+      contactDrawerOpen, contactTab, contactTags, contactStats,
+      toggleContactTag, setLeadTag, registerContact,
+      remInput, addReminderFor, contactReminders, contactConvs, convRange,
+    };
+  }
+
+  /**
+   * BC IA: análisis comercial local de la conversación seleccionada (interés,
+   * señales, plan de acción y respuestas sugeridas) + agentes conectados del
+   * módulo Agente (sugerencias, auto-respuesta y cierre de venta autónomo).
+   */
+  function makeInboxAi({ shell, list, composer, products, drawer, close, toast, askAgent, activeAgents, canEdit, uid }) {
+    const { workspace, isLive, leadTags, interestCore } = shell;
+
+    const aiOpen = Vue.ref(false);
+
+    /** Agentes IA activos con el flujo de bandeja (módulo Agente). */
+    const inboxAgents = Vue.computed(() => activeAgents('inbox'));
+    const aiAgentBusy = Vue.ref(false);
+    const aiAgentResult = Vue.ref(null); // { agent, action, error }
+
+    /** Nivel de interés comercial compacto (misma lógica que el tablero). */
+    function aiInterest(contact) {
+      const s = interestCore.scoreFor(contact);
+      if (!s) return { nivel: null, value: 0, productos: [] };
+      const nivel = s.factors.length >= 3 || (s.factors.includes('compra') && s.factors.includes('alto_valor'))
+        ? 'alto' : s.factors.length === 2 ? 'medio' : s.factors.length === 1 ? 'bajo' : null;
+      return { nivel, value: s.value, productos: s.perProduct.map((x) => ({ product: x.product, count: x.count, intent: x.last.intent })) };
+    }
+
+    /** Análisis completo: diagnóstico, señales, plan de acción y respuestas. */
+    const aiAnalysis = Vue.computed(() => {
+      const conv = list.selected.value;
+      const contact = list.selectedContact.value;
+      if (!conv) return null;
+      const interest = aiInterest(contact);
+      // Solo los mensajes del CLIENTE generan señales (los del equipo no son evidencia)
+      const textos = (conv.messages || [])
+        .filter((m) => m.from === 'in')
+        .map((m) => m.text || '');
+      const hayTexto = (re) => textos.some((t) => re.test(t));
+      const senales = [];
+      if (interest.productos.some((x) => x.intent === 'pedido')) senales.push('El cliente quiere pedir/comprar (intención de pedido).');
+      if (interest.productos.some((x) => x.intent === 'precio')) senales.push('Preguntó por precios: está evaluando comprar.');
+      if (hayTexto(/pago|pagar|banco|transferencia|referencia/i)) senales.push('La conversación llegó al tema de pago: fase de cierre.');
+      if (hayTexto(/confirm|reserv|apartad|pedido/i)) senales.push('Confirmó o reservó algo: asegura el seguimiento del pedido.');
+      if (hayTexto(/garant|falla|defecto|dañad|repar/i)) senales.push('Inquietud de garantía o calidad: resuélvela para desbloquear la venta.');
+      if (interest.productos.some((x) => x.product.stock === false)) senales.push('Preguntó por un producto agotado: ofrece una alternativa.');
+      if (!senales.length) senales.push('Conversación en fase inicial de consulta.');
+
+      const plan = [];
+      const compra = interest.productos.filter((x) => ['pedido', 'precio', 'reserva'].includes(x.intent));
+      const agotados = interest.productos.filter((x) => x.product.stock === false);
+      if (compra.length) plan.push(`Responde la consulta de ${compra[0].product.name} con la ficha técnica y su precio.`);
+      if (agotados.length) plan.push(`Informa que ${agotados[0].product.name} está agotado y sugiere una alternativa del catálogo.`);
+      if (hayTexto(/pago|pagar|banco|transferencia|referencia/i)) plan.push('El cliente ya habla de pago: envía los datos y pide la referencia para cerrar.');
+      else if (compra.length) plan.push('Ofrece el cierre: pregunta si desea apartar el pedido y envía los datos de pago.');
+      if (contact && !contact.leadTag) plan.push('Asigna una etapa al lead para mantener el seguimiento.');
+      if (list.outsideWindow.value && conv.platform === 'whatsapp') plan.push('La ventana de 24h venció: re-engancha con una plantilla aprobada antes de continuar.');
+      plan.push('Crea un recordatorio de seguimiento si el cliente no responde en 2-3 horas.');
+
+      const respuestas = [];
+      const p1 = compra[0] && compra[0].product;
+      if (p1) respuestas.push({ label: 'Responder con la ficha', text: `Claro, te paso la ficha de ${p1.name} con todos los detalles.`, product: p1 });
+      if (agotados.length) respuestas.push({ label: 'Ofrecer alternativa', text: `El ${agotados[0].product.name} está agotado por ahora. ¿Te interesa una alternativa similar del catálogo?` });
+      if (hayTexto(/pago|pagar|banco|transferencia|referencia/i)) respuestas.push({ label: 'Pedir confirmación de pago', text: '¿Ya pudiste hacer el pago? Con la referencia despachamos hoy mismo. 😊' });
+      respuestas.push({ label: 'Seguimiento', text: '¡Hola! ¿Quedó alguna duda sobre tu pedido? Estamos atentos para ayudarte.' });
+
+      return { interest, senales, plan, respuestas };
+    });
+
+    /** Arma la respuesta sugerida en el composer (y adjunta la ficha si aplica). */
+    function applyAiReply(r) {
+      if (!r) return;
+      composer.draft.value = r.text;
+      if (r.product) products.attachCard(r.product);
+      aiOpen.value = false;
+      toast('Respuesta lista en el composer: revísala y envía', 'success');
+    }
+
+    /** Crea un recordatorio de seguimiento desde el plan de acción. */
+    function aiReminder() {
+      const c = list.selectedContact.value;
+      if (!c) return;
+      drawer.remInput.text = 'Seguimiento de conversación con ' + c.name;
+      drawer.addReminderFor(c);
+      toast('Recordatorio de seguimiento creado', 'success');
+    }
+
+    // ── Agente IA conectado (módulo Agente): sugerencias y autonomía ────────
+
+    /** Pregunta al agente conectado por la conversación seleccionada. */
+    async function askAgentForSuggestion(agent) {
+      if (aiAgentBusy.value) return;
+      aiAgentBusy.value = true;
+      aiAgentResult.value = null;
+      try {
+        const res = await askAgent(agent, 'suggestion.requested', { contact: list.selectedContact.value, conversation: list.selected.value });
+        aiAgentResult.value = Object.assign({ agent }, res);
+      } finally {
+        aiAgentBusy.value = false;
+      }
+    }
+
+    /** Cierra un lead con la acción close_sale del agente (misma mutación que confirmClose). */
+    function closeAgentSale(contact, action) {
+      if (!contact || !canEdit('inbox')) return;
+      const outcome = action.outcome === 'perdida' ? 'perdida' : action.outcome === 'ganada' ? 'ganada' : null;
+      if (!outcome) {
+        toast('El agente intentó cerrar la venta sin un resultado válido', 'error');
+        return;
+      }
+      const note = action.note || 'Cierre autónomo del agente';
+      ZernioCrm.applyLeadClose(contact, {
+        outcome,
+        note,
+        reason: action.reason || undefined,
+        products: [],
+        historyNote: note,
+      });
+      toast(`El agente cerró el lead como ${close.closeLabel(outcome).toLowerCase()}`, 'success');
+    }
+
+    /** Aplica la acción canónica del agente a una conversación (auto-respuesta). */
+    async function applyAgentActionToConv(agent, contact, conv, action) {
+      // Clasificación de lead
+      if (action.leadTag && contact && (leadTags.value || []).includes(action.leadTag)) {
+        if (contact.leadTag !== action.leadTag) {
+          ZernioCrm.applyLeadTag(contact, action.leadTag);
+          toast(`${agent.name} asignó la etapa ${action.leadTag}`, 'info');
+        }
+      }
+      // Cierre de venta autónomo (requiere autoCloseSale del agente)
+      if (action.action === 'close_sale' && contact && agent.autoCloseSale) {
+        closeAgentSale(contact, action);
+      }
+      // Recordatorio de seguimiento (fecha opcional; inválida → sin fecha)
+      if (action.action === 'reminder' && contact) {
+        const at = action.reminderAt && !Number.isNaN(Date.parse(action.reminderAt)) ? action.reminderAt : null;
+        ZernioCrm.addReminder(contact.id, action.text || 'Seguimiento del agente', at);
+        toast(`${agent.name} creó un recordatorio`, 'info');
+      }
+      // Ficha de producto (solo si la conversación está a la vista)
+      if (action.productId) {
+        const p = (workspace.value.products || []).find((x) => x.id === action.productId);
+        if (p && list.selectedId.value === conv.id) products.attachCard(p);
+      }
+      // Respuesta: misma política de ventana de 24h que el composer
+      // (solo si el agente tiene autoReply activo)
+      if (action.action === 'reply' && action.text && agent.autoReply) {
+        const last = (conv.messages || []).slice(-1)[0];
+        const outside = last ? Date.now() - last.ts > 24 * 3600 * 1000 : false;
+        if (isLive.value && outside && (conv.platform || 'whatsapp') === 'whatsapp') {
+          toast(`${agent.name} sugirió una respuesta, pero la ventana de 24h está cerrada (se requiere plantilla)`, 'error', 6000);
+          return;
+        }
+        const msgOut = { id: uid('msg'), from: 'out', text: action.text, ts: Date.now(), status: 'sent' };
+        conv.messages.push(msgOut);
+        conv.lastTs = Date.now();
+        try {
+          if (isLive.value) {
+            await ZernioCrm.api.sendMessage(conv.id, { accountId: conv.accountId || (workspace.value.zernio && workspace.value.zernio.accountId) || '', message: action.text });
+          } else {
+            composer.simulateDelivery(msgOut); // demo: sin nueva simulación entrante (evita bucles)
+          }
+        } catch (err) {
+          msgOut.status = 'failed';
+          toast(`${agent.name}: ${err.message || 'no se pudo enviar'}`, 'error');
+        }
+      }
+    }
+
+    /** Auto-respuesta: recorre agentes con autonomía activa y aplica su acción. */
+    async function maybeAgentAutoReply(contact, conv, msg) {
+      if (!conv || !contact || composer.sending.value) return;
+      // Una sola respuesta por mensaje entrante: el primer agente que contesta
+      // gana el hilo; los demás aún pueden clasificar/cerrar/recordar (no spam).
+      let replied = false;
+      for (const agent of activeAgents('inbox')) {
+        // Autonomía: autoReply (responder) o autoCloseSale (clasificar/cerrar/recordar)
+        if (!agent.autoReply && !agent.autoCloseSale) continue;
+        let res;
+        try {
+          res = await askAgent(agent, 'message.received', { contact, conversation: conv });
+        } catch (err) {
+          toast(`${agent.name}: ${err.message || 'error del agente'}`, 'error');
+          continue;
+        }
+        if (!res.ok || !res.action || res.action.action === 'none') continue;
+        if (res.action.action === 'reply') {
+          if (replied) continue; // otro agente ya respondió este mensaje
+          replied = true;
+        }
+        await applyAgentActionToConv(agent, contact, conv, res.action);
+      }
+    }
+
+    /** Aplica la acción del agente desde el panel IA (conversación seleccionada). */
+    function applyAgentAction(action) {
+      if (!action) return;
+      if (action.text) {
+        composer.draft.value = action.text;
+        toast('Respuesta del agente lista en el composer: revísala y envía', 'success');
+      }
+      if (action.productId) {
+        const p = (workspace.value.products || []).find((x) => x.id === action.productId);
+        if (p) { products.attachCard(p); toast('Ficha adjuntada por el agente: ' + p.name, 'info'); }
+      }
+      if (action.leadTag && list.selectedContact.value) {
+        ZernioCrm.applyLeadTag(list.selectedContact.value, action.leadTag);
+        toast('Etapa asignada por el agente: ' + action.leadTag, 'info');
+      }
+      if (action.action === 'close_sale' && list.selectedContact.value) {
+        closeAgentSale(list.selectedContact.value, action);
+      }
+    }
+
+    return {
+      aiOpen, inboxAgents, aiAgentBusy, aiAgentResult, aiAnalysis,
+      applyAiReply, aiReminder, askAgentForSuggestion, applyAgentAction, maybeAgentAutoReply,
+    };
+  }
+
   window.ZernioCrm = window.ZernioCrm || {};
   Object.assign(window.ZernioCrm, {
     makeInboxShell, makeInboxList, makeInboxTips,
     makeInboxProducts, makeInboxComposer, makeInboxTemplates,
+    makeInboxContactDrawer, makeInboxAi,
   });
 })();

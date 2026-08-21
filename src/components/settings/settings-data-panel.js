@@ -12,6 +12,7 @@
     props: {
       workspace: Object, confirmReset: Boolean, confirmDelete: Boolean,
       exportData: Function, resetDemo: Function, deleteWorkspace: Function,
+      canEdit: Function,
     },
 
     emits: ['update:confirmReset', 'update:confirmDelete'],

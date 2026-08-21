@@ -29,9 +29,9 @@
                 <p class="text-xs text-neutral-500">Guía rápida con códigos de color para leer esta vista sin confusiones.</p>
               </div>
             </div>
-            <ui-icon name="chevron-down" class="h-4 w-4 shrink-0 text-neutral-400 transition-transform" :class="guideOpen ? 'rotate-180' : ''"></ui-icon>
+            <ui-icon name="chevron-down" class="h-4 w-4 shrink-0 text-neutral-400 transition-transform" :class="open ? 'rotate-180' : ''"></ui-icon>
           </button>
-          <div v-if="guideOpen" class="border-t border-neutral-200 p-5">
+          <div v-if="open" class="border-t border-neutral-200 p-5">
             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <article v-for="g in items" :key="g.id" class="flex flex-col border p-4" :class="g.color">
                 <div class="flex items-center justify-between">

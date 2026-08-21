@@ -31,7 +31,7 @@
 
     template: `
         <!-- Editor de agente -->
-        <ui-modal :open="editorOpen" :title="editingId ? 'Editar agente' : 'Nuevo agente'" width="max-w-3xl" @close="$emit('close')">
+        <ui-modal :open="open" :title="editingId ? 'Editar agente' : 'Nuevo agente'" width="max-w-3xl" @close="$emit('close')">
           <div class="space-y-5">
             <!-- Conexión -->
             <div>
@@ -71,7 +71,7 @@
             <div>
               <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Flujos de venta que atiende</p>
               <div class="grid gap-1.5 sm:grid-cols-2">
-                <label v-for="f in AGENT_FLOWS" :key="f.id" class="flex items-center gap-2 border border-neutral-200 px-3 py-2 text-sm">
+                <label v-for="f in flows" :key="f.id" class="flex items-center gap-2 border border-neutral-200 px-3 py-2 text-sm">
                   <input v-model="form.flows[f.id]" type="checkbox" />
                   {{ f.label }}
                 </label>
@@ -95,7 +95,7 @@
                 <span class="flex items-center gap-2">
                   <ui-icon name="box" class="h-4 w-4 text-[var(--accent)]"></ui-icon>
                   <span class="text-sm font-semibold">Capacidades que exponemos al agente</span>
-                  <ui-badge variant="neutral">{{ CRM_TOOLS.length }} herramientas</ui-badge>
+                  <ui-badge variant="neutral">{{ tools.length }} herramientas</ui-badge>
                 </span>
                 <ui-icon :name="toolsOpen ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-neutral-400"></ui-icon>
               </button>
@@ -106,7 +106,7 @@
                   Cada una tiene sus barreras; si una acción no las cumple, el CRM la ignora.
                 </p>
                 <div class="grid gap-2">
-                  <div v-for="t in CRM_TOOLS" :key="t.id" class="border border-neutral-200 p-3">
+                  <div v-for="t in tools" :key="t.id" class="border border-neutral-200 p-3">
                     <span class="flex flex-wrap items-center gap-2 text-sm font-semibold">
                       <ui-icon :name="t.icon" class="h-4 w-4 text-[var(--accent)]"></ui-icon>
                       {{ t.name }}
@@ -129,7 +129,7 @@
                 <div>
                   <p class="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-400">Pipelines — varias acciones encadenadas para un objetivo</p>
                   <div class="grid gap-2">
-                    <div v-for="p in TOOL_PIPELINES" :key="p.id" class="border border-neutral-200 bg-stone-50 p-3">
+                    <div v-for="p in pipelines" :key="p.id" class="border border-neutral-200 bg-stone-50 p-3">
                       <div class="flex flex-wrap items-center justify-between gap-2">
                         <p class="text-xs font-semibold">{{ p.name }}</p>
                         <span class="font-mono text-[9px] uppercase text-neutral-400">{{ p.tools.length }} pasos</span>
@@ -161,7 +161,7 @@
                 <div>
                   <p class="mb-1.5 text-xs font-semibold text-neutral-600">Acción del CRM → campo del servicio</p>
                   <div class="space-y-1.5">
-                    <div v-for="f in CANONICAL_FIELDS" :key="f.key" class="flex items-center gap-2">
+                    <div v-for="f in canonicalFields" :key="f.key" class="flex items-center gap-2">
                       <span class="w-32 shrink-0 truncate font-mono text-[10px] uppercase text-neutral-500">{{ f.label }}</span>
                       <input v-model.trim="form.mapping[f.key]" type="text" :placeholder="f.placeholder"
                         class="w-full border border-neutral-300 px-2 py-1 font-mono text-[11px] outline-none focus:border-neutral-900" />

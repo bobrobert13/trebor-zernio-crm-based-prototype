@@ -48,7 +48,7 @@
             </div>
 
             <div class="mt-3 flex flex-wrap gap-1.5">
-              <span v-for="f in AGENT_FLOWS" :key="f.id" class="border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider"
+              <span v-for="f in flows" :key="f.id" class="border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider"
                 :class="a.flows[f.id] ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]' : 'border-neutral-200 text-neutral-300 line-through'">
                 {{ f.label }}
               </span>

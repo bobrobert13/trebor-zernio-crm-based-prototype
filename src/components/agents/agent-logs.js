@@ -19,7 +19,7 @@
 
     template: `
         <!-- Log de interacciones -->
-        <ui-modal :open="logsOpen" :title="agent ? 'Log · ' + agent.name : 'Log'" width="max-w-2xl" @close="$emit('close')">
+        <ui-modal :open="open" :title="agent ? 'Log · ' + agent.name : 'Log'" width="max-w-2xl" @close="$emit('close')">
           <ui-empty v-if="!agent || (agent.logs || []).length === 0" icon="activity" title="Sin interacciones todavía"
             desc="Las llamadas del agente (sugerencias, auto-respuestas, acciones) aparecerán aquí." class="my-4"></ui-empty>
           <ul v-else class="space-y-2">

@@ -32,7 +32,7 @@
     emits: ['update:waOAuthStarted', 'update:showCreds'],
 
     template: `
-            <template v-if="isWhatsApp">
+            <template>
               <!-- Conexión guiada con Meta (recomendado, sin datos técnicos) -->
               <div class="border-2 border-neutral-900 bg-white p-4">
                 <p class="font-semibold">Conecta tu número con Meta (recomendado)</p>

@@ -116,7 +116,7 @@
 
         <!-- Datos + confirmaciones -->
         <settings-data-panel v-if="settingsTab === 'datos'"
-          :workspace="workspace"
+          :workspace="workspace" :can-edit="canEdit"
           :confirm-reset="confirmReset" :confirm-delete="confirmDelete"
           :export-data="exportData" :reset-demo="resetDemo" :delete-workspace="deleteWorkspace"
           @update:confirmReset="confirmReset = $event" @update:confirmDelete="confirmDelete = $event"></settings-data-panel>

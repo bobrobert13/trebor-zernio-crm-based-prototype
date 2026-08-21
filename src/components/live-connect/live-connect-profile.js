@@ -20,7 +20,7 @@
 
     template: `
           <!-- Paso 2 · Perfil -->
-          <div v-if="step === 'profile'" class="border-2 border-neutral-900 bg-white">
+          <div class="border-2 border-neutral-900 bg-white">
             <div class="border-b-2 border-neutral-900 px-4 py-2.5 font-mono text-[11px] uppercase tracking-widest text-neutral-500">
               Perfil del negocio
             </div>

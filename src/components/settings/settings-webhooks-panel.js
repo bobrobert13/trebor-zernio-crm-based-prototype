@@ -60,7 +60,7 @@
               </ui-field>
               <ui-field label="Eventos suscritos">
                 <div class="flex flex-wrap gap-1.5">
-                  <button v-for="ev in EVENTS" :key="ev" @click="toggleWhEvent(ev)"
+                  <button v-for="ev in events" :key="ev" @click="toggleWhEvent(ev)"
                     class="border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition"
                     :class="whForm.events.includes(ev) ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-neutral-300'">
                     {{ ev }}

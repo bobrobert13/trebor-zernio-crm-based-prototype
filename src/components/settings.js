@@ -28,7 +28,7 @@
         store, workspace, canEdit, toast,
         webhookApi: ZernioCrm.api,
         locationContext: location,
-        fetchTunnel: () => fetch('/api/tunnel', { cache: 'no-store' }),
+        fetchTunnel: () => ZernioCrm.fetchWithTimeout('/api/tunnel', { cache: 'no-store' }, 5000),
         pushWebhookEvent: (e) => ZernioCrm.pushWebhookEvent(e),
       });
       const tags = ZernioCrm.makeSettingsTags({ workspace, toast, swapInPlace });

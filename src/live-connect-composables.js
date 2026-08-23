@@ -395,7 +395,7 @@
         let redirectUrl = '';
         if (store.serverMode) {
           try {
-            const res = await fetch('/api/tunnel', { cache: 'no-store' });
+            const res = await ZernioCrm.fetchWithTimeout('/api/tunnel', { cache: 'no-store' }, 5000);
             const t = await res.json();
             if (t.url) redirectUrl = `${t.url}/index.html?cb=wa`;
           } catch {
@@ -430,7 +430,13 @@
       }
       if (!raw) return;
       sessionStorage.removeItem('tzcrm.wa-callback');
-      const params = JSON.parse(raw);
+      let params;
+      try {
+        params = JSON.parse(raw);
+      } catch {
+        toast('Datos de conexión corruptos: vuelve a autorizar Meta', 'error', 6000);
+        return;
+      }
       if (!params || params.connected !== 'whatsapp') return;
       // WABA multi-número: pedir la selección amigable del número
       const cbProfileId = params.profileId || state.selectedProfileId.value;
@@ -516,7 +522,9 @@
   function makeLiveConnectLifecycle({ state, boot, consumeCallback }) {
     Vue.onMounted(() => {
       // boot primero (carga perfiles); el callback del túnel ajusta el paso después
-      boot().then(consumeCallback);
+      boot().then(consumeCallback).catch((err) => {
+        console.error('[live-connect] callback del túnel no procesado:', err);
+      });
     });
 
     /** Reinicia el flujo para probar con otro perfil. */

@@ -36,6 +36,16 @@ const WEBHOOK_MAX = 200; // eventos en memoria (cola acotada)
 const TUNNEL_FILE = join(ROOT, '.tunnel-url');
 const USAGE_FILE = join(ROOT, 'data', 'usage.json');
 
+/** Error tipado para bodies que exceden MAX_BODY (→ 413 Payload Too Large). */
+class PayloadTooLargeError extends Error {
+  /** @param {string} [message='Body demasiado grande'] mensaje del error. */
+  constructor(message = 'Body demasiado grande') {
+    super(message);
+    this.name = 'PayloadTooLargeError';
+    this.status = 413;
+  }
+}
+
 /** Túnel automático: activo por defecto; desactivable con TUNNEL_AUTO=0 o --no-tunnel. */
 const AUTO_TUNNEL = process.env.TUNNEL_AUTO !== '0' && !process.argv.includes('--no-tunnel');
 let tunnelChild = null;
@@ -188,15 +198,18 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
-    req.on('data', (chunk) => {
+    let tooLarge = false;
+    const onData = (chunk) => {
+      if (tooLarge) return; // ya rechazado: se ignoran los chunks restantes del stream
       size += chunk.length;
       if (size > MAX_BODY) {
-        reject(new Error('Body demasiado grande'));
-        req.destroy();
+        tooLarge = true;
+        reject(new PayloadTooLargeError());
         return;
       }
       chunks.push(chunk);
-    });
+    };
+    req.on('data', onData);
     req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
@@ -297,7 +310,15 @@ function pickHeaders(headers) {
 
 /** Sirve un estático de la raíz (protege contra path traversal). */
 async function serveStatic(req, res, urlPath) {
-  const rel = normalize(decodeURIComponent(urlPath)).replace(/^(\.\.(\/|\\|$))+/, '');
+  let clean;
+  try {
+    clean = decodeURIComponent(urlPath);
+  } catch {
+    res.writeHead(400, { ...corsHeaders(req), 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'URL con encoding inválido' }));
+    return;
+  }
+  const rel = normalize(clean).replace(/^(\.\.(\/|\\|$))+/, '');
   const filePath = join(ROOT, rel);
   if (!filePath.startsWith(ROOT)) {
     res.writeHead(403, corsHeaders(req));
@@ -429,6 +450,12 @@ const server = createServer(async (req, res) => {
 
     await serveStatic(req, res, pathname === '/' ? '/index.html' : pathname);
   } catch (err) {
+    if (err instanceof PayloadTooLargeError) {
+      res.writeHead(413, { ...corsHeaders(req), 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+      req.destroy(); // corta el stream del body que aún llega
+      return;
+    }
     res.writeHead(500, { ...corsHeaders(req), 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: err.message || 'Error interno' }));
   }

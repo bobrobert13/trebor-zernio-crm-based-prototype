@@ -251,6 +251,30 @@ test('E5: acción reply con condición cumplida → responde sin mover etapa', a
   assert.strictEqual(contact.leadTag, 'nuevo');
 });
 
+// Cliente desde cero: trigger en “sin asignar” captura al lead con leadTag null
+test('E6: cliente sin asignar (null) avanza según contexto con trigger sin-asignar', async () => {
+  const tNew = mk('n_trg', 'trigger', { trigger: 'message.received', stage: '__sin_asignar__' });
+  const ws = buildWorkspace({
+    flow: {
+      nodes: [tNew, COND, ACTION],
+      edges: [
+        { id: 'e1', source: tNew.id, target: COND.id },
+        { id: 'e2', source: COND.id, target: ACTION.id },
+      ],
+    },
+  });
+  const agent = ws.agents[0];
+  const contact = buildContact(null); // llega de cero: sin etapa
+  const conv = buildConversation('Hola, ¿cuánto cuesta la bomba de agua?');
+  decide = (ctx) => fakeMary(ctx);
+
+  const r = await sendMessage(ws, agent, contact, conv);
+
+  assert.strictEqual(r.action.leadTag, 'cotizacion');
+  assert.strictEqual(r.blocked, false);
+  assert.strictEqual(contact.leadTag, 'cotizacion');
+});
+
 chain.then(() => {
   console.log(`\n${passed} tests e2e (mock) pasaron`);
   process.exit(process.exitCode || 0);

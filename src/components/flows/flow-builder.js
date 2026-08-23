@@ -298,6 +298,7 @@
                     <select v-model="n.data.stage" :disabled="!canEdit"
                       class="w-full border-2 border-neutral-300 bg-white px-2 py-1.5 outline-none focus:border-neutral-900 disabled:opacity-50">
                       <option value="">Cualquier etapa</option>
+                      <option value="__sin_asignar__">Sin asignar (clientes nuevos)</option>
                       <option v-for="s in pipeline.stages" :key="s" :value="s">{{ s }}</option>
                     </select>
                   </label>

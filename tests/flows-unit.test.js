@@ -136,6 +136,12 @@ test('buildFlowPolicy: trigger sin etapa → from "*"', () => {
   assert.strictEqual(flow.policy[0].from, '*');
 });
 
+test('buildFlowPolicy: trigger en “sin asignar” → from __sin_asignar__', () => {
+  const tNew = mk('t1', 'trigger', { trigger: 'message.received', stage: '__sin_asignar__' });
+  const flow = ZernioCrm.buildFlowPolicy({ pipelines: [pipe({ nodes: [tNew, c1, a1], edges: pipe().flow.edges })] }, { id: 'ag1' });
+  assert.strictEqual(flow.policy[0].from, '__sin_asignar__');
+});
+
 test('buildFlowPolicy: pipeline inactivo o ajeno al agente → null', () => {
   assert.strictEqual(ZernioCrm.buildFlowPolicy({ pipelines: [pipe(null, { active: false })] }, { id: 'ag1' }), null);
   assert.strictEqual(ZernioCrm.buildFlowPolicy({ pipelines: [pipe()] }, { id: 'otroAgente' }), null);
@@ -157,6 +163,25 @@ test('allowsFlowTransition: sin política (fallback previo) → true', () => {
   assert.strictEqual(ZernioCrm.allowsFlowTransition(null, 'cotizacion', 'pedido'), true);
 });
 
+test('allowsFlowTransition: lead sin asignar (null) avanza con trigger __sin_asignar__', () => {
+  const tNew = mk('t1', 'trigger', { trigger: 'message.received', stage: '__sin_asignar__' });
+  const flow = ZernioCrm.buildFlowPolicy({ pipelines: [pipe({ nodes: [tNew, c1, a1], edges: pipe().flow.edges })] }, { id: 'ag1' });
+  assert.strictEqual(ZernioCrm.allowsFlowTransition(flow, null, 'cotizacion'), true);
+  // Un lead que ya tiene etapa NO entra por el trigger de sin-asignar
+  assert.strictEqual(ZernioCrm.allowsFlowTransition(flow, 'nuevo', 'cotizacion'), false);
+});
+
+test('allowsFlowTransition: lead sin asignar NO avanza por trigger anclado a etapa', () => {
+  const flow = ZernioCrm.buildFlowPolicy({ pipelines: [pipe()] }, { id: 'ag1' }); // trigger en 'nuevo'
+  assert.strictEqual(ZernioCrm.allowsFlowTransition(flow, null, 'cotizacion'), false);
+});
+
+test('allowsFlowTransition: lead sin asignar avanza por trigger “cualquier etapa”', () => {
+  const tWild = mk('t1', 'trigger', { trigger: 'message.received', stage: '' });
+  const flow = ZernioCrm.buildFlowPolicy({ pipelines: [pipe({ nodes: [tWild, c1, a1], edges: pipe().flow.edges })] }, { id: 'ag1' });
+  assert.strictEqual(ZernioCrm.allowsFlowTransition(flow, null, 'cotizacion'), true);
+});
+
 // ── evaluateLeadTagTransition (guardrail puro = regla de la bandeja) ───────
 test('evaluateLeadTagTransition: transición válida → ok sin reason', () => {
   const flow = ZernioCrm.buildFlowPolicy({ pipelines: [pipe()] }, { id: 'ag1' });
@@ -176,6 +201,15 @@ test('evaluateLeadTagTransition: etapa inexistente bloqueada por membresía', ()
   const v = ZernioCrm.evaluateLeadTagTransition(flow, stages, 'nuevo', 'fantasia');
   assert.strictEqual(v.ok, false);
   assert.ok(v.reason.includes('no existe en el negocio'), v.reason);
+});
+
+test('evaluateLeadTagTransition: lead sin asignar con arista de sin-asignar → ok', () => {
+  const tNew = mk('t1', 'trigger', { trigger: 'message.received', stage: '__sin_asignar__' });
+  const flow = ZernioCrm.buildFlowPolicy({ pipelines: [pipe({ nodes: [tNew, c1, a1], edges: pipe().flow.edges })] }, { id: 'ag1' });
+  assert.deepStrictEqual(ZernioCrm.evaluateLeadTagTransition(flow, stages, null, 'cotizacion'), { ok: true });
+  const v = ZernioCrm.evaluateLeadTagTransition(flow, stages, 'nuevo', 'cotizacion');
+  assert.strictEqual(v.ok, false);
+  assert.ok(v.reason.includes('sin arista válida'), v.reason);
 });
 
 test('evaluateLeadTagTransition: sin leadTag propuesto → siempre ok', () => {

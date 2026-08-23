@@ -115,9 +115,12 @@
         outs(condId).forEach((actId) => {
           const a = byId.get(actId);
           if (!a || a.type !== 'action' || !a.data) return;
-          const from = (t.data && t.data.stage) || 'cualquier etapa';
+          const from = (t.data && t.data.stage) || '';
+          const fromLabel = from === ''
+            ? 'cualquier etapa'
+            : from === '__sin_asignar__' ? 'sin asignar' : `"${from}"`;
           const what = actionPhrase(a.data);
-          lines.push(`Al recibir mensaje${from === 'cualquier etapa' ? '' : ` · lead en "${from}"`} → si "${(c.data && c.data.condition) || '…'}" → ${what}`);
+          lines.push(`Al recibir mensaje${from === '' ? '' : ` · lead en ${fromLabel}`} → si "${(c.data && c.data.condition) || '…'}" → ${what}`);
         });
       });
     });

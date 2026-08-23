@@ -314,9 +314,10 @@
    * ¿Permite la política del flujo mover un contacto de `from` a `to`?
    * Sin política: permite si `to` pertenece a las etapas del pipeline; con
    * política: exige una arista disparador→condición→acción que apunte a `to`
-   * y cuyo `from` coincida (o sea '*' = cualquier etapa).
+   * y cuyo `from` coincida con la etapa actual. '*' = cualquier etapa;
+   * __sin_asignar__ = solo contactos sin leadTag (clientes nuevos de cero).
    * @param {null|object} flow — policy de buildFlowPolicy().
-   * @param {string|null} from — leadTag actual del contacto.
+   * @param {string|null} from — leadTag actual del contacto (null = sin asignar).
    * @param {string|null} to — leadTag propuesto por el agente.
    * @returns {boolean}
    */
@@ -327,8 +328,13 @@
     if (!to) return true;
     if (!flow.stages.includes(to)) return false;
     // Con política → exige una arista disparador→condición→acción que apunte
-    // a `to` y cuyo `from` coincida con la etapa actual ('*' = cualquier etapa)
-    return flow.policy.some((e) => e.to === to && (e.from === '*' || e.from === from));
+    // a `to` y cuyo `from` coincida con la etapa actual ('*' = cualquier etapa,
+    // '__sin_asignar__' = solo leads sin asignar)
+    return flow.policy.some((e) => e.to === to && (
+      e.from === '*' ||
+      e.from === from ||
+      (e.from === '__sin_asignar__' && from == null)
+    ));
   }
 
   /** Registra una entrada adjudicada fuera del flujo de askAgent (guardrails). */

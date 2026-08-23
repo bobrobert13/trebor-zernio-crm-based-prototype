@@ -245,6 +245,10 @@
    */
   async function askAgent(agent, event, payload) {
     const context = buildContext(event, payload);
+    // Política del flujo activo ligada a este agente (módulo Flujos): el LLM
+    // decide las transiciones de etapa conociendo qué aristas existen.
+    const flow = buildFlowPolicy(ZernioCrm.store.workspace, agent);
+    if (flow) context.flow = flow;
     let raw;
     if (ZernioCrm.store.mode === 'live' && agent.url) {
       try {
@@ -270,18 +274,114 @@
     return { ok: true, action, context, raw };
   }
 
+  /**
+   * Compila la política ejecutable de un pipeline activo ligado a un agente:
+   * caminos disparador → condición → acción del canvas. Sin pipeline activo
+   * devuelve null (comportamiento previo: transición libre por membresía).
+   * @param {object} ws — workspace (usa ws.pipelines[]).
+   * @param {object} agent — agente que ejecuta (pipeline.agentId === agent.id).
+   * @returns {null|{pipelineId:string, stages:Array<string>, policy:Array<object>}}
+   */
+  function buildFlowPolicy(ws, agent) {
+    if (!ws || !agent) return null;
+    const p = (ws.pipelines || []).find((x) => x.active && x.agentId === agent.id);
+    if (!p || !p.flow || !Array.isArray(p.flow.nodes)) return null;
+    const { nodes, edges } = p.flow;
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const outs = (id) => (edges || []).filter((e) => e.source === id).map((e) => e.target);
+    const policy = [];
+    nodes.filter((n) => n.type === 'trigger').forEach((t) => {
+      outs(t.id).forEach((condId) => {
+        const c = byId.get(condId);
+        if (!c || c.type !== 'condition') return;
+        outs(condId).forEach((actId) => {
+          const a = byId.get(actId);
+          if (!a || a.type !== 'action') return;
+          policy.push({
+            trigger: (t.data && t.data.trigger) || 'message.received',
+            from: (t.data && t.data.stage) || '*',
+            to: (a.data && a.data.stage) || null,
+            condition: (c.data && c.data.condition) || '',
+            action: (a.data && a.data.actionId) || 'none',
+          });
+        });
+      });
+    });
+    return { pipelineId: p.id, stages: p.stages || [], policy };
+  }
+
+  /**
+   * ¿Permite la política del flujo mover un contacto de `from` a `to`?
+   * Sin política: permite si `to` pertenece a las etapas del pipeline; con
+   * política: exige una arista disparador→condición→acción que apunte a `to`
+   * y cuyo `from` coincida (o sea '*' = cualquier etapa).
+   * @param {null|object} flow — policy de buildFlowPolicy().
+   * @param {string|null} from — leadTag actual del contacto.
+   * @param {string|null} to — leadTag propuesto por el agente.
+   * @returns {boolean}
+   */
+  function allowsFlowTransition(flow, from, to) {
+    // Sin política activa → se conserva la regla anterior (membresía por etapas)
+    if (!flow) return true;
+    // Sin etapa propuesta o etapa ajena al pipeline → nunca se mueve
+    if (!to) return true;
+    if (!flow.stages.includes(to)) return false;
+    // Con política → exige una arista disparador→condición→acción que apunte
+    // a `to` y cuyo `from` coincida con la etapa actual ('*' = cualquier etapa)
+    return flow.policy.some((e) => e.to === to && (e.from === '*' || e.from === from));
+  }
+
+  /** Registra una entrada adjudicada fuera del flujo de askAgent (guardrails). */
+  function logAgentDecision(agent, entry) {
+    logAgent(agent, entry);
+  }
+
+  /**
+   * Decisión pura del guardrail de etapas: ¿permite mover `from` → `to`?
+   * Combina la membresía del workspace (etapas existentes) con la arista del
+   * flujo activo (allowsFlowTransition). Es la regla que aplica
+   * applyAgentActionToConv en la bandeja; vive aquí para ser testeable sin UI.
+   * @param {null|object} flow — policy de buildFlowPolicy().
+   * @param {Array<string>} leadTags — etapas existentes del workspace.
+   * @param {string|null} from — leadTag actual del contacto.
+   * @param {string|null} to — leadTag propuesto por el agente.
+   * @returns {{ok:boolean, reason?:string}}
+   */
+  function evaluateLeadTagTransition(flow, leadTags, from, to) {
+    if (!to) return { ok: true };
+    if (!(leadTags || []).includes(to)) {
+      return { ok: false, reason: `la etapa "${to}" no existe en el negocio` };
+    }
+    if (!allowsFlowTransition(flow, from, to)) {
+      const origen = from == null ? 'sin etapa' : `"${from}"`;
+      return { ok: false, reason: `sin arista válida desde ${origen} hacia "${to}" en el flujo` };
+    }
+    return { ok: true };
+  }
+
   /** Prueba de conexión al servicio (live) o simulacro (demo). */
   async function testAgent(agent) {
     if (ZernioCrm.store.mode !== 'live' || !agent.url) {
       await new Promise((resolve) => setTimeout(resolve, 350));
       return { ok: true, simulated: true };
     }
-    const res = await ZernioCrm.fetchWithTimeout(agent.url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${agent.apiKey || ''}` },
-      body: JSON.stringify({ event: 'connection_test', workspace: { name: (ZernioCrm.store.workspace || {}).name } }),
-    }, AGENT_TIMEOUT_MS);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    try {
+      const res = await ZernioCrm.fetchWithTimeout(agent.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${agent.apiKey || ''}` },
+        body: JSON.stringify({ event: 'connection_test', workspace: { name: (ZernioCrm.store.workspace || {}).name } }),
+      }, AGENT_TIMEOUT_MS);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      // Mismo patrón que askAgent(): mensaje amigable y log en el agente,
+      // manteniendo el throw para que el caller muestre el toast.
+      const message = err && err.name === 'AbortError'
+        ? `Tiempo de espera agotado (${AGENT_TIMEOUT_MS / 1000}s)`
+        : err && err.message ? err.message : String(err);
+      logAgent(agent, { event: 'connection_test', ok: false, error: message });
+      throw new Error(message);
+    }
+    logAgent(agent, { event: 'connection_test', ok: true });
     return { ok: true };
   }
 
@@ -290,5 +390,6 @@
     AGENT_FLOWS, CANONICAL_FIELDS, MARY_MAPPING, MARY_EXAMPLE,
     CRM_TOOLS, TOOL_PIPELINES,
     activeAgents, askAgent, testAgent, adapt, buildContext, getPath,
+    buildFlowPolicy, allowsFlowTransition, logAgentDecision, evaluateLeadTagTransition,
   });
 })();

@@ -403,6 +403,10 @@
     });
     // Migración: agentes de IA conectables (nuevo módulo Agente)
     if (!workspace.agents) workspace.agents = [];
+    // Migración: pipelines de flujos (módulo Flujos). Cada pipeline agrupa
+    // etapas + un flujo visual con nodos/aristas que el agente evalua por
+    // mensaje entrante; sin pipelines → comportamiento previo (tag libre).
+    if (!workspace.pipelines) workspace.pipelines = [];
   }
 
   window.ZernioCrm = window.ZernioCrm || {};

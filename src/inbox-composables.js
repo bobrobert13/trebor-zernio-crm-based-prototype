@@ -1094,11 +1094,25 @@
 
     /** Aplica la acción canónica del agente a una conversación (auto-respuesta). */
     async function applyAgentActionToConv(agent, contact, conv, action) {
-      // Clasificación de lead
-      if (action.leadTag && contact && (leadTags.value || []).includes(action.leadTag)) {
-        if (contact.leadTag !== action.leadTag) {
-          ZernioCrm.applyLeadTag(contact, action.leadTag);
-          toast(`${agent.name} asignó la etapa ${action.leadTag}`, 'info');
+      // Clasificación de lead: membresía previa + guardrail de arista del flujo.
+      // Si el pipeline activo del agente no define la arista from→to, la
+      // transición se descarta (sin applyLeadTag) y se registra para auditoría.
+      if (action.leadTag && contact) {
+        const flow = ZernioCrm.buildFlowPolicy(workspace.value, agent);
+        const v = ZernioCrm.evaluateLeadTagTransition(
+          flow, leadTags.value, contact.leadTag || null, action.leadTag
+        );
+        if (v.ok) {
+          if (contact.leadTag !== action.leadTag) {
+            ZernioCrm.applyLeadTag(contact, action.leadTag);
+            toast(`Lead movido automáticamente a "${action.leadTag}" (${agent.name})`, 'success');
+          }
+        } else if (contact.leadTag !== action.leadTag) {
+          ZernioCrm.logAgentDecision(agent, {
+            event: 'flow.guardrail', ok: false,
+            error: `Transición a "${action.leadTag}" bloqueada: ${v.reason}.`,
+          });
+          toast(`Transición a "${action.leadTag}" bloqueada por el flujo (${agent.name})`, 'error');
         }
       }
       // Cierre de venta autónomo (requiere autoCloseSale del agente)

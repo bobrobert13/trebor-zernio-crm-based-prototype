@@ -8,6 +8,11 @@
   const { Vue, ZernioCrm } = window;
   const { store, storage } = ZernioCrm;
 
+  // Handler global de errores: visibiliza rechazos de promesa y errores no
+  // capturados (devtools) sin silenciarlos ni exponer secretos.
+  window.addEventListener('unhandledrejection', (e) => console.error('[boot] promesa no manejada:', e.reason));
+  window.addEventListener('error', (e) => console.error('[boot] error no capturado:', e.error || e.message));
+
   /** Mapa ruta → componente de vista. */
   const VIEWS = {
     dashboard: 'dashboard-view',
@@ -20,6 +25,7 @@
     team: 'team-view',
     broadcasts: 'broadcasts-view',
     agents: 'agents-view',
+    flows: 'flows-view',
     billing: 'billing-view',
     system: 'system-view',
     settings: 'settings-view',

@@ -106,6 +106,10 @@
       }
 
       function onNodeDown(event, node) {
+        // Presiones sobre controles (X, selects, textarea) no inician arrastre:
+        // el setPointerCapture robaría el click/foco del control.
+        const t = event.target;
+        if (t && t.closest && t.closest('button, input, select, textarea, a')) return;
         if (!props.canEdit || connect.value) return;
         event.preventDefault();
         dragging.value = { id: node.id, dx: event.clientX - node.position.x, dy: event.clientY - node.position.y };
@@ -273,7 +277,7 @@
                 :class="NODE_TYPES()[n.type].tone">
                 <ui-icon :name="NODE_TYPES()[n.type].icon" class="h-4 w-4"></ui-icon>
                 <span class="flex-1 truncate font-mono text-[10px] font-bold uppercase tracking-widest">{{ NODE_TYPES()[n.type].label }}</span>
-                <button v-if="canEdit" @click.stop="removeNode(n.id)" class="opacity-60 transition hover:opacity-100" aria-label="Eliminar nodo">
+                <button v-if="canEdit" @pointerdown.stop @click.stop="removeNode(n.id)" class="opacity-60 transition hover:opacity-100" aria-label="Eliminar nodo">
                   <ui-icon name="x" class="h-3.5 w-3.5"></ui-icon>
                 </button>
               </div>
